@@ -75,6 +75,12 @@ export interface AccountMember {
   avatar_url: string | null;
   role: AccountRole;
   joined_at: string;
+  /**
+   * Overrides granulares del miembro (migración 041). Poblado solo
+   * para admin+ (misma regla que email); null para agent/viewer.
+   * Resolver con `effectivePermission`, nunca leyendo claves a mano.
+   */
+  permission_overrides: Record<string, unknown> | null;
 }
 
 /**

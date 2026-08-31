@@ -24,6 +24,7 @@ interface ProfileRow {
   email: string | null;
   avatar_url: string | null;
   account_role: string;
+  permission_overrides: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -35,7 +36,9 @@ export async function GET() {
     // the caller's, so this query is naturally account-scoped.
     const { data, error } = await ctx.supabase
       .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, created_at")
+      .select(
+        "user_id, full_name, email, avatar_url, account_role, permission_overrides, created_at",
+      )
       .eq("account_id", ctx.accountId)
       .order("created_at", { ascending: true });
 
@@ -61,6 +64,12 @@ export async function GET() {
           email: canSeeEmails ? row.email : null,
           avatar_url: row.avatar_url,
           role: row.account_role,
+          // Misma regla que email: la config de permisos de cada
+          // miembro es asunto de admin+ (la UI de tildar permisos
+          // necesita el valor efectivo por persona).
+          permission_overrides: canSeeEmails
+            ? (row.permission_overrides ?? {})
+            : null,
           joined_at: row.created_at,
         },
       ];
