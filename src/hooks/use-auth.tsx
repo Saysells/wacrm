@@ -35,6 +35,12 @@ interface Profile {
   beta_features: string[];
   account_id: string | null;
   account_role: AccountRole | null;
+  /**
+   * Overrides granulares de permisos (migración 041). `{}` cuando no
+   * hay ninguno; se resuelven con `effectivePermission` de
+   * `@/lib/auth/permissions`, nunca leyendo claves directamente.
+   */
+  permission_overrides: Record<string, unknown>;
 }
 
 interface AccountSummary {
@@ -110,6 +116,9 @@ interface AuthContextValue {
   accountId: string | null;
   /** Role within that account. Null while loading. */
   accountRole: AccountRole | null;
+  /** Overrides granulares del perfil (migración 041). `{}` mientras
+   *  carga o sin overrides; consumir vía `effectivePermission`. */
+  permissionOverrides: Record<string, unknown>;
   /** Lightweight account meta — id + name + default_currency. Null while loading. */
   account: AccountSummary | null;
   /** Account default deal currency. Falls back to DEFAULT_CURRENCY
@@ -152,6 +161,7 @@ interface ProfileRow {
   beta_features: string[] | null;
   account_id: string | null;
   account_role: string | null;
+  permission_overrides: Record<string, unknown> | null;
 }
 
 /**
@@ -192,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await supabase
           .from("profiles")
           .select(
-            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role",
+            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, permission_overrides",
           )
           .eq("user_id", userId)
           .maybeSingle();
@@ -280,6 +290,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
           account_role: accountRole,
+          // NOT NULL DEFAULT '{}' desde la migración 041; el narrow
+          // defensivo cubre un esquema que aún no la corrió.
+          permission_overrides: data.permission_overrides ?? {},
         });
         setAccount(accountRow);
         if (!data.account_id || !accountRole) {
@@ -403,6 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       accountRole: role,
       accountId: profile?.account_id ?? null,
+      permissionOverrides: profile?.permission_overrides ?? {},
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -411,7 +425,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, profile?.permission_overrides]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -474,6 +488,7 @@ export function useAuth(): AuthContextValue {
       accountStatusDetail: null,
       accountId: null,
       accountRole: null,
+      permissionOverrides: {},
       isOwner: false,
       isAdmin: false,
       isAgent: false,

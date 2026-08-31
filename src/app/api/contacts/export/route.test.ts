@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // an agent gets in production, not a stubbed one.
 
 let callerRole = 'admin'
+let callerOverrides: Record<string, unknown> = {}
 let contactRows: Array<Record<string, string | null>> = []
 // Every table the route touched, to prove an agent's request never
 // reaches the contacts table.
@@ -18,7 +19,11 @@ function makeSupabaseMock() {
       switch (table) {
         case 'profiles':
           return {
-            data: { account_id: 'acct-1', account_role: callerRole },
+            data: {
+              account_id: 'acct-1',
+              account_role: callerRole,
+              permission_overrides: callerOverrides,
+            },
             error: null,
           }
         case 'accounts':
@@ -61,6 +66,7 @@ import { GET } from './route'
 describe('GET /api/contacts/export', () => {
   beforeEach(() => {
     callerRole = 'admin'
+    callerOverrides = {}
     contactRows = []
     tablesQueried.length = 0
     supabaseMock = makeSupabaseMock()
@@ -81,6 +87,26 @@ describe('GET /api/contacts/export', () => {
     const res = await GET()
 
     expect(res.status).toBe(403)
+  })
+
+  it('el permiso manda, no el rol: agent con override exporta', async () => {
+    callerRole = 'agent'
+    callerOverrides = { can_export_contacts: true }
+
+    const res = await GET()
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/csv')
+  })
+
+  it('el permiso manda, no el rol: admin con override en false recibe 403', async () => {
+    callerRole = 'admin'
+    callerOverrides = { can_export_contacts: false }
+
+    const res = await GET()
+
+    expect(res.status).toBe(403)
+    expect(tablesQueried).not.toContain('contacts')
   })
 
   it.each(['admin', 'owner'])('serves the CSV to an %s', async (role) => {

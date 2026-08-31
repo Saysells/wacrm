@@ -4,12 +4,12 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   canDeleteAccount,
   canEditSettings,
-  canExportContacts,
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
   canViewOnly,
 } from "@/lib/auth/roles";
+import { effectivePermission } from "@/lib/auth/permissions";
 
 /**
  * Typed action keys for `useCan`. Adding a capability = one new
@@ -40,7 +40,7 @@ export type CanAction =
  *   <Button disabled={!canEdit} title={canEdit ? "Save" : "Read-only"} />
  */
 export function useCan(action: CanAction): boolean {
-  const { profileLoading, accountRole } = useAuth();
+  const { profileLoading, accountRole, permissionOverrides } = useAuth();
   if (profileLoading || !accountRole) return false;
 
   switch (action) {
@@ -51,7 +51,13 @@ export function useCan(action: CanAction): boolean {
     case "send-messages":
       return canSendMessages(accountRole);
     case "export-contacts":
-      return canExportContacts(accountRole);
+      // Permiso granular (migración 041): el override por persona pisa
+      // el default admin+ del rol.
+      return effectivePermission(
+        accountRole,
+        permissionOverrides,
+        "can_export_contacts",
+      );
     case "view-only":
       return canViewOnly(accountRole);
     case "delete-account":

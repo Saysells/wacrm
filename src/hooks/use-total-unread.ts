@@ -19,9 +19,9 @@ import type { Conversation } from "@/types";
  */
 export function useTotalUnread(): number {
   const [total, setTotal] = useState(0);
-  // Visibility scope: agents don't count threads assigned to another
-  // agent — the badge should match what their filtered inbox shows.
-  const { user, accountRole, profileLoading } = useAuth();
+  // Visibility scope: quien no tiene view_all_data efectivo no cuenta
+  // hilos asignados a otro — el badge refleja su bandeja filtrada.
+  const { user, accountRole, permissionOverrides, profileLoading } = useAuth();
   const userId = user?.id ?? null;
 
   // Keep a live local mirror of {id: unread_count} so INSERT/UPDATE/DELETE
@@ -42,7 +42,11 @@ export function useTotalUnread(): number {
       let query = supabase
         .from("conversations")
         .select("id, unread_count");
-      const orFilter = conversationVisibilityFilter(accountRole, userId ?? "");
+      const orFilter = conversationVisibilityFilter(
+        accountRole,
+        permissionOverrides,
+        userId ?? "",
+      );
       if (orFilter) query = query.or(orFilter);
       const { data, error } = await query;
       if (cancelled || error || !data) return;
@@ -75,6 +79,7 @@ export function useTotalUnread(): number {
             if (
               canSeeConversation(
                 accountRole,
+                permissionOverrides,
                 userId,
                 row.assigned_agent_id ?? null,
               )
@@ -98,7 +103,7 @@ export function useTotalUnread(): number {
     };
     // Auth deps settle once (loading → resolved) and refire the first
     // real load + subscription.
-  }, [profileLoading, accountRole, userId]);
+  }, [profileLoading, accountRole, permissionOverrides, userId]);
 
   return total;
 }

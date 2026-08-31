@@ -4,7 +4,6 @@ import {
   type AccountRole,
   canDeleteAccount,
   canEditSettings,
-  canExportContacts,
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
@@ -113,13 +112,6 @@ describe("capability predicates", () => {
     expect(canViewOnly("admin")).toBe(false);
     expect(canViewOnly("agent")).toBe(false);
     expect(canViewOnly("viewer")).toBe(true);
-  });
-
-  it("canExportContacts: admin+ only", () => {
-    expect(canExportContacts("owner")).toBe(true);
-    expect(canExportContacts("admin")).toBe(true);
-    expect(canExportContacts("agent")).toBe(false);
-    expect(canExportContacts("viewer")).toBe(false);
   });
 
   it("canDeleteAccount: owner only", () => {

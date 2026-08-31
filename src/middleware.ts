@@ -1,7 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-import { DASHBOARD_PREFIXES, canAccessPath, homePathFor } from '@/lib/auth/nav'
+import {
+  DASHBOARD_PREFIXES,
+  canAccessPath,
+  homePathFor,
+  navPermissionKeyFor,
+} from '@/lib/auth/nav'
 import { isAccountRole } from '@/lib/auth/roles'
 
 export async function middleware(request: NextRequest) {
@@ -79,27 +84,28 @@ export async function middleware(request: NextRequest) {
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
-  // Role gate — agents get a reduced app (inbox, notifications,
-  // contacts, own settings; see src/lib/auth/nav.ts). The sidebar
-  // already hides the other sections; this blocks the typed-URL /
-  // bookmarked path. The profile lookup runs ONLY when the path is
-  // one an agent can't open (a null role passes: canAccessPath is
-  // consulted with the resolved role below, so non-blocked paths
-  // never pay the extra query).
-  if (user && !canAccessPath('agent', request.nextUrl.pathname)) {
+  // Gate de permisos de navegación (migración 041): cada sección del
+  // dashboard mapea a una clave nav_* y se resuelve por rol +
+  // permission_overrides — el sidebar ya oculta lo no permitido, esto
+  // bloquea la URL tipeada / el bookmark. La consulta al perfil corre
+  // solo en rutas gobernadas por una clave (/inbox y /settings quedan
+  // afuera, ver src/lib/auth/nav.ts).
+  if (user && navPermissionKeyFor(request.nextUrl.pathname)) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_role')
+      .select('account_role, permission_overrides')
       .eq('user_id', user.id)
       .maybeSingle()
     const rawRole = profile?.account_role
     const role = isAccountRole(rawRole) ? rawRole : null
+    const overrides =
+      (profile?.permission_overrides as Record<string, unknown> | null) ?? {}
     // Unknown role falls through (fail-open here, unlike the UI):
     // pre-017 profiles have no account_role and locking them out of
     // /dashboard would brick the whole app for them, not reduce it.
-    if (role && !canAccessPath(role, request.nextUrl.pathname)) {
+    if (role && !canAccessPath(role, overrides, request.nextUrl.pathname)) {
       const url = request.nextUrl.clone()
-      url.pathname = homePathFor(role)
+      url.pathname = homePathFor(role, overrides)
       url.search = ''
       return withRefreshedCookies(NextResponse.redirect(url))
     }

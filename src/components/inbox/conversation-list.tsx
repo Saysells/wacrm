@@ -56,11 +56,11 @@ export function ConversationList({
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  // Visibility scoping: agents only load unassigned threads and their
-  // own (see conversationVisibilityFilter). The fetch waits for the
-  // profile so an agent never gets an unfiltered flash of the full
-  // inbox while the role resolves.
-  const { user, accountRole, profileLoading } = useAuth();
+  // Visibility scoping: quien no tiene view_all_data efectivo solo
+  // carga hilos sin asignar o propios (conversationVisibilityFilter).
+  // El fetch espera al perfil para no flashear la bandeja completa
+  // mientras el rol resuelve.
+  const { user, accountRole, permissionOverrides, profileLoading } = useAuth();
   const userId = user?.id ?? null;
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
@@ -114,6 +114,7 @@ export function ConversationList({
 
       const orFilter = conversationVisibilityFilter(
         accountRole,
+        permissionOverrides,
         userId ?? "",
       );
       if (orFilter) query = query.or(orFilter);
@@ -146,7 +147,7 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
     // The auth deps settle exactly once (loading → resolved), firing
     // the first real fetch.
-  }, [resyncToken, profileLoading, accountRole, userId]);
+  }, [resyncToken, profileLoading, accountRole, permissionOverrides, userId]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.

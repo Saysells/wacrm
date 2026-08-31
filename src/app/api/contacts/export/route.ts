@@ -1,15 +1,21 @@
 // ============================================================
 // GET /api/contacts/export — CSV download of the account's contacts.
 //
-// Gated to admin+ (`canExportContacts` policy): agents work their own
-// slice of the inbox but can't bulk-extract the whole book of
-// business, so this returns 403 for them — blocking the endpoint,
-// not just hiding the button (roles session, 2026-08-31).
+// Gateado por el permiso efectivo `can_export_contacts` (migración
+// 041): default admin+, pero un override por persona lo pisa en
+// cualquier dirección — un agent habilitado exporta, un admin
+// deshabilitado recibe 403. Se bloquea el endpoint, no solo el
+// botón (sesión de roles, 2026-08-31).
 // ============================================================
 
 import { NextResponse } from 'next/server'
 
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import {
+  ForbiddenError,
+  getCurrentAccount,
+  toErrorResponse,
+} from '@/lib/auth/account'
+import { effectivePermission } from '@/lib/auth/permissions'
 
 /** Column order for the CSV, matching the import template's fields. */
 const COLUMNS = ['name', 'phone', 'email', 'company', 'created_at'] as const
@@ -36,7 +42,19 @@ const PAGE = 1000
 
 export async function GET() {
   try {
-    const { supabase, accountId } = await requireRole('admin')
+    const ctx = await getCurrentAccount()
+    if (
+      !effectivePermission(
+        ctx.role,
+        ctx.permissionOverrides,
+        'can_export_contacts',
+      )
+    ) {
+      throw new ForbiddenError(
+        "This action requires the 'can_export_contacts' permission",
+      )
+    }
+    const { supabase, accountId } = ctx
 
     const rows: ContactRow[] = []
     for (let from = 0; ; from += PAGE) {

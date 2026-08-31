@@ -87,6 +87,12 @@ export interface AccountContext {
   accountId: string;
   /** Caller's role within their account. */
   role: AccountRole;
+  /**
+   * Overrides granulares del perfil (migración 041). `{}` sin
+   * overrides. Resolver SIEMPRE con `effectivePermission` de
+   * `@/lib/auth/permissions`, nunca leyendo claves a mano.
+   */
+  permissionOverrides: Record<string, unknown>;
   /** Lightweight account meta — id + name. */
   account: { id: string; name: string };
 }
@@ -116,7 +122,7 @@ export async function getCurrentAccount(): Promise<AccountContext> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("account_id, account_role")
+    .select("account_id, account_role, permission_overrides")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -168,6 +174,10 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     userId: user.id,
     accountId: data.account_id,
     role: data.account_role,
+    // NOT NULL DEFAULT '{}' desde la 041; narrow defensivo para un
+    // esquema que aún no la corrió.
+    permissionOverrides:
+      (data.permission_overrides as Record<string, unknown> | null) ?? {},
     account: { id: account.id, name: account.name },
   };
 }

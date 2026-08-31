@@ -57,6 +57,7 @@ import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
+import { effectivePermission } from '@/lib/auth/permissions';
 import {
   contactExclusionList,
   hiddenContactIds,
@@ -76,8 +77,13 @@ export default function ContactsPage() {
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
   const canExport = useCan('export-contacts');
-  const { user, accountRole, profileLoading } = useAuth();
+  const { user, accountRole, permissionOverrides, profileLoading } = useAuth();
   const userId = user?.id ?? null;
+  // Sin view_all_data efectivo, los contactos con hilo de otro se
+  // ocultan (mismo motor que la bandeja; ver visibility.ts).
+  const viewsAllData =
+    accountRole !== null &&
+    effectivePermission(accountRole, permissionOverrides, 'view_all_data');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,14 +149,14 @@ export default function ContactsPage() {
     const to = from + PAGE_SIZE - 1;
     const term = search.trim();
 
-    // Agents don't see contacts whose conversation belongs to another
-    // agent (ownership derives from conversations.assigned_agent_id —
-    // contacts carry no assignee). Resolve the excluded ids up front;
-    // for everyone else this stays null and no filter applies. This is
-    // a query-level filter, not RLS — see src/lib/auth/visibility.ts.
+    // Quien no tiene view_all_data efectivo no ve contactos cuyo hilo
+    // pertenece a otro (la propiedad se deriva de
+    // conversations.assigned_agent_id — contacts no tiene asignación).
+    // Para el resto queda null y no se filtra nada. Además del filtro
+    // de query, el RLS de la migración 040/041 rechaza esas filas.
     let exclusion: string | null = null;
     let hiddenSet: Set<string> | null = null;
-    if (accountRole === 'agent' && userId) {
+    if (!viewsAllData && userId) {
       const { data: assignedRows, error: assignedErr } = await supabase
         .from('conversations')
         .select('contact_id, assigned_agent_id')
@@ -255,7 +261,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, selectedTagIds, tagsMap, t, profileLoading, accountRole, userId]);
+  }, [supabase, page, search, selectedTagIds, tagsMap, t, profileLoading, viewsAllData, userId]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not

@@ -9,9 +9,11 @@ import { NextRequest } from "next/server";
 //                      of the test is that these must survive onto whatever
 //                      response the middleware returns — including redirects.
 let mockUser: { id: string } | null = null;
-// `mockRole`  — the account_role the middleware's role gate reads off
-//               the profile for blocked-for-agent paths.
+// `mockRole`      — the account_role the middleware's permission gate
+//                   reads off the profile for nav-gated paths.
+// `mockOverrides` — the permission_overrides JSONB alongside it.
 let mockRole: string | null = "owner";
+let mockOverrides: Record<string, unknown> = {};
 let refreshedCookies: Array<{
   name: string;
   value: string;
@@ -42,7 +44,10 @@ vi.mock("@supabase/ssr", () => ({
       b.select = () => b;
       b.eq = () => b;
       b.maybeSingle = async () => ({
-        data: mockRole === null ? null : { account_role: mockRole },
+        data:
+          mockRole === null
+            ? null
+            : { account_role: mockRole, permission_overrides: mockOverrides },
         error: null,
       });
       return b;
@@ -58,6 +63,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
   mockUser = null;
   mockRole = "owner";
+  mockOverrides = {};
   refreshedCookies = [];
 });
 
@@ -182,5 +188,54 @@ describe("middleware — agent role gate", () => {
     const res = await middleware(new NextRequest("https://app.test/dashboard"));
 
     expect(res.headers.get("location")).toBeNull();
+  });
+});
+
+describe("middleware — permission overrides (migración 041)", () => {
+  beforeEach(() => {
+    mockUser = { id: "user-1" };
+    refreshedCookies = [ROTATED];
+  });
+
+  it("deja pasar a un agent con nav_dashboard:true a /dashboard", async () => {
+    mockRole = "agent";
+    mockOverrides = { nav_dashboard: true };
+
+    const res = await middleware(new NextRequest("https://app.test/dashboard"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("el override de un agent es puntual: /broadcasts sigue cerrado", async () => {
+    mockRole = "agent";
+    mockOverrides = { nav_dashboard: true };
+
+    const res = await middleware(
+      new NextRequest("https://app.test/broadcasts"),
+    );
+
+    expect(res.status).toBe(307);
+    // Con nav_dashboard habilitado, el aterrizaje es el Panel.
+    expect(res.headers.get("location")).toContain("/dashboard");
+  });
+
+  it("bloquea a un admin con nav_pipelines:false y lo manda al Panel", async () => {
+    mockRole = "admin";
+    mockOverrides = { nav_pipelines: false };
+
+    const res = await middleware(new NextRequest("https://app.test/pipelines"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/dashboard");
+  });
+
+  it("un admin sin nav_dashboard aterriza en /inbox al ser bloqueado", async () => {
+    mockRole = "admin";
+    mockOverrides = { nav_dashboard: false, nav_flows: false };
+
+    const res = await middleware(new NextRequest("https://app.test/flows"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/inbox");
   });
 });

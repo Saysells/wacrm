@@ -1,94 +1,136 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AGENT_ALLOWED_PREFIXES,
-  AGENT_NAV_PREFIXES,
+  NAV_PERMISSION_BY_PREFIX,
   canAccessPath,
   homePathFor,
   isDashboardPath,
+  navPermissionKeyFor,
   showsInNav,
 } from "./nav";
 
-describe("canAccessPath", () => {
-  const HIDDEN_FOR_AGENT = [
-    "/dashboard",
-    "/pipelines",
-    "/broadcasts",
-    "/broadcasts/new",
-    "/automations",
-    "/flows",
-    "/agents",
-  ];
+const GATED_FOR_AGENT = [
+  "/dashboard",
+  "/pipelines",
+  "/broadcasts",
+  "/broadcasts/new",
+  "/automations",
+  "/flows",
+  "/agents",
+];
 
+describe("canAccessPath — defaults por rol (espejo sesión 1)", () => {
   it.each(["owner", "admin", "viewer"] as const)(
-    "%s can open every dashboard section",
+    "%s abre todas las secciones sin overrides",
     (role) => {
-      for (const path of [...HIDDEN_FOR_AGENT, ...AGENT_ALLOWED_PREFIXES]) {
-        expect(canAccessPath(role, path)).toBe(true);
+      for (const path of [...GATED_FOR_AGENT, "/inbox", "/notifications", "/contacts", "/settings"]) {
+        expect(canAccessPath(role, {}, path)).toBe(true);
       }
     },
   );
 
-  it("agent can open exactly inbox, notifications, contacts and settings", () => {
-    for (const path of AGENT_ALLOWED_PREFIXES) {
-      expect(canAccessPath("agent", path)).toBe(true);
-      expect(canAccessPath("agent", `${path}/deep/link`)).toBe(true);
+  it("agent sin overrides abre solo inbox, notifications, contacts y settings", () => {
+    for (const path of ["/inbox", "/notifications", "/contacts", "/settings"]) {
+      expect(canAccessPath("agent", {}, path)).toBe(true);
+      expect(canAccessPath("agent", {}, `${path}/deep/link`)).toBe(true);
     }
-    for (const path of HIDDEN_FOR_AGENT) {
-      expect(canAccessPath("agent", path)).toBe(false);
-      expect(canAccessPath("agent", `${path}/deep/link`)).toBe(false);
+    for (const path of GATED_FOR_AGENT) {
+      expect(canAccessPath("agent", {}, path)).toBe(false);
+      expect(canAccessPath("agent", {}, `${path}/deep`)).toBe(false);
     }
   });
 
-  it("fails closed while the role is still unresolved", () => {
-    expect(canAccessPath(null, "/dashboard")).toBe(false);
-    expect(canAccessPath(null, "/inbox")).toBe(true);
+  it("falla cerrado mientras el rol no resolvió", () => {
+    expect(canAccessPath(null, {}, "/dashboard")).toBe(false);
+    expect(canAccessPath(null, {}, "/inbox")).toBe(true);
   });
 
-  it("ignores non-dashboard paths entirely", () => {
-    expect(canAccessPath("agent", "/join/abc")).toBe(true);
-    expect(canAccessPath(null, "/login")).toBe(true);
+  it("ignora rutas fuera del dashboard", () => {
+    expect(canAccessPath("agent", {}, "/join/abc")).toBe(true);
+    expect(canAccessPath(null, {}, "/login")).toBe(true);
+  });
+});
+
+describe("canAccessPath — overrides granulares (migración 041)", () => {
+  it("un agent con nav_dashboard:true puede abrir /dashboard", () => {
+    const ov = { nav_dashboard: true };
+    expect(canAccessPath("agent", ov, "/dashboard")).toBe(true);
+    // El override es puntual: el resto sigue cerrado.
+    expect(canAccessPath("agent", ov, "/broadcasts")).toBe(false);
   });
 
-  it("does not prefix-match sibling paths", () => {
-    // /inboxes is not /inbox; /dashboard-x is not /dashboard.
-    expect(isDashboardPath("/inboxes")).toBe(false);
-    expect(canAccessPath("agent", "/contactsFoo")).toBe(true); // not a dashboard path
+  it("un admin con nav_broadcasts:false pierde /broadcasts", () => {
+    const ov = { nav_broadcasts: false };
+    expect(canAccessPath("admin", ov, "/broadcasts")).toBe(false);
+    expect(canAccessPath("admin", ov, "/dashboard")).toBe(true);
+  });
+
+  it("un override puede sacarle contactos incluso a un owner", () => {
+    expect(canAccessPath("owner", { nav_contacts: false }, "/contacts")).toBe(
+      false,
+    );
   });
 });
 
 describe("showsInNav", () => {
-  it("gives agents exactly three sidebar entries", () => {
-    expect(AGENT_NAV_PREFIXES).toHaveLength(3);
-    for (const href of AGENT_NAV_PREFIXES) {
-      expect(showsInNav("agent", href)).toBe(true);
+  it("agent sin overrides ve exactamente 3 filas (settings va por el avatar)", () => {
+    for (const href of ["/inbox", "/notifications", "/contacts"]) {
+      expect(showsInNav("agent", {}, href)).toBe(true);
     }
-    // /settings is openable for agents but not a nav row.
-    expect(showsInNav("agent", "/settings")).toBe(false);
-    expect(canAccessPath("agent", "/settings")).toBe(true);
-    expect(showsInNav("agent", "/dashboard")).toBe(false);
+    expect(showsInNav("agent", {}, "/settings")).toBe(false);
+    expect(canAccessPath("agent", {}, "/settings")).toBe(true);
+    expect(showsInNav("agent", {}, "/dashboard")).toBe(false);
   });
 
-  it("shows the full nav to every other role", () => {
-    for (const role of ["owner", "admin", "viewer"] as const) {
-      expect(showsInNav(role, "/dashboard")).toBe(true);
-      expect(showsInNav(role, "/settings")).toBe(true);
-      expect(showsInNav(role, "/broadcasts")).toBe(true);
+  it("un agent con nav_dashboard:true ve el Panel en el sidebar", () => {
+    expect(showsInNav("agent", { nav_dashboard: true }, "/dashboard")).toBe(
+      true,
+    );
+  });
+
+  it("un admin con nav_flows:false deja de ver Flows", () => {
+    expect(showsInNav("admin", { nav_flows: false }, "/flows")).toBe(false);
+    expect(showsInNav("admin", {}, "/flows")).toBe(true);
+  });
+
+  it("el inbox se muestra siempre — no es una clave del motor", () => {
+    for (const role of ["owner", "admin", "agent", "viewer"] as const) {
+      expect(showsInNav(role, {}, "/inbox")).toBe(true);
     }
   });
 
-  it("fails closed while the role is unresolved", () => {
-    expect(showsInNav(null, "/dashboard")).toBe(false);
-    expect(showsInNav(null, "/inbox")).toBe(true);
+  it("falla cerrado mientras el rol no resolvió", () => {
+    expect(showsInNav(null, {}, "/dashboard")).toBe(false);
+    expect(showsInNav(null, {}, "/inbox")).toBe(true);
+    expect(showsInNav(null, {}, "/settings")).toBe(false);
   });
 });
 
 describe("homePathFor", () => {
-  it("sends agents to the inbox and everyone else to the dashboard", () => {
-    expect(homePathFor("agent")).toBe("/inbox");
-    expect(homePathFor("owner")).toBe("/dashboard");
-    expect(homePathFor("admin")).toBe("/dashboard");
-    expect(homePathFor("viewer")).toBe("/dashboard");
-    expect(homePathFor(null)).toBe("/dashboard");
+  it("aterriza según el permiso nav_dashboard, no según el rol", () => {
+    expect(homePathFor("agent", {})).toBe("/inbox");
+    expect(homePathFor("agent", { nav_dashboard: true })).toBe("/dashboard");
+    expect(homePathFor("owner", {})).toBe("/dashboard");
+    expect(homePathFor("admin", { nav_dashboard: false })).toBe("/inbox");
+    expect(homePathFor(null, {})).toBe("/inbox");
+  });
+});
+
+describe("navPermissionKeyFor", () => {
+  it("mapea cada sección a su clave y deja inbox/settings afuera", () => {
+    expect(navPermissionKeyFor("/dashboard")).toBe("nav_dashboard");
+    expect(navPermissionKeyFor("/agents/123")).toBe("nav_ai_agents");
+    expect(navPermissionKeyFor("/inbox")).toBeNull();
+    expect(navPermissionKeyFor("/settings")).toBeNull();
+    expect(navPermissionKeyFor("/login")).toBeNull();
+  });
+
+  it("no hace prefix-match sobre rutas hermanas", () => {
+    expect(isDashboardPath("/inboxes")).toBe(false);
+    expect(navPermissionKeyFor("/dashboard-x")).toBeNull();
+  });
+
+  it("cubre las 8 secciones gobernadas", () => {
+    expect(Object.keys(NAV_PERMISSION_BY_PREFIX)).toHaveLength(8);
   });
 });

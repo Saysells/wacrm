@@ -117,21 +117,22 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, permissionOverrides, signOut } =
+    useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
 
-  // Role-reduced navigation: agents only see Inbox / Notifications /
-  // Contacts (the middleware blocks the hidden routes too, so this is
-  // presentation, not the security boundary). While the profile is
-  // still loading the role is null and showsInNav fails closed — the
-  // reduced set renders first and expands once the role resolves, so
-  // a privileged menu never flashes at an under-privileged user.
+  // Navegación por permisos: cada entrada mapea a una clave nav_* y
+  // se resuelve por rol + overrides (el middleware bloquea además la
+  // ruta directa — esto es presentación, no la frontera de seguridad).
+  // Mientras el perfil carga, el rol es null y showsInNav falla
+  // cerrado: primero se pinta el set reducido y se expande al
+  // resolver, así nunca flashea un menú privilegiado.
   const visibleNavItems = navItems.filter((item) =>
-    showsInNav(accountRole, item.href),
+    showsInNav(accountRole, permissionOverrides, item.href),
   );
   const visibleBottomNavItems = bottomNavItems.filter((item) =>
-    showsInNav(accountRole, item.href),
+    showsInNav(accountRole, permissionOverrides, item.href),
   );
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
@@ -201,7 +202,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href={homePathFor(accountRole)} className="flex items-center gap-2">
+          <Link
+            href={homePathFor(accountRole, permissionOverrides)}
+            className="flex items-center gap-2"
+          >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <MessageSquare className="h-4 w-4" />
             </div>
