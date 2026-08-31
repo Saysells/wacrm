@@ -1258,6 +1258,8 @@
       "loading": "불러오는 중…"
     },
     "members": {
+      "permissionsBtn": "권한",
+      "permissionsHint": "체크된 항목이 이 사람이 지금 할 수 있는 것입니다. 기본값은 역할이 정하며, 체크를 바꾸면 이 사람에게만 적용됩니다.",
       "title": "팀원",
       "description": "이 계정에 접근 권한이 있는 사람들입니다. 역할에 따라 각 팀원이 할 수 있는 작업이 결정됩니다.",
       "inviteMember": "멤버 초대",
@@ -1456,6 +1458,18 @@
       "toastImageTooLarge": "이미지 크기가 {size}MB입니다 — Meta 제한은 5MB입니다.",
       "toastUploadSuccess": "이미지가 업로드되었습니다.",
       "toastUploadFailed": "업로드에 실패했습니다."
+    },
+    "permissions": {
+      "view_all_data": "모든 데이터 보기",
+      "can_export_contacts": "연락처 내보내기",
+      "nav_dashboard": "대시보드",
+      "nav_notifications": "알림",
+      "nav_contacts": "연락처",
+      "nav_pipelines": "파이프라인",
+      "nav_broadcasts": "브로드캐스트",
+      "nav_automations": "자동화",
+      "nav_flows": "플로우",
+      "nav_ai_agents": "AI 에이전트"
     },
     "roles": {
       "admin": "관리자",

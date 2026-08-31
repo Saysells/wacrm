@@ -1258,6 +1258,8 @@
       "loading": "Cargando…"
     },
     "members": {
+      "permissionsBtn": "Permisos",
+      "permissionsHint": "Lo tildado es lo que esta persona puede hacer hoy. El punto de partida lo da su rol; tocar un tilde lo pisa solo para ella.",
       "title": "Miembros del equipo",
       "description": "Personas con acceso a esta cuenta. Los roles controlan qué puede hacer cada uno.",
       "inviteMember": "Invitar miembro",
@@ -1446,6 +1448,18 @@
       "toastImageTooLarge": "La imagen pesa {size} MB; el límite de Meta es 5 MB.",
       "toastUploadSuccess": "Imagen subida.",
       "toastUploadFailed": "No se pudo subir."
+    },
+    "permissions": {
+      "view_all_data": "Ver todos los datos",
+      "can_export_contacts": "Exportar contactos",
+      "nav_dashboard": "Panel",
+      "nav_notifications": "Notificaciones",
+      "nav_contacts": "Contactos",
+      "nav_pipelines": "Embudos",
+      "nav_broadcasts": "Difusiones",
+      "nav_automations": "Automatizaciones",
+      "nav_flows": "Flujos",
+      "nav_ai_agents": "Agentes de IA"
     },
     "roles": {
       "admin": "Administrador",
