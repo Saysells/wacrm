@@ -7,6 +7,8 @@ import {
   matchesContactFilters,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
+import { conversationVisibilityFilter } from "@/lib/auth/visibility";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
@@ -54,6 +56,12 @@ export function ConversationList({
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  // Visibility scoping: agents only load unassigned threads and their
+  // own (see conversationVisibilityFilter). The fetch waits for the
+  // profile so an agent never gets an unfiltered flash of the full
+  // inbox while the role resolves.
+  const { user, accountRole, profileLoading } = useAuth();
+  const userId = user?.id ?? null;
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -91,14 +99,26 @@ export function ConversationList({
   });
 
   useEffect(() => {
+    // Wait for the caller's role before fetching — the agent filter
+    // below depends on it.
+    if (profileLoading) return;
+
     const supabase = createClient();
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
         .order("last_message_at", { ascending: false });
+
+      const orFilter = conversationVisibilityFilter(
+        accountRole,
+        userId ?? "",
+      );
+      if (orFilter) query = query.or(orFilter);
+
+      const { data, error } = await query;
 
       if (cancelled) return;
 
@@ -124,7 +144,9 @@ export function ConversationList({
     // `resyncToken` is included so the parent can force a refetch when
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
-  }, [resyncToken]);
+    // The auth deps settle exactly once (loading → resolved), firing
+    // the first real fetch.
+  }, [resyncToken, profileLoading, accountRole, userId]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.

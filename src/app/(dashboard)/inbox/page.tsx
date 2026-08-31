@@ -9,6 +9,9 @@ import {
   normalizeConversation,
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
+import { canSeeConversation } from "@/lib/auth/visibility";
+import type { AccountRole } from "@/lib/auth/roles";
+import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
@@ -36,6 +39,25 @@ function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: authUser, accountRole } = useAuth();
+
+  /**
+   * Visibility scope for realtime/hydrate paths, mirrored into a ref so
+   * the long-lived callbacks below (stable identities on purpose) always
+   * read the current role without re-subscribing channels. The list
+   * fetch itself is filtered server-side in ConversationList; this ref
+   * only guards rows that arrive OUTSIDE that query.
+   */
+  const visibilityRef = useRef<{
+    role: AccountRole | null;
+    userId: string | null;
+  }>({ role: null, userId: null });
+  useEffect(() => {
+    visibilityRef.current = {
+      role: accountRole,
+      userId: authUser?.id ?? null,
+    };
+  }, [accountRole, authUser?.id]);
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -151,6 +173,13 @@ function InboxPageInner() {
       }
       if (!data) return;
       const fetched = normalizeConversation(data);
+      // Visibility guard: an agent never hydrates a thread that belongs
+      // to another agent into their list (e.g. a realtime event for a
+      // teammate's conversation).
+      const { role, userId } = visibilityRef.current;
+      if (!canSeeConversation(role, userId, fetched.assigned_agent_id ?? null)) {
+        return;
+      }
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === fetched.id);
         if (existing) {
@@ -283,6 +312,18 @@ function InboxPageInner() {
       old: Partial<Conversation>;
     }) => {
       const conv = event.new;
+
+      // Visibility guard for agents. An UPDATE that assigns the thread
+      // to another agent removes it from this agent's list; INSERTs for
+      // someone else's thread are ignored outright. Everyone else (and
+      // the unassigned case) flows through untouched.
+      const { role, userId } = visibilityRef.current;
+      if (!canSeeConversation(role, userId, conv.assigned_agent_id ?? null)) {
+        if (event.eventType === "UPDATE") {
+          setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+        }
+        return;
+      }
 
       if (event.eventType === "INSERT") {
         // Prepend immediately for snappy UX so the new conv shows in the

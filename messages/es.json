@@ -305,6 +305,7 @@
       "subtitle": "Administrá tu lista de contactos. {count} contactos en total.",
       "subtitleZero": "Administrá tu lista de contactos.",
       "customFieldsBtn": "Campos personalizados",
+      "exportBtn": "Exportar CSV",
       "importBtn": "Importar",
       "addContactBtn": "Agregar contacto",
       "searchPlaceholder": "Buscar por nombre, teléfono o email...",

@@ -39,6 +39,7 @@ import {
   Search,
   Plus,
   Upload,
+  Download,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -55,6 +56,11 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
+import {
+  contactExclusionList,
+  hiddenContactIds,
+} from '@/lib/auth/visibility';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 
@@ -69,6 +75,9 @@ export default function ContactsPage() {
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
+  const canExport = useCan('export-contacts');
+  const { user, accountRole, profileLoading } = useAuth();
+  const userId = user?.id ?? null;
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +128,10 @@ export default function ContactsPage() {
   }, [supabase]);
 
   const fetchContacts = useCallback(async () => {
+    // The agent visibility filter below needs the resolved role; the
+    // effect refires when profileLoading settles.
+    if (profileLoading) return;
+
     const seq = ++fetchSeq.current;
     setLoading(true);
     // The visible rows are about to change — drop any selection that
@@ -129,6 +142,30 @@ export default function ContactsPage() {
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
     const term = search.trim();
+
+    // Agents don't see contacts whose conversation belongs to another
+    // agent (ownership derives from conversations.assigned_agent_id —
+    // contacts carry no assignee). Resolve the excluded ids up front;
+    // for everyone else this stays null and no filter applies. This is
+    // a query-level filter, not RLS — see src/lib/auth/visibility.ts.
+    let exclusion: string | null = null;
+    let hiddenSet: Set<string> | null = null;
+    if (accountRole === 'agent' && userId) {
+      const { data: assignedRows, error: assignedErr } = await supabase
+        .from('conversations')
+        .select('contact_id, assigned_agent_id')
+        .not('assigned_agent_id', 'is', null)
+        .neq('assigned_agent_id', userId);
+      if (seq !== fetchSeq.current) return;
+      if (assignedErr) {
+        toast.error(t('toastFailedLoad'));
+        setLoading(false);
+        return;
+      }
+      const hidden = hiddenContactIds(assignedRows ?? [], userId);
+      exclusion = contactExclusionList(hidden);
+      hiddenSet = new Set(hidden);
+    }
 
     let contactRows: Contact[];
     let count: number;
@@ -153,12 +190,23 @@ export default function ContactsPage() {
       const rows = (data ?? []) as { contact: Contact; total_count: number }[];
       contactRows = rows.map((r) => r.contact);
       count = rows.length > 0 ? Number(rows[0].total_count) : 0;
+      // The RPC can't take an exclusion list, so the agent filter is
+      // applied to the returned page. The total may overcount hidden
+      // contacts under a tag filter — acceptable for now (see
+      // CLAUDE.md → Roles y permisos → Pendientes).
+      if (hiddenSet) {
+        contactRows = contactRows.filter((c) => !hiddenSet.has(c.id));
+      }
     } else {
       let query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(from, to);
+
+      if (exclusion) {
+        query = query.not('id', 'in', exclusion);
+      }
 
       if (term) {
         const like = `%${term}%`;
@@ -207,7 +255,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, selectedTagIds, tagsMap, t]);
+  }, [supabase, page, search, selectedTagIds, tagsMap, t, profileLoading, accountRole, userId]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -358,6 +406,19 @@ export default function ContactsPage() {
             >
               <SlidersHorizontal className="size-4" />
               {t('customFieldsBtn')}
+            </Button>
+          )}
+          {canExport && (
+            // Admin+ only (canExportContacts) — and the endpoint refuses
+            // agents with 403 on its own, so hiding this is UX, not the
+            // security boundary.
+            <Button
+              variant="outline"
+              onClick={() => window.location.assign('/api/contacts/export')}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              <Download className="size-4" />
+              {t('exportBtn')}
             </Button>
           )}
           <GatedButton
