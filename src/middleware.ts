@@ -1,6 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { DASHBOARD_PREFIXES, canAccessPath, homePathFor } from '@/lib/auth/nav'
+import { isAccountRole } from '@/lib/auth/roles'
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -70,11 +73,36 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
-  if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  if (!user && DASHBOARD_PREFIXES.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
+  // Role gate — agents get a reduced app (inbox, notifications,
+  // contacts, own settings; see src/lib/auth/nav.ts). The sidebar
+  // already hides the other sections; this blocks the typed-URL /
+  // bookmarked path. The profile lookup runs ONLY when the path is
+  // one an agent can't open (a null role passes: canAccessPath is
+  // consulted with the resolved role below, so non-blocked paths
+  // never pay the extra query).
+  if (user && !canAccessPath('agent', request.nextUrl.pathname)) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const rawRole = profile?.account_role
+    const role = isAccountRole(rawRole) ? rawRole : null
+    // Unknown role falls through (fail-open here, unlike the UI):
+    // pre-017 profiles have no account_role and locking them out of
+    // /dashboard would brick the whole app for them, not reduce it.
+    if (role && !canAccessPath(role, request.nextUrl.pathname)) {
+      const url = request.nextUrl.clone()
+      url.pathname = homePathFor(role)
+      url.search = ''
+      return withRefreshedCookies(NextResponse.redirect(url))
+    }
   }
 
   // API routes that need auth (not webhooks)

@@ -9,6 +9,9 @@ import { NextRequest } from "next/server";
 //                      of the test is that these must survive onto whatever
 //                      response the middleware returns — including redirects.
 let mockUser: { id: string } | null = null;
+// `mockRole`  — the account_role the middleware's role gate reads off
+//               the profile for blocked-for-agent paths.
+let mockRole: string | null = "owner";
 let refreshedCookies: Array<{
   name: string;
   value: string;
@@ -32,6 +35,18 @@ vi.mock("@supabase/ssr", () => ({
         return { data: { user: mockUser } };
       },
     },
+    // Only the role gate queries the DB from the middleware, and only
+    // ever `profiles.account_role` — a single chainable stub suffices.
+    from: () => {
+      const b: Record<string, unknown> = {};
+      b.select = () => b;
+      b.eq = () => b;
+      b.maybeSingle = async () => ({
+        data: mockRole === null ? null : { account_role: mockRole },
+        error: null,
+      });
+      return b;
+    },
   }),
 }));
 
@@ -42,6 +57,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
   mockUser = null;
+  mockRole = "owner";
   refreshedCookies = [];
 });
 
@@ -109,5 +125,62 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     // No redirect — the normal NextResponse.next() already carries cookies.
     expect(res.headers.get("location")).toBeNull();
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
+  });
+});
+
+describe("middleware — agent role gate", () => {
+  beforeEach(() => {
+    mockUser = { id: "user-1" };
+    refreshedCookies = [ROTATED];
+  });
+
+  it.each([
+    "/dashboard",
+    "/pipelines",
+    "/broadcasts",
+    "/automations",
+    "/flows",
+    "/agents",
+  ])("redirects an agent from %s to /inbox", async (path) => {
+    mockRole = "agent";
+
+    const res = await middleware(new NextRequest(`https://app.test${path}`));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/inbox");
+    // The rotated auth cookie must survive this redirect too.
+    expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
+  });
+
+  it.each(["/inbox", "/notifications", "/contacts", "/settings"])(
+    "lets an agent through to %s",
+    async (path) => {
+      mockRole = "agent";
+
+      const res = await middleware(new NextRequest(`https://app.test${path}`));
+
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+
+  it.each(["owner", "admin", "viewer"])(
+    "does not restrict the %s role",
+    async (role) => {
+      mockRole = role;
+
+      const res = await middleware(
+        new NextRequest("https://app.test/broadcasts"),
+      );
+
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+
+  it("fails open for a pre-017 profile with no account_role", async () => {
+    mockRole = null;
+
+    const res = await middleware(new NextRequest("https://app.test/dashboard"));
+
+    expect(res.headers.get("location")).toBeNull();
   });
 });
