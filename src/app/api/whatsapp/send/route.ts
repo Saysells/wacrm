@@ -11,6 +11,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { resolveAutoAssignee } from '@/lib/inbox/auto-assign'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     // still delivered a real WhatsApp message to the customer and merely
     // failed to record it (surfacing as "sent to Meta but failed to save
     // to DB"). RLS can't un-send that, so the role check belongs here.
-    const { supabase, accountId, userId } = await requireRole('agent')
+    const { supabase, accountId, userId, role } = await requireRole('agent')
 
     // Per-user rate limit. Bucket key is scoped to this route so
     // `/broadcast` has an independent budget.
@@ -93,11 +94,14 @@ export async function POST(request: Request) {
     // contact so a business-initiated template send (Contact detail view)
     // reuses the shared send core below.
     let conversationId: string | null = null
+    // Current owner of the thread, feeding the auto-assign decision
+    // below. Stays null for a conversation created during this request.
+    let assignedAgentId: string | null = null
 
     if (conversationIdInput) {
       const { data, error: convError } = await supabase
         .from('conversations')
-        .select('id')
+        .select('id, assigned_agent_id')
         .eq('id', conversationIdInput)
         .eq('account_id', accountId)
         .single()
@@ -109,6 +113,7 @@ export async function POST(request: Request) {
         )
       }
       conversationId = data.id
+      assignedAgentId = data.assigned_agent_id ?? null
     } else {
       // contact_id path: verify the contact is in this account first so a
       // caller can't open a conversation against someone else's contact.
@@ -138,7 +143,8 @@ export async function POST(request: Request) {
           { status: 500 }
         )
       }
-      conversationId = resolved
+      conversationId = resolved.id
+      assignedAgentId = resolved.assignedAgentId
     }
 
     if (!conversationId) {
@@ -166,6 +172,37 @@ export async function POST(request: Request) {
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
       })
+
+      // Auto-assignment on reply: an agent's reply in an unowned
+      // conversation claims it (and, by derivation, the contact) for
+      // them — see resolveAutoAssignee for the full rule. Runs after
+      // the send so a failed send never claims a thread. Best-effort:
+      // the reply already reached the customer, so an assignment
+      // hiccup logs instead of failing the request. The
+      // `.is('assigned_agent_id', null)` filter re-checks ownership
+      // atomically — if another agent claimed the thread between our
+      // read and this write, the first claim wins. The DB trigger
+      // from migration 027 skips self-assignment notifications, so
+      // this produces no notification spam.
+      const autoAssignee = resolveAutoAssignee({
+        role,
+        assignedAgentId,
+        userId,
+      })
+      if (autoAssignee) {
+        const { error: assignErr } = await supabase
+          .from('conversations')
+          .update({ assigned_agent_id: autoAssignee })
+          .eq('id', conversationId)
+          .is('assigned_agent_id', null)
+        if (assignErr) {
+          console.error(
+            'Auto-assign after reply failed for conversation',
+            conversationId,
+            assignErr.message
+          )
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -203,15 +240,17 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string,
-): Promise<string | null> {
+): Promise<{ id: string; assignedAgentId: string | null } | null> {
   const { data: existing } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, assigned_agent_id')
     .eq('account_id', accountId)
     .eq('contact_id', contactId)
     .maybeSingle()
 
-  if (existing) return existing.id
+  if (existing) {
+    return { id: existing.id, assignedAgentId: existing.assigned_agent_id ?? null }
+  }
 
   const { data: created, error } = await supabase
     .from('conversations')
@@ -228,5 +267,6 @@ async function findOrCreateConversation(
     return null
   }
 
-  return created.id
+  // Freshly created ⇒ unowned by definition.
+  return { id: created.id, assignedAgentId: null }
 }

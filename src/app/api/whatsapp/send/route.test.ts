@@ -10,6 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Records of what the route wrote, so we can assert the right rows landed.
 const conversationInserts: Array<Record<string, unknown>> = []
 const messageInserts: Array<Record<string, unknown>> = []
+// Updates against `conversations`, with the filters chained onto each —
+// the auto-assign tests assert both the payload and the
+// `.is('assigned_agent_id', null)` race guard.
+const conversationUpdates: Array<{
+  payload: Record<string, unknown>
+  filters: Array<[string, string, unknown]>
+}> = []
 
 // Toggles for the per-test scenario.
 let existingConversation: Record<string, unknown> | null = null
@@ -91,9 +98,30 @@ function makeSupabaseMock() {
 
     const b: Record<string, unknown> = {}
     const chain = () => b
-    for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'delete']) {
+    for (const m of ['select', 'in', 'order', 'limit', 'delete']) {
       b[m] = vi.fn(chain)
     }
+    // Track the update payload + its filter chain for `conversations`,
+    // so tests can assert exactly what an update targeted.
+    let updateRecord: {
+      payload: Record<string, unknown>
+      filters: Array<[string, string, unknown]>
+    } | null = null
+    b.update = vi.fn((payload: Record<string, unknown>) => {
+      if (table === 'conversations') {
+        updateRecord = { payload, filters: [] }
+        conversationUpdates.push(updateRecord)
+      }
+      return b
+    })
+    b.eq = vi.fn((column: string, value: unknown) => {
+      updateRecord?.filters.push(['eq', column, value])
+      return b
+    })
+    b.is = vi.fn((column: string, value: unknown) => {
+      updateRecord?.filters.push(['is', column, value])
+      return b
+    })
     b.insert = vi.fn((payload: Record<string, unknown>) => {
       didInsert = true
       if (table === 'conversations') {
@@ -184,6 +212,7 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
   beforeEach(() => {
     conversationInserts.length = 0
     messageInserts.length = 0
+    conversationUpdates.length = 0
     existingConversation = null
     createdConversation = null
     contactRow = CONTACT
@@ -273,6 +302,7 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
   beforeEach(() => {
     conversationInserts.length = 0
     messageInserts.length = 0
+    conversationUpdates.length = 0
     existingConversation = {
       id: 'conv-existing',
       account_id: 'acct-1',
@@ -312,5 +342,78 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
 
     expect(res.status).toBe(200)
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /api/whatsapp/send — auto-assign on agent reply', () => {
+  beforeEach(() => {
+    conversationInserts.length = 0
+    messageInserts.length = 0
+    conversationUpdates.length = 0
+    existingConversation = null
+    createdConversation = null
+    contactRow = CONTACT
+    callerRole = 'agent'
+    supabaseMock = makeSupabaseMock()
+    sendTemplateMessage.mockClear()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // The inbox reply path: an existing conversation targeted by id.
+  function postReply() {
+    return postContactTemplate({ contact_id: undefined, conversation_id: 'conv-1' })
+  }
+
+  function conversationRow(assigned: string | null) {
+    return {
+      id: 'conv-1',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      assigned_agent_id: assigned,
+      contact: CONTACT,
+    }
+  }
+
+  /** The updates that touched ownership, ignoring preview updates. */
+  const assignmentUpdates = () =>
+    conversationUpdates.filter((u) => 'assigned_agent_id' in u.payload)
+
+  it('assigns an unowned conversation to the replying agent', async () => {
+    existingConversation = conversationRow(null)
+
+    const res = await postReply()
+
+    expect(res.status).toBe(200)
+    const assigns = assignmentUpdates()
+    expect(assigns).toHaveLength(1)
+    expect(assigns[0].payload).toEqual({ assigned_agent_id: 'user-1' })
+    // Targeted at this conversation, and guarded so a concurrent first
+    // reply can't steal a thread claimed between our read and write.
+    expect(assigns[0].filters).toContainEqual(['eq', 'id', 'conv-1'])
+    expect(assigns[0].filters).toContainEqual(['is', 'assigned_agent_id', null])
+  })
+
+  it('does not reassign a conversation another agent already owns', async () => {
+    existingConversation = conversationRow('agent-2')
+
+    const res = await postReply()
+
+    expect(res.status).toBe(200)
+    // The reply goes out, but ownership is untouched.
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+    expect(assignmentUpdates()).toHaveLength(0)
+  })
+
+  it('does not claim the thread when an admin replies', async () => {
+    callerRole = 'admin'
+    existingConversation = conversationRow(null)
+
+    const res = await postReply()
+
+    expect(res.status).toBe(200)
+    expect(assignmentUpdates()).toHaveLength(0)
   })
 })
