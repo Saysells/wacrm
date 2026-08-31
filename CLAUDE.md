@@ -73,11 +73,59 @@ Los roles ya venían del upstream (`owner`/`admin`/`agent`/`viewer` en
 - El viewer conserva la vista completa (solo lectura); la reducción aplica
   únicamente al agent. Viewer tampoco puede exportar.
 
+## Permisos granulares (sesión 2, 2026-08-31)
+
+Eze tilda permisos POR PERSONA; el rol solo aporta defaults. Motor SQL:
+`effective_permission(rol, overrides, clave)` + `profiles.permission_overrides`
+(migración 041, aplicada). Espejo TS: `src/lib/auth/permissions.ts`
+(`PERMISSION_KEYS`, `effectivePermission`) — **espejo EXACTO del CASE de la
+041**: si cambia uno, cambia el otro en el mismo diff.
+
+Las 10 claves (ninguna más; una clave nueva = migración + espejo):
+`view_all_data`, `can_export_contacts`, `nav_dashboard`, `nav_notifications`,
+`nav_contacts`, `nav_pipelines`, `nav_broadcasts`, `nav_automations`,
+`nav_flows`, `nav_ai_agents`. Defaults: nav_notifications y nav_contacts
+true para todos; can_export_contacts owner/admin; el resto owner/admin/viewer.
+Override presente pisa el default; clave desconocida → false.
+
+Dónde vive cada cosa:
+
+- **Resolución**: `permissions.ts` (puro). Nadie lee claves del JSONB a mano.
+- **Navegación**: `nav.ts` mapea sección → clave (`NAV_PERMISSION_BY_PREFIX`);
+  `/inbox` siempre visible/accesible y `/settings` siempre accesible (no son
+  claves). Sidebar filtra con `showsInNav(rol, overrides, href)`; el
+  middleware bloquea la URL directa con `canAccessPath` consultando
+  `profiles.account_role + permission_overrides` en toda ruta gobernada por
+  una clave; `homePathFor` aterriza según `nav_dashboard` efectivo.
+- **Visibilidad**: `visibility.ts` filtra por `view_all_data` efectivo (un
+  admin con override false queda filtrado como agent; un agent con override
+  true ve todo). El RLS 040/041 (`can_view_by_assignment`) aplica lo mismo
+  en la base.
+- **Export**: `GET /api/contacts/export` y el botón gatean por
+  `can_export_contacts` efectivo (`useCan('export-contacts')`);
+  `canExportContacts` se eliminó de `roles.ts`.
+- **Overrides en contexto**: `use-auth.tsx` expone `permissionOverrides`;
+  `getCurrentAccount()` lo trae para rutas API; el roster
+  `GET /api/account/members` lo devuelve solo a admin+ (misma regla que
+  email).
+- **Escritura de overrides**: RPC `set_member_permission_override`
+  (migración **042, generada y NO aplicada** — el RLS de profiles solo deja
+  editar el propio perfil). La UI de Miembros + endpoint
+  `PATCH /api/account/members/[userId]/permissions` quedaron en un **commit
+  local sin push** (decisión de Eze): aplicar la 042 en Supabase y recién
+  ahí `git push`.
+- **Auditoría**: `respaldos/auditoria-permisos-2026-08-31.md`. Los
+  `requireRole(...)` de acciones (enviar, settings, api-keys…) siguen por
+  rol a propósito: no son ninguna de las 10 claves.
+
 ## Pendientes
 
-- **RLS**: los filtros de visibilidad son a nivel query/endpoint, no de
-  base. Un agent con la anon key y una consola todavía puede leer filas
-  ajenas. Cerrarlo requiere una migración (sesión con SQL habilitado).
+- ~~RLS~~: resuelto por las migraciones 040/041 (`can_view_by_assignment`
+  consulta `effective_permission`); los filtros de query del cliente quedan
+  como optimización y para contadores coherentes.
+- **Migración 042 sin aplicar**: hasta aplicarla, no hay forma de guardar
+  overrides desde la UI; el bloque de UI de permisos espera en un commit
+  local sin push.
 - Con filtro de etiquetas activo, el total de contactos del agent puede
   sobrecontar (la RPC `filter_contacts_by_tags` no acepta exclusiones; la
   página filtra el resultado).
