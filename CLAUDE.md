@@ -17,8 +17,10 @@
   runner ya no acepta un directorio como argumento).
 - **Qué no se toca**: `src/`, `supabase/`, `package.json` y
   `package-lock.json` no se modifican sin una sesión que lo pida
-  explícitamente. Este fork solo agrega `messages/es.json`, `scripts/
-  i18n-check.mjs`, `scripts/i18n-check.test.mjs` y este archivo.
+  explícitamente. Cambios propios hasta ahora: `messages/es.json`,
+  `scripts/i18n-check.mjs`, `scripts/i18n-check.test.mjs`, este archivo,
+  y el trabajo de la sección "Roles y permisos" de abajo (sesión
+  2026-08-31, pedida explícitamente por Eze).
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
@@ -26,3 +28,61 @@
   chat. Las variables dummy del CI (`.github/workflows/ci.yml`) se pasan
   inline en el comando cuando hace falta verificar localmente; nunca se
   escriben a un archivo.
+
+# Roles y permisos
+
+Sesión 1 (2026-08-31). Decisión de Eze: el rol `agent` (vendedores) ve una
+app reducida — Bandeja, Notificaciones y Contactos — con asignación
+automática al responder, contactos ajenos ocultos y exportación bloqueada.
+Los roles ya venían del upstream (`owner`/`admin`/`agent`/`viewer` en
+`src/lib/auth/roles.ts`, migración 017); esta sesión no agregó SQL.
+
+## Qué se construyó
+
+- **Navegación reducida** (`src/lib/auth/nav.ts`): el sidebar del agent
+  muestra solo 3 entradas; el middleware redirige a `/inbox` cualquier ruta
+  vedada (`/dashboard`, `/pipelines`, `/broadcasts`, `/automations`,
+  `/flows`, `/agents`) consultando `profiles.account_role` solo en esas
+  rutas. `/settings` queda accesible (perfil propio, vía menú de avatar)
+  pero fuera del sidebar; sus secciones de cuenta ya se gatean solas.
+- **Asignación automática** (`src/lib/inbox/auto-assign.ts` + route de
+  envío): si un agent responde una conversación sin asignar, se la queda
+  (el contacto se deriva de la conversación: NO hay columna de asignación
+  en `contacts`). Nunca reasigna una asignada; owner/admin no capturan
+  hilos al responder. El UPDATE va con guarda `.is('assigned_agent_id',
+  null)` (carrera: gana el primero). La notificación sale gratis del
+  trigger de la migración 027 (omite autoasignación).
+- **Visibilidad** (`src/lib/auth/visibility.ts`): el agent ve
+  conversaciones sin asignar o propias (query del inbox, realtime,
+  hidratación y badge de no-leídos) y no ve contactos cuyo hilo es de otro
+  agent. Owner/admin/viewer ven todo.
+- **Export de contactos**: no existía ni botón ni endpoint. Se creó
+  `GET /api/contacts/export` (CSV RFC 4180, paginado) gateado por el nuevo
+  predicado `canExportContacts` (admin+; 403 para agent/viewer), y el botón
+  "Exportar CSV" en Contactos visible solo para admin+ (claves i18n en
+  en/es/ko).
+
+## Decisiones tomadas
+
+- La propiedad de un contacto se DERIVA de `conversations.assigned_agent_id`
+  (relación 1:1 contacto↔conversación desde la migración 036). No se agregó
+  columna a `contacts` porque requería SQL, prohibido en esta sesión.
+- UI de navegación falla cerrada (rol sin resolver ⇒ menú reducido); el
+  middleware falla abierto solo para perfiles pre-017 sin `account_role`
+  (bloquearles /dashboard les rompería toda la app).
+- El viewer conserva la vista completa (solo lectura); la reducción aplica
+  únicamente al agent. Viewer tampoco puede exportar.
+
+## Pendientes
+
+- **RLS**: los filtros de visibilidad son a nivel query/endpoint, no de
+  base. Un agent con la anon key y una consola todavía puede leer filas
+  ajenas. Cerrarlo requiere una migración (sesión con SQL habilitado).
+- Con filtro de etiquetas activo, el total de contactos del agent puede
+  sobrecontar (la RPC `filter_contacts_by_tags` no acepta exclusiones; la
+  página filtra el resultado).
+- La exclusión de contactos usa `.not('id','in',(...))`: con miles de
+  contactos asignados a otros, la URL puede crecer demasiado. La solución
+  real es la misma migración RLS.
+- El export pagina de a 1000 sin límite superior; para cuentas enormes
+  convendría streaming o un tope.
