@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { resolveConversationByPhone } from './resolve-conversation';
+import {
+  findConversationByPhone,
+  resolveConversationByPhone,
+} from './resolve-conversation';
 import { SendMessageError } from './send-message';
 
 // ------------------------------------------------------------
@@ -206,5 +209,67 @@ describe('resolveConversationByPhone', () => {
       contactId: 'c1',
       contactCreated: false,
     });
+  });
+});
+
+// ------------------------------------------------------------
+// Read-only lookup. The dashboard's "New message" flow needs to know
+// whether a phone already has a thread *before* deciding between
+// "open it" and "you must start with a template" — and must not leave
+// an orphan contact/conversation behind if the user backs out.
+// ------------------------------------------------------------
+describe('findConversationByPhone', () => {
+  it('returns nulls for an unknown phone without creating anything', async () => {
+    const db = makeDb({ contactCandidates: [] });
+
+    await expect(
+      findConversationByPhone(db, 'acct', '+14155550123')
+    ).resolves.toEqual({
+      phone: '14155550123',
+      contactId: null,
+      conversationId: null,
+    });
+  });
+
+  it('returns the contact id but a null conversation when the contact has no thread', async () => {
+    const db = makeDb({
+      contactCandidates: [{ id: 'c1', phone: '14155550123' }],
+      existingConversation: null,
+    });
+
+    await expect(
+      findConversationByPhone(db, 'acct', '+14155550123')
+    ).resolves.toEqual({
+      phone: '14155550123',
+      contactId: 'c1',
+      conversationId: null,
+    });
+  });
+
+  it('returns the existing conversation for a phone that already wrote', async () => {
+    const db = makeDb({
+      contactCandidates: [{ id: 'c1', phone: '14155550123' }],
+      existingConversation: { id: 'conv-1' },
+    });
+
+    await expect(
+      findConversationByPhone(db, 'acct', '+1 (415) 555-0123')
+    ).resolves.toEqual({
+      phone: '14155550123',
+      contactId: 'c1',
+      conversationId: 'conv-1',
+    });
+  });
+
+  it('rejects an invalid phone before any DB call', async () => {
+    const db = {
+      from() {
+        throw new Error('should not query');
+      },
+    } as unknown as SupabaseClient;
+
+    await expect(
+      findConversationByPhone(db, 'acct', 'not-a-phone')
+    ).rejects.toBeInstanceOf(SendMessageError);
   });
 });

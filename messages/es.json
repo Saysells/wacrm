@@ -134,9 +134,30 @@
   },
   "Inbox": {
     "page": {
+      "openConversationFailed": "No se pudo abrir esa conversación.",
       "whatsappNotConnected": "WhatsApp® no está conectado. Andá a Configuración para conectar tu cuenta."
     },
+    "newMessage": {
+      "title": "Nuevo mensaje",
+      "description": "Arrancá una conversación con un número que todavía no te escribió.",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "+5491155550123",
+      "phoneHint": "Formato internacional (E.164), con código de país.",
+      "invalidPhone": "Escribí el número en formato internacional, por ejemplo +5491155550123.",
+      "continue": "Continuar",
+      "checking": "Buscando...",
+      "cancel": "Cancelar",
+      "openingExisting": "Este número ya tiene conversación: la abrimos.",
+      "templateRequired": "Este número nunca escribió primero, así que WhatsApp® solo acepta una plantilla aprobada como primer mensaje.",
+      "chooseTemplate": "Elegir plantilla",
+      "changeTemplate": "Cambiar plantilla",
+      "selectedTemplate": "Plantilla: {name}",
+      "send": "Enviar",
+      "sending": "Enviando...",
+      "failed": "No se pudo arrancar la conversación"
+    },
     "conversationList": {
+      "newMessage": "Nuevo mensaje",
       "searchPlaceholder": "Buscar conversaciones...",
       "filterAll": "Todas",
       "filterUnread": "Sin leer",

@@ -11,7 +11,7 @@ import { conversationVisibilityFilter } from "@/lib/auth/visibility";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X, MessageSquarePlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { NewMessageDialog } from "./new-message-dialog";
+import { canSendMessages } from "@/lib/auth/roles";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -36,6 +38,12 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /**
+   * Abre un hilo por id — lo usa "Nuevo mensaje" cuando resuelve el
+   * numero (hilo existente o recien creado). Opcional para no romper
+   * a los callers que ya existen.
+   */
+  onOpenConversationId?: (conversationId: string) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -54,6 +62,7 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  onOpenConversationId,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   // Visibility scoping: quien no tiene view_all_data efectivo solo
@@ -73,6 +82,12 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  // "Nuevo mensaje": arrancar un hilo con un numero que todavia no
+  // escribio. Mismo gate de rol que el envio (el flujo termina en un
+  // send), asi que un viewer no ve el boton.
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const canStartConversation =
+    !!onOpenConversationId && !!accountRole && canSendMessages(accountRole);
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -249,14 +264,27 @@ export function ConversationList({
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={handleSearchChange}
-            placeholder={t("searchPlaceholder")}
-            className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={handleSearchChange}
+              placeholder={t("searchPlaceholder")}
+              className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
+            />
+          </div>
+          {canStartConversation && (
+            <button
+              type="button"
+              onClick={() => setNewMessageOpen(true)}
+              aria-label={t("newMessage")}
+              title={t("newMessage")}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
@@ -442,6 +470,14 @@ export function ConversationList({
           </div>
         )}
       </ScrollArea>
+
+      {canStartConversation && (
+        <NewMessageDialog
+          open={newMessageOpen}
+          onOpenChange={setNewMessageOpen}
+          onOpenConversation={onOpenConversationId}
+        />
+      )}
     </div>
   );
 }

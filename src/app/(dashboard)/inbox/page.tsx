@@ -540,6 +540,42 @@ function InboxPageInner() {
     [activeConversation?.id, router]
   );
 
+  /**
+   * Abrir un hilo del que solo tenemos el id — lo usa "Nuevo mensaje"
+   * cuando resuelve el numero (hilo existente o recien creado). La
+   * fila puede no estar todavia en la lista, asi que la traemos con
+   * su contacto joineado antes de seleccionarla; el INSERT de
+   * realtime que llegue despues dedupea contra knownConvIdsRef.
+   */
+  const handleOpenConversationId = useCallback(
+    async (convId: string) => {
+      const known = conversations.find((c) => c.id === convId);
+      if (known) {
+        handleSelectConversation(known);
+        return;
+      }
+
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", convId)
+        .maybeSingle();
+
+      if (error || !data) {
+        toast.error(t("openConversationFailed"));
+        return;
+      }
+
+      const conv = normalizeConversation(data);
+      setConversations((prev) =>
+        prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev],
+      );
+      handleSelectConversation(conv);
+    },
+    [conversations, handleSelectConversation, t],
+  );
+
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
@@ -642,6 +678,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onOpenConversationId={handleOpenConversationId}
           />
         </div>
 

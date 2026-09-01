@@ -134,9 +134,30 @@
   },
   "Inbox": {
     "page": {
+      "openConversationFailed": "Could not open that conversation.",
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account."
     },
+    "newMessage": {
+      "title": "New message",
+      "description": "Start a conversation with a number that hasn't written to you yet.",
+      "phoneLabel": "Phone number",
+      "phonePlaceholder": "+14155550123",
+      "phoneHint": "International format (E.164), country code included.",
+      "invalidPhone": "Enter the number in international format, e.g. +14155550123.",
+      "continue": "Continue",
+      "checking": "Checking...",
+      "cancel": "Cancel",
+      "openingExisting": "This number already has a conversation - opening it.",
+      "templateRequired": "This number has never written first, so WhatsApp® only accepts an approved template as the first message.",
+      "chooseTemplate": "Choose template",
+      "changeTemplate": "Change template",
+      "selectedTemplate": "Template: {name}",
+      "send": "Send",
+      "sending": "Sending...",
+      "failed": "Could not start the conversation"
+    },
     "conversationList": {
+      "newMessage": "New message",
       "searchPlaceholder": "Search conversations...",
       "filterAll": "All",
       "filterUnread": "Unread",

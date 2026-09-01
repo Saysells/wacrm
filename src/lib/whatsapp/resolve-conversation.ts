@@ -25,6 +25,54 @@ import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
 import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
 
+export interface FoundConversation {
+  /** The sanitized (digits-only) phone the lookup ran against. */
+  phone: string;
+  /** Null when no contact in the account matches this phone. */
+  contactId: string | null;
+  /** Null when the contact exists but has no conversation yet. */
+  conversationId: string | null;
+}
+
+/**
+ * Read-only counterpart of {@link resolveConversationByPhone}: says
+ * whether `phone` already has a contact and a conversation in
+ * `accountId` WITHOUT creating either.
+ *
+ * The dashboard's "New message" flow needs this before it can choose
+ * between opening the existing thread and forcing an approved
+ * template (Meta only allows a template as the first business-initiated
+ * message). Creating on the lookup would leave an orphan contact +
+ * empty conversation behind every time someone typed a number and
+ * changed their mind.
+ *
+ * Uses the same dedupe helper and the same oldest-first
+ * one-conversation-per-(account, contact) convention as the create
+ * path, so both agree on what "already has a thread" means.
+ */
+export async function findConversationByPhone(
+  db: SupabaseClient,
+  accountId: string,
+  phone: string
+): Promise<FoundConversation> {
+  const sanitized = sanitizePhoneForMeta(phone);
+  if (!isValidE164(sanitized)) {
+    throw new SendMessageError(
+      'bad_request',
+      "'to' must be a valid phone number in E.164 format (e.g. +14155550123)",
+      400
+    );
+  }
+
+  const existing = await findExistingContact(db, accountId, sanitized);
+  if (!existing) {
+    return { phone: sanitized, contactId: null, conversationId: null };
+  }
+
+  const conversationId = await findConversationRow(db, accountId, existing.id);
+  return { phone: sanitized, contactId: existing.id, conversationId };
+}
+
 export interface ResolvedConversation {
   conversationId: string;
   contactId: string;
@@ -164,22 +212,8 @@ async function findOrCreateConversationRow(
   contactId: string,
   ownerUserId: string
 ): Promise<string> {
-  const { data: existing, error: findErr } = await db
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .order('created_at', { ascending: true })
-    .limit(1);
-
-  if (findErr) {
-    console.error('[resolve-conversation] conversation lookup error:', findErr);
-    throw new SendMessageError('db_error', 'Failed to resolve conversation', 500);
-  }
-
-  if (existing && existing.length > 0) {
-    return existing[0].id;
-  }
+  const existingId = await findConversationRow(db, accountId, contactId);
+  if (existingId) return existingId;
 
   const { data: newConv, error: convErr } = await db
     .from('conversations')
@@ -193,20 +227,46 @@ async function findOrCreateConversationRow(
 
   if (convErr || !newConv) {
     if (isUniqueViolation(convErr)) {
-      const { data: raced } = await db
-        .from('conversations')
-        .select('id')
-        .eq('account_id', accountId)
-        .eq('contact_id', contactId)
-        .order('created_at', { ascending: true })
-        .limit(1);
-      if (raced && raced.length > 0) {
-        return raced[0].id;
-      }
+      const raced = await findConversationRow(db, accountId, contactId);
+      if (raced) return raced;
     }
     console.error('[resolve-conversation] conversation create error:', convErr);
     throw new SendMessageError('db_error', 'Failed to create conversation', 500);
   }
 
   return newConv.id;
+}
+
+/**
+ * The single conversation for `(accountId, contactId)`, or null.
+ *
+ * Ordered oldest-first with `.limit(1)` rather than `.maybeSingle()`,
+ * which errors on >=2 rows: if duplicates predate the unique index
+ * (migration 036) we resolve to the canonical survivor instead of
+ * blowing up (issue #363). Shared by the read-only lookup, the
+ * find-or-create path and its unique-race retry so all three agree.
+ */
+async function findConversationRow(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string
+): Promise<string | null> {
+  const { data, error } = await db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (error) {
+    console.error('[resolve-conversation] conversation lookup error:', error);
+    throw new SendMessageError(
+      'db_error',
+      'Failed to resolve conversation',
+      500
+    );
+  }
+
+  return data && data.length > 0 ? data[0].id : null;
 }

@@ -134,9 +134,30 @@
   },
   "Inbox": {
     "page": {
+      "openConversationFailed": "해당 대화를 열지 못했습니다.",
       "whatsappNotConnected": "WhatsApp®이 연결되어 있지 않습니다. 설정으로 이동해 계정을 연결하세요."
     },
+    "newMessage": {
+      "title": "새 메시지",
+      "description": "아직 연락한 적 없는 번호로 대화를 시작합니다.",
+      "phoneLabel": "전화번호",
+      "phonePlaceholder": "+14155550123",
+      "phoneHint": "국가 번호를 포함한 국제 형식(E.164)입니다.",
+      "invalidPhone": "국제 형식으로 입력하세요. 예: +14155550123",
+      "continue": "계속",
+      "checking": "확인 중...",
+      "cancel": "취소",
+      "openingExisting": "이 번호에는 이미 대화가 있습니다 - 여는 중입니다.",
+      "templateRequired": "이 번호가 먼저 연락한 적이 없으므로 WhatsApp®은 승인된 템플릿만 첫 메시지로 허용합니다.",
+      "chooseTemplate": "템플릿 선택",
+      "changeTemplate": "템플릿 변경",
+      "selectedTemplate": "템플릿: {name}",
+      "send": "보내기",
+      "sending": "보내는 중...",
+      "failed": "대화를 시작하지 못했습니다"
+    },
     "conversationList": {
+      "newMessage": "새 메시지",
       "searchPlaceholder": "대화 검색...",
       "filterAll": "전체",
       "filterUnread": "읽지 않음",

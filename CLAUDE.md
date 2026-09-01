@@ -19,8 +19,9 @@
   `package-lock.json` no se modifican sin una sesión que lo pida
   explícitamente. Cambios propios hasta ahora: `messages/es.json`,
   `scripts/i18n-check.mjs`, `scripts/i18n-check.test.mjs`, este archivo,
-  y el trabajo de la sección "Roles y permisos" de abajo (sesión
-  2026-08-31, pedida explícitamente por Eze).
+  y el trabajo de las secciones "Roles y permisos" y "Bandeja" de
+  abajo (sesiones 2026-08-31 y 2026-09-01, pedidas explícitamente
+  por Eze).
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
@@ -28,6 +29,90 @@
   chat. Las variables dummy del CI (`.github/workflows/ci.yml`) se pasan
   inline en el comando cuando hace falta verificar localmente; nunca se
   escriben a un archivo.
+
+# Bandeja
+
+Sesión 2026-09-01 (pedida por Eze). Dos atajos que faltaban en la
+Bandeja. Sin SQL: `contact_tags` y las tablas de plantillas ya existían.
+
+## Etiquetas directas desde el sidebar de contacto
+
+El sidebar solo LISTABA tags; poner una obligaba a ir a Contactos y
+abrir "Editar contacto". Ahora la sección Tags tiene un popover
+compacto "+ Agregar etiqueta" con las etiquetas de la cuenta que el
+contacto todavía no tiene, y cada pastilla trae una X para sacarla.
+
+- **Escritura**: reusa `POST/DELETE /api/contacts/[id]/tags` tal cual
+  (vía `src/lib/contacts/tag-api.ts`). Ese endpoint ya valida tenencia
+  de contacto y tag, trata el duplicado como no-op (unique
+  `(contact_id, tag_id)`) y dispara los eventos `tag_added` de
+  automatizaciones. **No hay una segunda forma de escribir
+  `contact_tags`** y no debe haberla.
+- **Lógica**: `src/lib/inbox/contact-tags.ts` — parte pura
+  (`assignableTags`, `withTagAttached`, `withTagDetached`) separada de
+  la parte con red (`attachTag`, `detachTag`), testeable sin DOM igual
+  que `overrides-api.ts`.
+- **Decisión**: la pastilla se identifica por `tag.id`, no por el id de
+  la fila de `contact_tags`. La unique del par lo hace único dentro del
+  contacto y lo tenemos en mano sin releer la tabla después de escribir.
+- **Gate**: el control aparece solo con `canSendMessages` (agent+), el
+  mismo rol que exige el endpoint, para que un viewer no vea un botón
+  que le va a dar 403.
+
+## "Nuevo mensaje" — arrancar un hilo con un número que no escribió
+
+Botón en el encabezado de la Bandeja, al lado del buscador
+(`conversation-list.tsx`), mismo gate `canSendMessages`.
+
+- **Regla de Meta, no nuestra**: si el número nunca escribió primero,
+  el primer mensaje TIENE que ser una plantilla aprobada, nunca texto
+  libre. Si en Plantillas no hay ninguna aprobada, el selector sale
+  vacío: eso es lo esperado, no un bug.
+- **Ruta nueva**: `POST /api/inbox/conversations/resolve`
+  (`requireRole('agent')`, bucket de rate limit propio
+  `resolve-conv:<userId>`). Dos modos en una ruta porque comparten
+  validación de teléfono y gate de tenencia: `{ phone }` **solo mira**
+  (`findConversationByPhone`, no escribe nada) y
+  `{ phone, name?, create: true }` hace find-or-create con el
+  `resolveConversationByPhone` compartido con el webhook de entrada y
+  la API pública (un contacto, un hilo). La versión con API key
+  (`/api/v1/messages`) queda intacta.
+- **Por qué el lookup no crea**: escribir un número y arrepentirse no
+  debe dejar un contacto huérfano ni una conversación vacía. El
+  `create: true` sale recién al enviar.
+- **`findConversationByPhone`** (nuevo, en
+  `src/lib/whatsapp/resolve-conversation.ts`): read-only, reusa
+  `findExistingContact` y el mismo lookup oldest-first
+  (`findConversationRow`, extraído y compartido por las tres rutas:
+  lookup, find-or-create y el reintento de la carrera unique) para que
+  todos coincidan en qué significa "ya tiene hilo".
+- **Flujo cliente**: `src/lib/inbox/new-conversation.ts` —
+  `isSendablePhone` (misma regla que la ruta: `sanitizePhoneForMeta` +
+  `isValidE164`), `nextStepAfterLookup` (con hilo ⇒ abrir, sin hilo ⇒
+  plantilla), `canSendNewMessage` (sin plantilla elegida no hay envío)
+  y `startConversation` (un solo resolve, y el envío reusa ese
+  `conversation_id`; si el resolve falla no se manda nada).
+- **UI**: `src/components/inbox/new-message-dialog.tsx`. El
+  `TemplatePicker` se reusa tal cual; mientras está abierto el diálogo
+  de Nuevo mensaje se **oculta** (`open && !pickerOpen`), no se
+  desmonta, para no apilar dos modales — el estado vive en el padre.
+- **Apertura del hilo**: `handleOpenConversationId` en
+  `inbox/page.tsx` trae la fila con `CONVERSATION_SELECT` (contacto
+  joineado) si no está en la lista y la selecciona; el INSERT de
+  realtime que llegue después dedupea contra `knownConvIdsRef`.
+
+## Pendientes de esta sesión
+
+- Ninguno de los dos flujos se probó en el navegador contra Meta real;
+  los tests cubren la lógica, no el render ni el envío efectivo.
+- El popover de etiquetas no tiene buscador: con cientos de etiquetas
+  en la cuenta la lista se hace larga (scrollea, pero no filtra).
+- "Nuevo mensaje" no ofrece cargar un nombre para el contacto nuevo
+  (la ruta acepta `name`, la UI todavía no lo expone); el contacto
+  queda con el número como nombre, igual que los del webhook.
+- Sin `@testing-library/react` en el repo (regla de no sumar librerías),
+  los componentes nuevos no tienen test de DOM: lo verificado es la
+  lógica extraída a `src/lib/inbox/*`.
 
 # Roles y permisos
 
