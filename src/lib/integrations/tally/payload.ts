@@ -25,7 +25,7 @@
 // CSV figura como "Nombre (2)"). Se resuelve por orden en `fields[]`:
 // la primera ocurrencia va al nombre, las siguientes a `cuit_dni`.
 // Y como guarda, un valor que iría a `contacts.name` pero es solo
-// dígitos, guiones o espacios tampoco se usa como nombre (el contacto
+// dígitos, guiones, puntos o espacios tampoco se usa como nombre (el contacto
 // conserva el que tenga) y se guarda como `cuit_dni`. Mismo criterio
 // para "Apellido".
 // ============================================================
@@ -148,13 +148,13 @@ function resolveOption(field: TallyField, raw: unknown): string {
 }
 
 /**
- * True si el texto es solo dígitos, guiones o espacios: un CUIT
- * (`20-12345678-9`), un DNI (`43228684`) o cualquier identificador
- * numérico, pero nunca el nombre de una persona. "Local 3 Hermanos"
- * tiene letras y sigue siendo un nombre.
+ * True si el texto es solo dígitos, guiones, puntos o espacios: un CUIT
+ * (`20-12345678-9`), un DNI (`43228684`, `43.228.684`) o cualquier
+ * identificador numérico, pero nunca el nombre de una persona.
+ * "Local 3 Hermanos" tiene letras y sigue siendo un nombre.
  */
 export function looksLikeIdentifier(text: string): boolean {
-  return /^[\d\s-]+$/.test(text) && /\d/.test(text);
+  return /^[\d\s.-]+$/.test(text) && /\d/.test(text);
 }
 
 /** El valor de un campo, ya como texto plano listo para guardar. */

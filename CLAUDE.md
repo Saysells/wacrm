@@ -279,7 +279,7 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
   (valores reales: `43228684`, `20-12345678-9`). Antes el segundo
   pisaba al primero y el contacto quedaba con nombre `43228684`.
   Además, como **guarda**, si lo que iría a `contacts.name` es solo
-  dígitos, guiones o espacios (`looksLikeIdentifier`), no se usa como
+  dígitos, guiones, puntos o espacios (`looksLikeIdentifier`), no se usa como
   nombre —el contacto conserva el que tenga, o queda con el teléfono
   si es nuevo, igual que uno del webhook— y se guarda como `cuit_dni`.
   Mismo criterio para "Apellido". El segundo "Nombre" explícito le gana
@@ -356,10 +356,9 @@ no restart.
   nombre** (`tally_`), no por una marca en `custom_fields`. Si un
   admin crea a mano un campo que empiece con `tally_`, también se
   oculta en la Bandeja.
-- La guarda de `looksLikeIdentifier` es por forma: un DNI con puntos
-  (`43.228.684`) no la dispara y, si viniera en el primer "Nombre",
-  quedaría como nombre. Con los valores reales vistos (sin puntos) no
-  pasa.
+- La guarda de `looksLikeIdentifier` es por forma (dígitos, guiones,
+  puntos, espacios). Un valor con letras nunca la dispara, así que un
+  CUIT tipeado como "CUIT 20-12345678-9" quedaría como nombre.
 - No hay unique `(account_id, field_name)` en `custom_fields`: dos
   entregas concurrentes de responseIds distintos podrían crear dos
   definiciones con el mismo nombre. La solución real es un índice

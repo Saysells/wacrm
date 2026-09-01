@@ -157,6 +157,18 @@ describe("mapTallySubmission — un solo 'Nombre' con solo dígitos", () => {
     expect(mapped.customValues.cuit_dni).toBe("20 12345678 9");
   });
 
+  it("un DNI con puntos tampoco es nombre", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!
+      .map((f) => (f.label === "Nombre" ? { ...f, value: "43.228.684" } : f))
+      .filter((f) => f.label !== "Apellido");
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBeNull();
+    expect(mapped.customValues.cuit_dni).toBe("43.228.684");
+  });
+
   it("un nombre con dígitos adentro sigue siendo nombre", () => {
     const payload = payloadVersionNueva();
     payload.data!.fields = payload.data!.fields!.map((f) =>
