@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { canSendMessages } from "@/lib/auth/roles";
+import {
+  assignableTags,
+  attachTag,
+  detachTag,
+} from "@/lib/inbox/contact-tags";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ContactNote, Tag } from "@/types";
 import {
@@ -15,10 +21,17 @@ import {
   DollarSign,
   StickyNote,
   Plus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
@@ -29,21 +42,34 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
-  const { accountId } = useAuth();
+  const { accountId, accountRole } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
-  const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
+  // Las pastillas se identifican por `tag.id` — la unique
+  // (contact_id, tag_id) hace que no pueda haber dos filas para el
+  // mismo par, asi que no hace falta arrastrar el id de contact_tags.
+  const [tags, setTags] = useState<Tag[]>([]);
+  // Catalogo de la cuenta, para el popover "+ Agregar etiqueta".
+  const [accountTags, setAccountTags] = useState<Tag[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [tagBusyId, setTagBusyId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // Poner/sacar etiquetas escribe contact_tags via
+  // /api/contacts/[id]/tags, que pide rol agent+. Un viewer no ve el
+  // control en vez de recibir un 403 al tocarlo.
+  const canEditTags = accountRole ? canSendMessages(accountRole) : false;
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals, notes, contact tags and the account tag catalogue
+    // (the picker below offers whatever the contact doesn't have yet).
+    const [dealsRes, notesRes, tagsRes, accountTagsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -58,6 +84,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contact.id),
+      supabase.from("tags").select("*").order("name"),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -65,18 +92,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
+        .map((ct: Record<string, unknown>) => ct.tags as Tag);
       setTags(mapped);
     }
+    if (accountTagsRes.data) setAccountTags(accountTagsRes.data as Tag[]);
   }, [contact]);
 
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
 
@@ -89,6 +113,52 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // React Compiler's inference agrees with the manual dep list —
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
+
+  // Etiquetas de la cuenta que este contacto todavia no tiene: lo que
+  // ofrece el popover. Si no queda ninguna, el popover lo dice.
+  const availableTags = useMemo(
+    () => assignableTags(accountTags, tags),
+    [accountTags, tags],
+  );
+
+  const handleAttachTag = useCallback(
+    async (tag: Tag) => {
+      if (!contact) return;
+      setTagBusyId(tag.id);
+      try {
+        // attachTag persiste primero y recien despues devuelve la
+        // lista nueva: si el POST falla, la pastilla no aparece.
+        setTags(await attachTag(contact.id, tag, tags));
+        setTagPickerOpen(false);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "";
+        toast.error(
+          reason ? `${tSidebar("tagUpdateFailed")}: ${reason}` : tSidebar("tagUpdateFailed"),
+        );
+      } finally {
+        setTagBusyId(null);
+      }
+    },
+    [contact, tags, tSidebar],
+  );
+
+  const handleDetachTag = useCallback(
+    async (tagId: string) => {
+      if (!contact) return;
+      setTagBusyId(tagId);
+      try {
+        setTags(await detachTag(contact.id, tagId, tags));
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "";
+        toast.error(
+          reason ? `${tSidebar("tagUpdateFailed")}: ${reason}` : tSidebar("tagUpdateFailed"),
+        );
+      } finally {
+        setTagBusyId(null);
+      }
+    },
+    [contact, tags, tSidebar],
+  );
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
@@ -187,22 +257,67 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               <TagIcon className="h-3 w-3" />
               {tSidebar("tags")}
             </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              {tags.length === 0 && (
                 <p className="px-1 text-xs text-muted-foreground">{tSidebar("noTags")}</p>
-              ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
+              )}
+              {tags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: `${tag.color}20`,
+                    color: tag.color,
+                  }}
+                >
+                  {tag.name}
+                  {canEditTags && (
+                    <button
+                      type="button"
+                      aria-label={tSidebar("removeTag")}
+                      title={tSidebar("removeTag")}
+                      disabled={tagBusyId === tag.id}
+                      onClick={() => handleDetachTag(tag.id)}
+                      className="rounded-full opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </span>
+              ))}
+
+              {canEditTags && (
+                <Popover open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
+                  <PopoverTrigger className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                    <Plus className="h-2.5 w-2.5" />
+                    {tSidebar("addTag")}
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-56 p-0">
+                    {availableTags.length === 0 ? (
+                      <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        {tSidebar("noTagsAvailable")}
+                      </p>
+                    ) : (
+                      <div className="max-h-56 overflow-y-auto py-1">
+                        {availableTags.map((tag) => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            disabled={tagBusyId === tag.id}
+                            onClick={() => handleAttachTag(tag)}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-popover-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+                          >
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: tag.color }}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
           </div>

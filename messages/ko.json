@@ -284,6 +284,10 @@
       "tags": "태그",
       "notes": "메모",
       "deals": "딜",
+      "addTag": "태그 추가",
+      "noTagsAvailable": "추가할 태그가 없습니다",
+      "removeTag": "태그 제거",
+      "tagUpdateFailed": "태그를 업데이트하지 못했습니다",
       "noTags": "태그 없음",
       "noDeals": "딜 없음",
       "addNotePlaceholder": "메모 추가..."

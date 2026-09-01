@@ -284,6 +284,10 @@
       "tags": "Etiquetas",
       "notes": "Notas",
       "deals": "Oportunidades",
+      "addTag": "Agregar etiqueta",
+      "noTagsAvailable": "No quedan etiquetas para agregar",
+      "removeTag": "Sacar etiqueta",
+      "tagUpdateFailed": "No se pudieron actualizar las etiquetas",
       "noTags": "Sin etiquetas",
       "noDeals": "Sin oportunidades",
       "addNotePlaceholder": "Agregar una nota..."

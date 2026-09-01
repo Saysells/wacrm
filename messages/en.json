@@ -284,6 +284,10 @@
       "tags": "Tags",
       "notes": "Notes",
       "deals": "Deals",
+      "addTag": "Add tag",
+      "noTagsAvailable": "No tags left to add",
+      "removeTag": "Remove tag",
+      "tagUpdateFailed": "Could not update tags",
       "noTags": "No tags",
       "noDeals": "No deals",
       "addNotePlaceholder": "Add a note..."
