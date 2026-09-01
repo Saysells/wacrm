@@ -3,11 +3,17 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { canSendMessages } from "@/lib/auth/roles";
+import { canEditSettings, canSendMessages } from "@/lib/auth/roles";
+import {
+  DEFAULT_TAG_COLOR,
+  PRESET_COLORS,
+} from "@/lib/contacts/tag-colors";
 import {
   assignableTags,
   attachTag,
+  createAndAttachTag,
   detachTag,
+  TagCreateError,
 } from "@/lib/inbox/contact-tags";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ContactNote, Tag } from "@/types";
@@ -24,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -41,8 +48,11 @@ interface ContactSidebarProps {
 export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  // Los nombres de los colores ya viven en Configuracion → Campos y
+  // etiquetas; se reusan en vez de duplicar los ocho en tres idiomas.
+  const tColors = useTranslations("Settings.tagsAndFields");
 
-  const { accountId, accountRole } = useAuth();
+  const { user, accountId, accountRole } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -54,6 +64,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [accountTags, setAccountTags] = useState<Tag[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagBusyId, setTagBusyId] = useState<string | null>(null);
+  // Mini-formulario de creacion dentro del mismo popover.
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState<string>(DEFAULT_TAG_COLOR);
+  const [creatingTag, setCreatingTag] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
@@ -61,6 +75,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   // /api/contacts/[id]/tags, que pide rol agent+. Un viewer no ve el
   // control en vez de recibir un 403 al tocarlo.
   const canEditTags = accountRole ? canSendMessages(accountRole) : false;
+  // Crear una etiqueta es otra cosa que aplicarla: la RLS de `tags`
+  // (tags_insert, migracion 017) pide admin+, el mismo alcance que
+  // canEditSettings — que ya nombra las etiquetas. Un agent puede
+  // aplicar las que existen pero no inventar una nueva.
+  const canCreateTags = accountRole ? canEditSettings(accountRole) : false;
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -159,6 +178,76 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     },
     [contact, tags, tSidebar],
   );
+
+  const handleCreateTag = useCallback(async () => {
+    if (!contact || !accountId || !user) return;
+    if (!newTagName.trim()) {
+      toast.error(tSidebar("tagNameRequired"));
+      return;
+    }
+    setCreatingTag(true);
+    try {
+      // Un solo paso: la fila queda en `tags` y la etiqueta queda
+      // aplicada al contacto abierto, por el mismo camino que usar
+      // una ya existente.
+      const created = await createAndAttachTag({
+        db: createClient(),
+        accountId,
+        userId: user.id,
+        contactId: contact.id,
+        name: newTagName,
+        color: newTagColor,
+        accountTags,
+        attached: tags,
+      });
+      setTags(created.attached);
+      // En memoria: el proximo contacto ya la ve en el catalogo sin
+      // recargar la pagina.
+      setAccountTags(created.accountTags);
+      setNewTagName("");
+      setNewTagColor(DEFAULT_TAG_COLOR);
+      setTagPickerOpen(false);
+      toast.success(tSidebar("tagCreated"));
+    } catch (err) {
+      if (err instanceof TagCreateError) {
+        if (err.code === "duplicate_name") {
+          toast.error(tSidebar("tagNameExists"));
+        } else if (err.code === "empty_name") {
+          toast.error(tSidebar("tagNameRequired"));
+        } else {
+          // attach_failed: la fila YA existe en `tags`, asi que entra
+          // al catalogo igual para no perderla hasta el proximo fetch.
+          if (err.tag) {
+            const tag = err.tag;
+            setAccountTags((prev) =>
+              prev.some((t) => t.id === tag.id)
+                ? prev
+                : [...prev, tag].sort((a, b) => a.name.localeCompare(b.name)),
+            );
+          }
+          toast.error(`${tSidebar("tagUpdateFailed")}: ${err.message}`);
+        }
+      } else {
+        const reason = err instanceof Error ? err.message : "";
+        toast.error(
+          reason
+            ? `${tSidebar("tagCreateFailed")}: ${reason}`
+            : tSidebar("tagCreateFailed"),
+        );
+      }
+    } finally {
+      setCreatingTag(false);
+    }
+  }, [
+    contact,
+    accountId,
+    user,
+    newTagName,
+    newTagColor,
+    accountTags,
+    tags,
+    tSidebar,
+  ]);
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
@@ -292,7 +381,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     <Plus className="h-2.5 w-2.5" />
                     {tSidebar("addTag")}
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-56 p-0">
+                  <PopoverContent align="start" className="w-64 p-0">
                     {availableTags.length === 0 ? (
                       <p className="px-3 py-4 text-center text-xs text-muted-foreground">
                         {tSidebar("noTagsAvailable")}
@@ -314,6 +403,60 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                             <span className="truncate">{tag.name}</span>
                           </button>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Crear una etiqueta sin cortar el hilo: queda
+                        aplicada al contacto en el mismo paso. */}
+                    {canCreateTags && (
+                      <div className="space-y-2 border-t border-border p-2.5">
+                        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          {tSidebar("createTag")}
+                        </p>
+                        <Input
+                          value={newTagName}
+                          onChange={(e) => setNewTagName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleCreateTag();
+                          }}
+                          placeholder={tSidebar("createTagPlaceholder")}
+                          disabled={creatingTag}
+                          maxLength={40}
+                          className="h-8 border-border bg-muted text-xs text-foreground placeholder:text-muted-foreground"
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {PRESET_COLORS.map((color) => (
+                            <button
+                              key={color.value}
+                              type="button"
+                              onClick={() => setNewTagColor(color.value)}
+                              aria-label={tColors("useColor", {
+                                color: tColors(
+                                  `colors.${color.name}` as Parameters<
+                                    typeof tColors
+                                  >[0],
+                                ),
+                              })}
+                              aria-pressed={newTagColor === color.value}
+                              className={cn(
+                                "size-5 rounded-md transition-transform hover:scale-110",
+                                newTagColor === color.value &&
+                                  "outline outline-2 outline-offset-2 outline-primary",
+                              )}
+                              style={{ backgroundColor: color.value }}
+                            />
+                          ))}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-full border-border text-xs text-popover-foreground hover:bg-muted"
+                          disabled={creatingTag || !newTagName.trim()}
+                          onClick={handleCreateTag}
+                        >
+                          <Plus className="h-3 w-3" />
+                          {tSidebar("createTagAction")}
+                        </Button>
                       </div>
                     )}
                   </PopoverContent>

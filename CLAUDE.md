@@ -21,7 +21,8 @@
   `scripts/i18n-check.mjs`, `scripts/i18n-check.test.mjs`, este archivo,
   y el trabajo de las secciones "Roles y permisos" y "Bandeja" de
   abajo (sesiones 2026-08-31 y 2026-09-01, pedidas explícitamente
-  por Eze).
+  por Eze). También `src/components/settings/tag-manager.tsx`, del que
+  se extrajo `PRESET_COLORS` (ver abajo).
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
@@ -58,6 +59,41 @@ contacto todavía no tiene, y cada pastilla trae una X para sacarla.
 - **Gate**: el control aparece solo con `canSendMessages` (agent+), el
   mismo rol que exige el endpoint, para que un viewer no vea un botón
   que le va a dar 403.
+
+### Crear una etiqueta desde el mismo popover (sesión 2, 2026-09-01)
+
+Debajo de la lista, un mini-formulario (nombre + los ocho
+`PRESET_COLORS` + "Crear y aplicar"). Es **un solo paso**: la fila
+queda en `tags` y la etiqueta queda aplicada al contacto abierto.
+
+- **Escritura**: insert directo a `tags` con `account_id`, `user_id`,
+  `name` y `color`, el mismo patrón que `handleCreate` de
+  `tag-manager.tsx`. La tabla tiene RLS propia, así que **no hay ni
+  debe haber** una API route dedicada. Se agrega `.select().single()`
+  porque necesitamos el id para aplicarla en el mismo paso.
+- **Aplicación**: sale por `attachTag`, el mismo camino que usar una
+  etiqueta ya existente. No hay un segundo camino a `contact_tags`.
+- **Gate distinto al de aplicar**: crear pide
+  `canEditSettings` (**admin+**), porque la RLS `tags_insert` de la
+  migración 017 pide `is_account_member(account_id, 'admin')`. Un
+  agent puede aplicar las que existen pero no inventar una nueva; si
+  el formulario estuviera gateado con `canSendMessages` el insert
+  volvería rechazado por la base.
+- **`PRESET_COLORS` extraído** a `src/lib/contacts/tag-colors.ts` (con
+  `DEFAULT_TAG_COLOR`) e importado por `tag-manager.tsx` y por el
+  sidebar: los dos lugares donde se crea una etiqueta ofrecen la misma
+  paleta y ninguno la copia. Las claves i18n de los colores se derivan
+  de `name` (`Settings.tagsAndFields.colors.*`), que el sidebar reusa
+  en vez de duplicar los ocho nombres en tres idiomas.
+- **Validación**: nombre vacío no inserta nada; nombre que ya existe en
+  la cuenta (comparación sin espacios de borde y sin mayúsculas contra
+  `accountTags`) tampoco, y avisa corto. El catálogo se actualiza en
+  memoria y ordenado por nombre, así que el próximo contacto ya la ve
+  sin recargar.
+- **Si la creación anda pero la asociación falla**, `TagCreateError`
+  viaja con `code: 'attach_failed'` y la etiqueta creada: la fila ya
+  existe en `tags`, así que entra igual al catálogo en memoria en vez
+  de perderse hasta el próximo fetch.
 
 ## "Nuevo mensaje" — arrancar un hilo con un número que no escribió
 
@@ -107,6 +143,15 @@ Botón en el encabezado de la Bandeja, al lado del buscador
   los tests cubren la lógica, no el render ni el envío efectivo.
 - El popover de etiquetas no tiene buscador: con cientos de etiquetas
   en la cuenta la lista se hace larga (scrollea, pero no filtra).
+- **No hay unique `(account_id, name)` en `tags`** (agregarla es SQL,
+  prohibido en estas sesiones). El chequeo de duplicados es del lado
+  del cliente contra `accountTags`, así que dos personas creando el
+  mismo nombre al mismo tiempo todavía pueden dejar dos filas. La
+  solución real es un índice único + un 23505 tratado como
+  "ya existe".
+- El catálogo del sidebar (`accountTags`) se refresca al cambiar de
+  contacto: una etiqueta que otra persona crea mientras tanto no
+  aparece hasta ese momento.
 - "Nuevo mensaje" no ofrece cargar un nombre para el contacto nuevo
   (la ruta acepta `name`, la UI todavía no lo expone); el contacto
   queda con el número como nombre, igual que los del webhook.

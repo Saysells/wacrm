@@ -301,6 +301,13 @@
       "send": "Send template"
     },
     "sidebar": {
+      "createTag": "New tag",
+      "createTagPlaceholder": "Tag name",
+      "createTagAction": "Create and apply",
+      "tagNameRequired": "Enter a name",
+      "tagNameExists": "That tag already exists",
+      "tagCreateFailed": "Could not create the tag",
+      "tagCreated": "Tag created and applied",
       "contactInfo": "Contact info",
       "tags": "Tags",
       "notes": "Notes",

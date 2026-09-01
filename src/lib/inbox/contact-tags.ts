@@ -14,6 +14,8 @@
 // segunda forma de escribir contact_tags.
 // ============================================================
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
 import type { Tag } from "@/types";
 
@@ -62,4 +64,118 @@ export async function detachTag(
 ): Promise<Tag[]> {
   await deleteContactTag(contactId, tagId);
   return withTagDetached(attached, tagId);
+}
+
+// ============================================================
+// Crear una etiqueta sin salir de la Bandeja.
+//
+// Insert directo a `tags`, el mismo patron que tag-manager.tsx
+// (Configuracion → Campos y etiquetas): la tabla tiene RLS propia
+// (`tags_insert` pide admin+, migracion 017) asi que no hace falta
+// —ni conviene— una API route dedicada.
+//
+// El paso es UNO solo: crear y quedar aplicada. La asociacion sale
+// por `attachTag`, el mismo camino que usar una etiqueta ya
+// existente; no hay una segunda forma de escribir contact_tags.
+// ============================================================
+
+export type TagCreateFailure = "empty_name" | "duplicate_name" | "attach_failed";
+
+export class TagCreateError extends Error {
+  readonly code: TagCreateFailure;
+  /**
+   * La etiqueta que SI llego a crearse (solo en `attach_failed`).
+   * La fila ya existe en `tags`, asi que el caller la suma igual al
+   * catalogo en memoria en vez de perderla hasta el proximo fetch.
+   */
+  readonly tag?: Tag;
+
+  constructor(code: TagCreateFailure, message: string, tag?: Tag) {
+    super(message);
+    this.name = "TagCreateError";
+    this.code = code;
+    this.tag = tag;
+  }
+}
+
+/** Clave de comparacion de nombres: sin espacios de borde y sin mayusculas. */
+function nameKey(name: string): string {
+  return name.trim().toLocaleLowerCase();
+}
+
+export interface CreateAndAttachTagInput {
+  db: SupabaseClient;
+  accountId: string;
+  userId: string;
+  contactId: string;
+  name: string;
+  color: string;
+  /** Catalogo de la cuenta tal como lo tiene el sidebar. */
+  accountTags: Tag[];
+  /** Pastillas actuales del contacto. */
+  attached: Tag[];
+}
+
+export interface CreateAndAttachTagResult {
+  tag: Tag;
+  /** Pastillas del contacto, ya con la nueva. */
+  attached: Tag[];
+  /** Catalogo en memoria, ya con la nueva y ordenado por nombre. */
+  accountTags: Tag[];
+}
+
+export async function createAndAttachTag(
+  input: CreateAndAttachTagInput,
+): Promise<CreateAndAttachTagResult> {
+  const name = input.name.trim();
+  if (!name) {
+    throw new TagCreateError("empty_name", "Tag name is required");
+  }
+
+  // Duplicado: se chequea contra el catalogo que el sidebar ya tiene
+  // (RLS lo trae completo para la cuenta). No hay unique (account_id,
+  // name) en la base — agregarla es SQL, ver los pendientes del
+  // CLAUDE.md — asi que dos personas creando el mismo nombre a la vez
+  // todavia pueden dejar dos filas.
+  const key = nameKey(name);
+  if (input.accountTags.some((t) => nameKey(t.name) === key)) {
+    throw new TagCreateError("duplicate_name", `Tag "${name}" already exists`);
+  }
+
+  // account_id es obligatorio en todo insert con scope de cuenta
+  // (NOT NULL + RLS, sin default en la base) — igual que handleCreate
+  // en tag-manager.tsx. `.select().single()` porque necesitamos el id
+  // para aplicarla en el mismo paso.
+  const { data, error } = await input.db
+    .from("tags")
+    .insert({
+      account_id: input.accountId,
+      user_id: input.userId,
+      name,
+      color: input.color,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Failed to create tag");
+  }
+
+  const tag = data as Tag;
+  const accountTags = [...input.accountTags, tag].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  let attached: Tag[];
+  try {
+    attached = await attachTag(input.contactId, tag, input.attached);
+  } catch (err) {
+    throw new TagCreateError(
+      "attach_failed",
+      err instanceof Error ? err.message : "Failed to apply tag",
+      tag,
+    );
+  }
+
+  return { tag, attached, accountTags };
 }

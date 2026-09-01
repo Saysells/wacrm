@@ -23,19 +23,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
 import { useTranslations } from 'next-intl';
 import type { Tag } from '@/types';
-
-const PRESET_COLORS = [
-  { name: 'red', value: '#ef4444' },
-  { name: 'orange', value: '#f97316' },
-  { name: 'amber', value: '#f59e0b' },
-  { name: 'emerald', value: '#10b981' },
-  { name: 'cyan', value: '#06b6d4' },
-  { name: 'blue', value: '#3b82f6' },
-  { name: 'violet', value: '#8b5cf6' },
-  { name: 'pink', value: '#ec4899' },
-];
 
 /**
  * Tags card — colour-coded contact labels. Creation is an inline row
@@ -54,7 +44,7 @@ export function TagManager() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [newTagName, setNewTagName] = useState('');
-  const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[3].value);
+  const [selectedColor, setSelectedColor] = useState(DEFAULT_TAG_COLOR);
 
   useEffect(() => {
     if (authLoading) return;
@@ -111,7 +101,7 @@ export function TagManager() {
 
       toast.success(t('tagCreated'));
       setNewTagName('');
-      setSelectedColor(PRESET_COLORS[3].value);
+      setSelectedColor(DEFAULT_TAG_COLOR);
       await fetchTags(user.id);
     } catch (err) {
       console.error('Create error:', err);

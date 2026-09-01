@@ -301,6 +301,13 @@
       "send": "Enviar plantilla"
     },
     "sidebar": {
+      "createTag": "Etiqueta nueva",
+      "createTagPlaceholder": "Nombre de la etiqueta",
+      "createTagAction": "Crear y aplicar",
+      "tagNameRequired": "Poné un nombre",
+      "tagNameExists": "Esa etiqueta ya existe",
+      "tagCreateFailed": "No se pudo crear la etiqueta",
+      "tagCreated": "Etiqueta creada y aplicada",
       "contactInfo": "Datos del contacto",
       "tags": "Etiquetas",
       "notes": "Notas",

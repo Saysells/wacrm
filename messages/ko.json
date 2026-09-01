@@ -301,6 +301,13 @@
       "send": "템플릿 보내기"
     },
     "sidebar": {
+      "createTag": "새 태그",
+      "createTagPlaceholder": "태그 이름",
+      "createTagAction": "만들고 적용",
+      "tagNameRequired": "이름을 입력하세요",
+      "tagNameExists": "이미 있는 태그입니다",
+      "tagCreateFailed": "태그를 만들지 못했습니다",
+      "tagCreated": "태그를 만들어 적용했습니다",
       "contactInfo": "연락처 정보",
       "tags": "태그",
       "notes": "메모",

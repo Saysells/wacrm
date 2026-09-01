@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { Tag } from "@/types";
 import {
   assignableTags,
   attachTag,
+  createAndAttachTag,
   detachTag,
+  TagCreateError,
   withTagAttached,
   withTagDetached,
 } from "./contact-tags";
@@ -127,5 +131,178 @@ describe("detachTag", () => {
     await expect(detachTag("contact-9", "t1", [tag("t1")])).rejects.toThrow(
       "Contact not found",
     );
+  });
+});
+
+// ------------------------------------------------------------
+// Crear una etiqueta sin salir de la Bandeja. Insert directo a
+// `tags` (RLS admin+, sin API route) — el mismo patron que
+// tag-manager.tsx — y aplicada al contacto en el mismo paso, por el
+// mismo camino que attachTag.
+// ------------------------------------------------------------
+interface InsertScript {
+  row?: Tag;
+  error?: { message: string } | null;
+}
+
+function makeDb(script: InsertScript) {
+  const inserted: Record<string, unknown>[] = [];
+  const tables: string[] = [];
+
+  const builder = {
+    insert: (values: Record<string, unknown>) => {
+      inserted.push(values);
+      return builder;
+    },
+    select: () => builder,
+    single: () =>
+      Promise.resolve(
+        script.error
+          ? { data: null, error: script.error }
+          : { data: script.row ?? null, error: null },
+      ),
+  };
+
+  const db = {
+    from: (table: string) => {
+      tables.push(table);
+      return builder;
+    },
+  } as unknown as SupabaseClient;
+
+  return { db, inserted, tables };
+}
+
+describe("createAndAttachTag", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const base = {
+    accountId: "account-1",
+    userId: "user-1",
+    contactId: "contact-9",
+    color: "#10b981",
+  };
+
+  it("persiste en tags, la aplica al contacto y la suma al catalogo sin recargar", async () => {
+    const created = tag("t9", "Interesado");
+    const { db, inserted, tables } = makeDb({ row: created });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+
+    const result = await createAndAttachTag({
+      ...base,
+      db,
+      name: "  Interesado  ",
+      accountTags: [tag("t1", "VIP")],
+      attached: [tag("t1", "VIP")],
+    });
+
+    // 1. La fila queda en `tags` con account_id + user_id + name + color.
+    expect(tables).toEqual(["tags"]);
+    expect(inserted).toEqual([
+      {
+        account_id: "account-1",
+        user_id: "user-1",
+        name: "Interesado",
+        color: "#10b981",
+      },
+    ]);
+
+    // 2. Se asocia por el MISMO camino que attachTag.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/contacts/contact-9/tags");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ tag_id: "t9" });
+
+    // 3. Pastilla puesta y catalogo actualizado en memoria (por nombre,
+    //    igual que el orden con el que el sidebar los trae).
+    expect(result.tag).toEqual(created);
+    expect(result.attached.map((t) => t.id)).toEqual(["t1", "t9"]);
+    expect(result.accountTags.map((t) => t.name)).toEqual([
+      "Interesado",
+      "VIP",
+    ]);
+  });
+
+  it("un nombre vacio no inserta nada ni toca la red", async () => {
+    const { db, inserted } = makeDb({});
+
+    await expect(
+      createAndAttachTag({
+        ...base,
+        db,
+        name: "   ",
+        accountTags: [],
+        attached: [],
+      }),
+    ).rejects.toMatchObject({ code: "empty_name" });
+
+    expect(inserted).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("un nombre que ya existe en la cuenta no crea una segunda fila", async () => {
+    const { db, inserted } = makeDb({});
+
+    // Mismo nombre con otra capitalizacion y espacios: sigue siendo el
+    // mismo para la persona que lo escribe.
+    const err = await createAndAttachTag({
+      ...base,
+      db,
+      name: " vip ",
+      accountTags: [tag("t1", "VIP")],
+      attached: [],
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TagCreateError);
+    expect(err).toMatchObject({ code: "duplicate_name" });
+    expect(inserted).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("propaga el error del insert sin tocar la red", async () => {
+    const { db } = makeDb({ error: { message: "new row violates RLS" } });
+
+    await expect(
+      createAndAttachTag({
+        ...base,
+        db,
+        name: "Interesado",
+        accountTags: [],
+        attached: [],
+      }),
+    ).rejects.toThrow("new row violates RLS");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("si falla la asociacion devuelve la etiqueta creada para no perderla del catalogo", async () => {
+    const created = tag("t9", "Interesado");
+    const { db } = makeDb({ row: created });
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Contact not found" }),
+    });
+
+    const err = (await createAndAttachTag({
+      ...base,
+      db,
+      name: "Interesado",
+      accountTags: [],
+      attached: [],
+    }).catch((e: unknown) => e)) as TagCreateError;
+
+    expect(err).toBeInstanceOf(TagCreateError);
+    expect(err.code).toBe("attach_failed");
+    // La fila ya existe en `tags`: el caller la suma igual al catalogo.
+    expect(err.tag).toEqual(created);
   });
 });
