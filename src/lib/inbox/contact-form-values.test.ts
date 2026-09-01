@@ -7,6 +7,8 @@ const FIELDS = [
   { id: 'f-1', field_name: 'provincia' },
   { id: 'f-2', field_name: 'tipo_negocio' },
   { id: 'f-3', field_name: 'utm_source' },
+  { id: 'f-sys-1', field_name: 'tally_response_id' },
+  { id: 'f-sys-2', field_name: 'tally_submitted_at' },
 ];
 
 /** Stub mínimo: dos lecturas, una por tabla. */
@@ -68,6 +70,25 @@ describe('pairFieldValues', () => {
     ).toEqual([]);
   });
 
+  it('oculta los campos de sistema tally_* (id y fecha del envío)', () => {
+    expect(
+      pairFieldValues(FIELDS, [
+        { custom_field_id: 'f-sys-1', value: 'resp-1' },
+        { custom_field_id: 'f-sys-2', value: '2026-09-01T12:00:00.000Z' },
+        { custom_field_id: 'f-1', value: 'CABA' },
+      ])
+    ).toEqual([{ fieldId: 'f-1', name: 'provincia', value: 'CABA' }]);
+  });
+
+  it('el filtro tally_* no distingue mayúsculas ni espacios de borde', () => {
+    expect(
+      pairFieldValues(
+        [{ id: 'f-x', field_name: ' Tally_Origen ' }],
+        [{ custom_field_id: 'f-x', value: 'x' }]
+      )
+    ).toEqual([]);
+  });
+
   it('recorta los espacios de borde del valor', () => {
     expect(
       pairFieldValues(FIELDS, [{ custom_field_id: 'f-1', value: '  CABA  ' }])
@@ -89,6 +110,29 @@ describe('loadContactFormValues', () => {
       { fieldId: 'f-1', name: 'provincia', value: 'CABA' },
       { fieldId: 'f-2', name: 'tipo_negocio', value: 'Local a la calle' },
     ]);
+  });
+
+  it('excluye los campos tally_* aunque el contacto los tenga cargados', async () => {
+    const db = makeDb({
+      fields: FIELDS,
+      values: [
+        { custom_field_id: 'f-sys-1', value: 'resp-1' },
+        { custom_field_id: 'f-sys-2', value: '2026-09-01T12:00:00.000Z' },
+        { custom_field_id: 'f-2', value: 'Local a la calle' },
+      ],
+    });
+
+    await expect(loadContactFormValues(db, 'contact-1')).resolves.toEqual([
+      { fieldId: 'f-2', name: 'tipo_negocio', value: 'Local a la calle' },
+    ]);
+  });
+
+  it('devuelve vacío cuando SOLO tiene campos de sistema', async () => {
+    const db = makeDb({
+      fields: FIELDS,
+      values: [{ custom_field_id: 'f-sys-1', value: 'resp-1' }],
+    });
+    await expect(loadContactFormValues(db, 'contact-1')).resolves.toEqual([]);
   });
 
   it('devuelve vacío cuando el contacto no tiene ninguno', async () => {

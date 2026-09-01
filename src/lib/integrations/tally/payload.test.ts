@@ -95,6 +95,85 @@ describe("mapTallySubmission — versión vieja del formulario", () => {
   });
 });
 
+describe("mapTallySubmission — dos campos con label 'Nombre'", () => {
+  // Caso real del formulario de Kosmo: la pregunta del CUIT/DNI también
+  // se llama "Nombre" (en el export CSV aparece como "Nombre (2)").
+  // Sin esto el contacto quedaba con nombre "43228684".
+  it("el primero es la persona y el segundo va a cuit_dni", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!.map((f) =>
+      f.label === "Nombre" ? { ...f, value: "Nadia" } : f,
+    ).filter((f) => f.label !== "Apellido");
+    // El segundo "Nombre" viene DESPUÉS del email, como en el formulario.
+    payload.data!.fields.push({
+      key: "question_13",
+      label: "Nombre",
+      type: "INPUT_TEXT",
+      value: "43228684",
+    });
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBe("Nadia");
+    expect(mapped.customValues.cuit_dni).toBe("43228684");
+  });
+
+  it("un CUIT con guiones también cae en cuit_dni", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields!.push({ label: "Nombre", value: "20-12345678-9" });
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBe("Ana Gómez");
+    expect(mapped.customValues.cuit_dni).toBe("20-12345678-9");
+  });
+});
+
+describe("mapTallySubmission — un solo 'Nombre' con solo dígitos", () => {
+  // Guarda: si lo que iría a contacts.name son solo dígitos, guiones o
+  // espacios, no es un nombre. No se usa como tal (el contacto conserva
+  // el que tenga) y se guarda como cuit_dni.
+  it("no se usa como nombre y se guarda como cuit_dni", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!
+      .map((f) => (f.label === "Nombre" ? { ...f, value: "23245158009" } : f))
+      .filter((f) => f.label !== "Apellido");
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBeNull();
+    expect(mapped.customValues.cuit_dni).toBe("23245158009");
+  });
+
+  it("mismo criterio para 'Apellido'", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!.map((f) =>
+      f.label === "Apellido" ? { ...f, value: "20 12345678 9" } : f,
+    );
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBe("Ana");
+    expect(mapped.customValues.cuit_dni).toBe("20 12345678 9");
+  });
+
+  it("un nombre con dígitos adentro sigue siendo nombre", () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!.map((f) =>
+      f.label === "Nombre" ? { ...f, value: "Local 3 Hermanos" } : f,
+    );
+
+    const mapped = mapTallySubmission(payload);
+
+    expect(mapped.name).toBe("Local 3 Hermanos Gómez");
+    expect(mapped.customValues.cuit_dni).toBeUndefined();
+  });
+
+  it("sin CUIT/DNI en el envío, cuit_dni no se escribe", () => {
+    expect(mapTallySubmission(payloadVersionNueva()).customValues.cuit_dni).toBeUndefined();
+  });
+});
+
 describe("mapTallySubmission — bordes", () => {
   it("ignora una pregunta que no está mapeada", () => {
     const payload = payloadVersionNueva();

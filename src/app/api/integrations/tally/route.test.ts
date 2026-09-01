@@ -341,6 +341,42 @@ describe("POST /api/integrations/tally — idempotencia", () => {
   });
 });
 
+describe("POST /api/integrations/tally — 'Nombre' duplicado y CUIT/DNI", () => {
+  it("con dos 'Nombre', el contacto se llama como la persona y el CUIT queda en cuit_dni", async () => {
+    const payload = payloadVersionNueva();
+    payload.data!.fields = payload.data!.fields!
+      .map((f) => (f.label === "Nombre" ? { ...f, value: "Nadia" } : f))
+      .filter((f) => f.label !== "Apellido");
+    payload.data!.fields.push({ label: "Nombre", value: "43228684" });
+
+    const response = await POST(request(payload));
+
+    expect(response.status).toBe(200);
+    const contact = rows("contacts")[0];
+    expect(contact.name).toBe("Nadia");
+    expect(customValuesOf(contact.id as string).cuit_dni).toBe("43228684");
+  });
+
+  it("un solo 'Nombre' numérico no pisa el nombre que ya tenía el contacto", async () => {
+    await POST(request(payloadVersionNueva("resp-1")));
+    expect(rows("contacts")[0].name).toBe("Ana Gómez");
+
+    const segundo = payloadVersionNueva("resp-2");
+    segundo.data!.fields = segundo.data!.fields!
+      .map((f) => (f.label === "Nombre" ? { ...f, value: "43228684" } : f))
+      .filter((f) => f.label !== "Apellido");
+
+    const response = await POST(request(segundo));
+    const body = await response.json();
+
+    expect(body.outcome).toBe("updated");
+    expect(rows("contacts")).toHaveLength(1);
+    const contact = rows("contacts")[0];
+    expect(contact.name).toBe("Ana Gómez");
+    expect(customValuesOf(contact.id as string).cuit_dni).toBe("43228684");
+  });
+});
+
 describe("POST /api/integrations/tally — envíos que no se pueden usar", () => {
   it("sin teléfono → 422 y no se crea ningún contacto", async () => {
     const payload = payloadVersionNueva();

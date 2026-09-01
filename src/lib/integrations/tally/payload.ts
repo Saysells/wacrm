@@ -19,6 +19,15 @@
 // Un label que no está en la tabla se IGNORA: el catálogo de campos
 // personalizados de la cuenta no crece solo porque alguien agregó
 // una pregunta al formulario.
+//
+// "Nombre" aparece DOS veces en el formulario de Kosmo: la primera
+// es el nombre de la persona, la segunda es el CUIT/DNI (en el export
+// CSV figura como "Nombre (2)"). Se resuelve por orden en `fields[]`:
+// la primera ocurrencia va al nombre, las siguientes a `cuit_dni`.
+// Y como guarda, un valor que iría a `contacts.name` pero es solo
+// dígitos, guiones o espacios tampoco se usa como nombre (el contacto
+// conserva el que tenga) y se guarda como `cuit_dni`. Mismo criterio
+// para "Apellido".
 // ============================================================
 
 import { normalizeArgentinePhone } from "@/lib/phone/normalize-ar";
@@ -64,6 +73,7 @@ const COMPANY = "@company";
  * saber de qué envío salió la ficha.
  */
 export const TALLY_CUSTOM_FIELDS = [
+  "cuit_dni",
   "tienda_online",
   "volumen_restock",
   "provincia",
@@ -76,6 +86,9 @@ export const TALLY_CUSTOM_FIELDS = [
   "tally_response_id",
   "tally_submitted_at",
 ] as const;
+
+/** Campo personalizado donde va el CUIT o DNI (segundo "Nombre"). */
+export const TALLY_CUIT_DNI_FIELD = "cuit_dni";
 
 /** Campo personalizado donde vive el id del envío (idempotencia). */
 export const TALLY_RESPONSE_ID_FIELD = "tally_response_id";
@@ -134,6 +147,16 @@ function resolveOption(field: TallyField, raw: unknown): string {
   return String(option.text ?? "").trim();
 }
 
+/**
+ * True si el texto es solo dígitos, guiones o espacios: un CUIT
+ * (`20-12345678-9`), un DNI (`43228684`) o cualquier identificador
+ * numérico, pero nunca el nombre de una persona. "Local 3 Hermanos"
+ * tiene letras y sigue siendo un nombre.
+ */
+export function looksLikeIdentifier(text: string): boolean {
+  return /^[\d\s-]+$/.test(text) && /\d/.test(text);
+}
+
 /** El valor de un campo, ya como texto plano listo para guardar. */
 export function fieldValueToText(field: TallyField): string {
   const value = field.value;
@@ -157,7 +180,11 @@ export interface MappedSubmission {
   submittedAt: string | null;
   /** Ya normalizado a la forma de WhatsApp; null si no es usable. */
   phone: string | null;
-  /** Nombre + Apellido, o null. */
+  /**
+   * Nombre + Apellido, o null. Null también cuando lo que vino como
+   * nombre era un identificador numérico: el contacto conserva el que
+   * tenga (o queda con el teléfono, igual que uno del webhook).
+   */
   name: string | null;
   email: string | null;
   company: string | null;
@@ -196,7 +223,20 @@ export function mapTallySubmission(payload: TallyPayload): MappedSubmission {
   let email = "";
   let company = "";
   let rawPhone = "";
+  let cuitDni = "";
+  // Cuántos campos ya cayeron en cada parte del nombre: la segunda
+  // ocurrencia de "Nombre" (o de "Apellido") no es un nombre, es el
+  // CUIT/DNI.
+  let firstNameSeen = 0;
+  let lastNameSeen = 0;
   const customValues: Record<string, string> = {};
+
+  // Un valor que iría al nombre pero no parece un nombre. Va a
+  // cuit_dni SOLO si no hay un candidato mejor: el segundo "Nombre"
+  // explícito le gana.
+  const keepAsIdentifier = (text: string) => {
+    if (!cuitDni) cuitDni = text;
+  };
 
   for (const field of fields) {
     const destination = DESTINATION_BY_LABEL[normalizeLabel(field?.label ?? "")];
@@ -207,10 +247,22 @@ export function mapTallySubmission(payload: TallyPayload): MappedSubmission {
 
     switch (destination) {
       case FIRST_NAME:
-        firstName = text;
+        if (firstNameSeen++ > 0) {
+          cuitDni = text;
+        } else if (looksLikeIdentifier(text)) {
+          keepAsIdentifier(text);
+        } else {
+          firstName = text;
+        }
         break;
       case LAST_NAME:
-        lastName = text;
+        if (lastNameSeen++ > 0) {
+          cuitDni = text;
+        } else if (looksLikeIdentifier(text)) {
+          keepAsIdentifier(text);
+        } else {
+          lastName = text;
+        }
         break;
       case PHONE:
         rawPhone = text;
@@ -240,6 +292,8 @@ export function mapTallySubmission(payload: TallyPayload): MappedSubmission {
       : typeof payload?.createdAt === "string" && payload.createdAt
         ? payload.createdAt
         : null;
+
+  if (cuitDni) customValues[TALLY_CUIT_DNI_FIELD] = cuitDni;
 
   // Derivados: el id del envío es la clave de idempotencia y queda a
   // la vista en la ficha; la fecha dice de cuándo es la respuesta.

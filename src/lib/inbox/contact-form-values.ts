@@ -15,11 +15,26 @@
 // Es de SOLO LECTURA. Editar valores ya se hace en Contactos →
 // Editar contacto, y duplicar esa escritura acá sería un segundo
 // camino a la misma tabla.
+//
+// Los campos cuyo nombre empieza con `tally_` (`tally_response_id`,
+// `tally_submitted_at`) son de sistema: los escribe la integración
+// para la idempotencia y la trazabilidad, no para quien atiende. Se
+// filtran acá, en el loader, y no en la base (marcarlos en
+// `custom_fields` sería una columna nueva = SQL). Siguen visibles en
+// Contactos → Editar contacto, que lista el catálogo completo.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { CustomField } from '@/types';
+
+/** Prefijo de los campos de sistema que la integración de Tally escribe. */
+const SYSTEM_FIELD_PREFIX = 'tally_';
+
+/** True si el campo es de sistema y no debe mostrarse en la Bandeja. */
+export function isSystemField(fieldName: string): boolean {
+  return fieldName.trim().toLowerCase().startsWith(SYSTEM_FIELD_PREFIX);
+}
 
 export interface ContactFieldValue {
   fieldId: string;
@@ -35,7 +50,8 @@ export interface ContactFieldValue {
  * catálogo entero con huecos.
  *
  * Un valor cuyo campo ya no existe en el catálogo también se
- * descarta — sin nombre no hay nada que mostrar.
+ * descarta — sin nombre no hay nada que mostrar. Y los campos de
+ * sistema (`tally_*`) se ocultan: ver el bloque de arriba.
  */
 /** Fila de `contact_custom_values` tal como la devuelve la base:
  *  `value` es una columna nullable, aunque el tipo del front la
@@ -57,7 +73,7 @@ export function pairFieldValues(
       name: nameById.get(v.custom_field_id) ?? '',
       value: (v.value ?? '').trim(),
     }))
-    .filter((row) => row.name && row.value)
+    .filter((row) => row.name && row.value && !isSystemField(row.name))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

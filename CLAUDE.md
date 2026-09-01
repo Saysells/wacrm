@@ -259,7 +259,8 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
 
 | Label (formulario) | Destino |
 | --- | --- |
-| `Nombre` + `Apellido` | `contacts.name` |
+| `Nombre` (1.ª ocurrencia) + `Apellido` (1.ª) | `contacts.name` |
+| `Nombre` (2.ª ocurrencia, en el CSV "Nombre (2)") | campo `cuit_dni` |
 | `WhatsApp` | `contacts.phone` (normalizado) |
 | `Email` | `contacts.email` |
 | `Nombre de tu tienda` *(versión vieja)* | `contacts.company` |
@@ -273,6 +274,16 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
 
 - Se mapean **las dos versiones** del formulario (la actual y la de
   julio 2026) contra los mismos destinos.
+- **"Nombre" está dos veces** en el formulario de Kosmo: el primero
+  (por orden en `fields[]`) es la persona, el segundo es el CUIT/DNI
+  (valores reales: `43228684`, `20-12345678-9`). Antes el segundo
+  pisaba al primero y el contacto quedaba con nombre `43228684`.
+  Además, como **guarda**, si lo que iría a `contacts.name` es solo
+  dígitos, guiones o espacios (`looksLikeIdentifier`), no se usa como
+  nombre —el contacto conserva el que tenga, o queda con el teléfono
+  si es nuevo, igual que uno del webhook— y se guarda como `cuit_dni`.
+  Mismo criterio para "Apellido". El segundo "Nombre" explícito le gana
+  a la guarda si ambos aportan un valor.
 - En preguntas de opción, `value` viene como **id** con el texto en
   `options[]`: se resuelve a texto (varias opciones se juntan con
   coma).
@@ -310,6 +321,11 @@ un segundo camino a la misma tabla.
   mismo string que un admin ve y edita en Configuración → Campos y
   etiquetas, y transformarlo acá haría que el sidebar llame distinto
   al mismo campo.
+- **Se ocultan los campos `tally_*`** (`tally_response_id`,
+  `tally_submitted_at`): son de sistema, para idempotencia y
+  trazabilidad, no para quien atiende. Es un filtro por prefijo en el
+  loader (`isSystemField`, dentro de `pairFieldValues`), sin SQL;
+  siguen visibles en Contactos → Editar contacto.
 
 ## Nombre de la app por variable
 
@@ -336,9 +352,14 @@ no restart.
 - El normalizador asume que un `+54` de 10 dígitos nacionales es
   móvil y le pone el `9`. Un fijo con WhatsApp Business quedaría con
   un `9` de más; no hay forma de distinguirlos por el número solo.
-- La sección del sidebar muestra también `tally_response_id` y
-  `tally_submitted_at`, que son ruido para quien atiende. Ocultarlos
-  pide una marca en `custom_fields` (columna nueva = SQL).
+- Los campos de sistema se ocultan en el sidebar por **prefijo de
+  nombre** (`tally_`), no por una marca en `custom_fields`. Si un
+  admin crea a mano un campo que empiece con `tally_`, también se
+  oculta en la Bandeja.
+- La guarda de `looksLikeIdentifier` es por forma: un DNI con puntos
+  (`43.228.684`) no la dispara y, si viniera en el primer "Nombre",
+  quedaría como nombre. Con los valores reales vistos (sin puntos) no
+  pasa.
 - No hay unique `(account_id, field_name)` en `custom_fields`: dos
   entregas concurrentes de responseIds distintos podrían crear dos
   definiciones con el mismo nombre. La solución real es un índice
