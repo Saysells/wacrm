@@ -113,6 +113,7 @@ interface SidebarProps {
 }
 
 import { useTranslations } from "next-intl";
+import { APP_NAME } from "@/lib/app-name";
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
@@ -210,7 +211,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               <MessageSquare className="h-4 w-4" />
             </div>
             <span className="text-sm font-semibold text-foreground">
-              {t("title")}
+              {APP_NAME}
             </span>
           </Link>
           <button

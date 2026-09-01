@@ -19,10 +19,13 @@
   `package-lock.json` no se modifican sin una sesión que lo pida
   explícitamente. Cambios propios hasta ahora: `messages/es.json`,
   `scripts/i18n-check.mjs`, `scripts/i18n-check.test.mjs`, este archivo,
-  y el trabajo de las secciones "Roles y permisos" y "Bandeja" de
-  abajo (sesiones 2026-08-31 y 2026-09-01, pedidas explícitamente
-  por Eze). También `src/components/settings/tag-manager.tsx`, del que
-  se extrajo `PRESET_COLORS` (ver abajo).
+  y el trabajo de las secciones "Roles y permisos", "Bandeja" e
+  "Integración Tally" de abajo (sesiones 2026-08-31 y 2026-09-01,
+  pedidas explícitamente por Eze). También
+  `src/components/settings/tag-manager.tsx`, del que se extrajo
+  `PRESET_COLORS`, y `src/app/layout.tsx` +
+  `src/components/layout/sidebar.tsx`, de los que salió el nombre de
+  la app a `NEXT_PUBLIC_APP_NAME` (ver abajo).
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
@@ -158,6 +161,191 @@ Botón en el encabezado de la Bandeja, al lado del buscador
 - Sin `@testing-library/react` en el repo (regla de no sumar librerías),
   los componentes nuevos no tienen test de DOM: lo verificado es la
   lógica extraída a `src/lib/inbox/*`.
+
+# Integración Tally
+
+Sesión 2026-09-01 (pedida por Eze). Sin SQL: `custom_fields`,
+`contact_custom_values`, `tags` y `contact_tags` ya existían.
+
+El embudo real de Kosmo: anuncio en Meta → kosmo.click → formulario de
+Tally → página de gracias con botón de WhatsApp (texto prellenado) →
+número de Kosmo. El objetivo es que, cuando el lead escribe, la ficha
+ya tenga sus respuestas; y si nunca escribe, que el contacto exista
+igual, etiquetado, para escribirle después con plantilla.
+
+## Normalizador de teléfono argentino
+
+`src/lib/phone/normalize-ar.ts` — `normalizeArgentinePhone(raw)`.
+
+El formulario manda `+54 11 XXXX-XXXX` (468 de 522 envíos del export
+vienen con código de país y SIN el 9); WhatsApp entrega el `wa_id`
+como `549` + área + número. Es el mismo teléfono escrito de dos
+formas, y sin unificarlas el lead del formulario y su primer mensaje
+entrante terminan en **dos contactos**.
+
+- Lleva todo a la forma canónica de WhatsApp: saca el `0` de larga
+  distancia y el `15` (probando las tres longitudes de área: 2, 3 y 4
+  dígitos), e inserta el `9` si falta.
+- Lo que **no** se entiende como argentino sale como dígitos sin
+  tocar: el doble chequeo de largo (10) y prefijo (`11`/`2`/`3`) evita
+  convertir por accidente un doméstico de otro país. Nunca se adivina
+  un país.
+- Se usa en los **tres** caminos que crean o buscan contacto por
+  teléfono: el webhook de Meta (`processMessage`, sobre `message.from`),
+  `resolveConversationByPhone` / `findConversationByPhone` ("Nuevo
+  mensaje") y el receptor de Tally. Que los tres coincidan es
+  justamente lo que hace que sea un solo contacto.
+- **No cambia ninguna llamada a Meta**: se aplica al camino de entrada
+  y a lo que se guarda, no a cómo se envía.
+- `findExistingContact` (dedupe.ts) ya toleraba la diferencia al
+  BUSCAR (compara los últimos 8 dígitos), pero lo que se GUARDABA
+  seguía siendo lo que vino y el índice único de `phone_normalized`
+  (migración 022) es exacto. El normalizador canoniza al escribir.
+
+## Receptor: `POST /api/integrations/tally`
+
+`src/app/api/integrations/tally/route.ts` +
+`src/lib/integrations/tally/{signature,payload,ingest}.ts`.
+
+- **Firma** (`signature.ts`): `Tally-Signature` =
+  `base64(HMAC-SHA256(TALLY_SIGNING_SECRET, cuerpo crudo))`. Se firma
+  sobre el **body crudo** (`await request.text()`), nunca sobre el JSON
+  reserializado — reserializar cambia el orden de las claves y los
+  espacios, y la firma no da nunca. Sin firma o firma inválida → 401 y
+  no se procesa nada. Falla cerrado si falta la variable, igual que
+  `webhook-signature.ts` de Meta.
+- **Idempotencia**: `data.responseId` se guarda como campo
+  personalizado `tally_response_id`; antes de escribir nada se
+  pregunta si ya existe un contacto con ese valor. Tally **reintenta**
+  las entregas fallidas, así que el mismo envío llega más de una vez
+  de forma normal, no excepcional. Un envío distinto del mismo
+  teléfono sí actualiza (24 teléfonos repetidos en el export: el
+  receptor actualiza, no duplica).
+- **Acceso a la base**: cliente admin del servidor (service_role), el
+  mismo que el webhook de Meta. No hay sesión — quien postea es Tally.
+- **Cuenta destino**, en este orden: `TALLY_ACCOUNT_ID` si está; si no,
+  la **única** fila de `whatsapp_config` (la misma que el webhook de
+  Meta habría matcheado por `phone_number_id`, solo que sin necesitar
+  el id para elegirla). Con 0 o ≥2 filas y sin la variable: error
+  explícito. Adivinar sería meterle los leads de un cliente a otro.
+- **Contacto**: find-or-create por el camino que ya existe
+  (`findOrCreateContact` de `@/lib/api/v1/contacts`, mismo
+  `findExistingContact` + backstop de unique que el webhook), así el
+  contacto del formulario es indistinguible de uno creado por un
+  mensaje entrante. Si ya existía, se pisa solo lo que el formulario
+  trajo con contenido (un envío sin email no borra el que estaba; el
+  nombre real del formulario sí le gana al nombre de perfil de
+  WhatsApp).
+- **Etiqueta** `origen_form`: se crea si no existe y se aplica con
+  `addContactTagAndDispatch` — el camino compartido, que valida
+  tenencia, trata el duplicado como no-op y dispara las
+  automatizaciones de `tag_added`. No hay una segunda forma de
+  escribir `contact_tags`.
+- **Códigos**: 401 firma; 400 no es JSON o falta `data.responseId`;
+  422 sin teléfono usable (**no se crea nada**); 200 procesado,
+  duplicado, o `eventType` que no es `FORM_RESPONSE` (se contesta 200
+  para que Tally no reintente eternamente).
+- **Debug**: con `TALLY_DEBUG_PAYLOAD=1` se loguea UN payload crudo por
+  proceso, para confirmar el formato contra un envío real. Apagalo
+  apenas verificaste: el payload trae datos personales del lead.
+
+## Mapeo de campos
+
+La clave de unión es el **label** de la pregunta, no el `key`
+(`question_XXXX`): el key cambia cuando se rehace la pregunta, el
+label es lo que la persona ve y lo que quedó en el export. Los labels
+se comparan normalizados (sin acentos, sin signos, minúscula, un solo
+espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
+
+| Label (formulario) | Destino |
+| --- | --- |
+| `Nombre` + `Apellido` | `contacts.name` |
+| `WhatsApp` | `contacts.phone` (normalizado) |
+| `Email` | `contacts.email` |
+| `Nombre de tu tienda` *(versión vieja)* | `contacts.company` |
+| `¿Vendés por tienda online?` | campo `tienda_online` |
+| `¿Qué volumen invertís en restock por mes?` | campo `volumen_restock` |
+| `¿En qué provincia estás?` | campo `provincia` |
+| `¿Qué tipo de negocio tenés?` | campo `tipo_negocio` |
+| `Contanos brevemente de tu local` *(versión vieja)* | campo `descripcion_local` |
+| `utm_source` / `utm_medium` / `utm_campaign` / `utm_content` | campos homónimos |
+| *(derivados)* | `tally_response_id`, `tally_submitted_at` |
+
+- Se mapean **las dos versiones** del formulario (la actual y la de
+  julio 2026) contra los mismos destinos.
+- En preguntas de opción, `value` viene como **id** con el texto en
+  `options[]`: se resuelve a texto (varias opciones se juntan con
+  coma).
+- Un label que **no** está en la tabla se ignora: el catálogo de
+  campos personalizados de la cuenta no crece solo porque alguien
+  agregó una pregunta al formulario.
+- Las definiciones de `custom_fields` se crean si faltan, comparando
+  sin mayúsculas (si alguien ya creó "Provincia" a mano, no se agrega
+  un segundo "provincia"). Los valores van con `upsert` sobre la
+  unique `(contact_id, custom_field_id)` de la migración 001.
+
+## Variables de entorno
+
+| Variable | Obligatoria | Para qué |
+| --- | --- | --- |
+| `TALLY_SIGNING_SECRET` | sí | Verificar la firma. Sin ella el receptor rechaza todo (falla cerrado). |
+| `TALLY_ACCOUNT_ID` | solo con ≥2 cuentas | Cuenta destino de los leads. |
+| `TALLY_DEBUG_PAYLOAD` | no | `1` loguea un payload crudo. Apagar después. |
+| `NEXT_PUBLIC_APP_NAME` | no | Nombre de la app; default `CRM By Saysells`. |
+
+## "Datos del formulario" en la Bandeja
+
+`src/lib/inbox/contact-form-values.ts` + sección nueva en
+`contact-sidebar.tsx`. Solo lectura: lista los
+`contact_custom_values` del contacto (nombre del campo: valor) y se
+**oculta entera** si no tiene ninguno. Editar valores sigue siendo
+cosa de Contactos → Editar contacto; duplicar esa escritura acá sería
+un segundo camino a la misma tabla.
+
+- Parte pura (`pairFieldValues`) separada de la parte con red
+  (`loadContactFormValues`), igual que `contact-tags.ts`.
+- Ante un error de lectura el loader devuelve vacío: la sección se
+  oculta sola en vez de romper el sidebar entero.
+- Se muestra el `field_name` **tal cual**, sin prettificar: es el
+  mismo string que un admin ve y edita en Configuración → Campos y
+  etiquetas, y transformarlo acá haría que el sidebar llame distinto
+  al mismo campo.
+
+## Nombre de la app por variable
+
+`src/lib/app-name.ts` — `NEXT_PUBLIC_APP_NAME`, default
+`CRM By Saysells`. Lo usan `layout.tsx` (metadata: título, template y
+descripción) y el `Sidebar`. **Salió de los catálogos de i18n**
+(`Sidebar.title` ya no existe en en/es/ko): es un nombre propio, no
+una etiqueta de interfaz, así que no se traduce. `NEXT_PUBLIC_` porque
+lo usa un componente de cliente; cambiarlo en Vercel pide **redeploy**,
+no restart.
+
+## Pendientes de esta sesión
+
+- **Nada de esto se probó contra un envío real de Tally.** Los tests
+  cubren firma, mapeo, idempotencia y escritura contra un Supabase en
+  memoria; el formato exacto del payload está tomado de la
+  documentación y del export, no de una entrega observada. Para eso
+  está `TALLY_DEBUG_PAYLOAD=1` en el primer envío de prueba.
+- `data.createdAt` como fecha del envío es lo esperado pero **no está
+  verificado** contra un payload real; si no viene, `tally_submitted_at`
+  simplemente no se escribe (no rompe nada).
+- **No se importa el histórico del CSV** (522 envíos): es otra tarea.
+  El receptor solo procesa envíos nuevos.
+- El normalizador asume que un `+54` de 10 dígitos nacionales es
+  móvil y le pone el `9`. Un fijo con WhatsApp Business quedaría con
+  un `9` de más; no hay forma de distinguirlos por el número solo.
+- La sección del sidebar muestra también `tally_response_id` y
+  `tally_submitted_at`, que son ruido para quien atiende. Ocultarlos
+  pide una marca en `custom_fields` (columna nueva = SQL).
+- No hay unique `(account_id, field_name)` en `custom_fields`: dos
+  entregas concurrentes de responseIds distintos podrían crear dos
+  definiciones con el mismo nombre. La solución real es un índice
+  único (SQL, fuera de esta sesión).
+- Sin `@testing-library/react`, la sección nueva del sidebar no tiene
+  test de DOM: lo verificado es la lógica de
+  `src/lib/inbox/contact-form-values.ts`.
 
 # Roles y permisos
 

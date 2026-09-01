@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { APP_NAME } from "@/lib/app-name";
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Inter } from "next/font/google";
@@ -21,11 +22,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  // El nombre sale de NEXT_PUBLIC_APP_NAME: la misma base de codigo
+  // corre como "Bandeja KOSMO" y como la instancia comercial.
   title: {
-    default: "CRM By Saysells",
-    template: "%s — CRM By Saysells",
+    default: APP_NAME,
+    template: `%s — ${APP_NAME}`,
   },
-  description: "CRM By Saysells.",
+  description: `${APP_NAME}.`,
   robots: {
     index: false,
     follow: false,
