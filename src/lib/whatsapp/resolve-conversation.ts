@@ -21,7 +21,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
-import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { normalizeArgentinePhone } from '@/lib/phone/normalize-ar';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
 import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
 
@@ -55,7 +56,11 @@ export async function findConversationByPhone(
   accountId: string,
   phone: string
 ): Promise<FoundConversation> {
-  const sanitized = sanitizePhoneForMeta(phone);
+  // Forma canónica de WhatsApp antes de buscar o crear: un lead
+  // cargado como "+5411…" y el wa_id "549…" del mismo teléfono
+  // tienen que caer en el mismo contacto. Para un número no
+  // argentino esto es exactamente sanitizePhoneForMeta.
+  const sanitized = normalizeArgentinePhone(phone);
   if (!isValidE164(sanitized)) {
     throw new SendMessageError(
       'bad_request',
@@ -92,7 +97,11 @@ export async function resolveConversationByPhone(
   phone: string,
   name?: string | null
 ): Promise<ResolvedConversation> {
-  const sanitized = sanitizePhoneForMeta(phone);
+  // Forma canónica de WhatsApp antes de buscar o crear: un lead
+  // cargado como "+5411…" y el wa_id "549…" del mismo teléfono
+  // tienen que caer en el mismo contacto. Para un número no
+  // argentino esto es exactamente sanitizePhoneForMeta.
+  const sanitized = normalizeArgentinePhone(phone);
   if (!isValidE164(sanitized)) {
     throw new SendMessageError(
       'bad_request',

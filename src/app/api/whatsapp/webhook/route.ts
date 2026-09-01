@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizeArgentinePhone } from '@/lib/phone/normalize-ar'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -588,7 +588,12 @@ async function processMessage(
   // See parseMessageContent for what it turns off.
   mirrorMedia: boolean
 ) {
-  const senderPhone = normalizePhone(message.from)
+  // Meta ya manda el wa_id argentino con el 9, así que acá esto es
+  // casi siempre un no-op — pero es el mismo normalizador que usan
+  // el receptor de Tally y "Nuevo mensaje", y que los tres coincidan
+  // es justamente lo que hace que el lead del formulario y su primer
+  // mensaje entrante sean un solo contacto.
+  const senderPhone = normalizeArgentinePhone(message.from)
   const contactName = contact.profile.name
 
   // Find or create contact
