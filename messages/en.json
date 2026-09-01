@@ -309,6 +309,7 @@
       "tagCreateFailed": "Could not create the tag",
       "tagCreated": "Tag created and applied",
       "contactInfo": "Contact info",
+      "formData": "Form data",
       "tags": "Tags",
       "notes": "Notes",
       "deals": "Deals",

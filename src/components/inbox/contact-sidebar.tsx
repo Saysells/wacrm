@@ -1,22 +1,23 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
-import { canEditSettings, canSendMessages } from "@/lib/auth/roles";
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
+import { canEditSettings, canSendMessages } from '@/lib/auth/roles';
+import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
 import {
-  DEFAULT_TAG_COLOR,
-  PRESET_COLORS,
-} from "@/lib/contacts/tag-colors";
+  loadContactFormValues,
+  type ContactFieldValue,
+} from '@/lib/inbox/contact-form-values';
 import {
   assignableTags,
   attachTag,
   createAndAttachTag,
   detachTag,
   TagCreateError,
-} from "@/lib/inbox/contact-tags";
-import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+} from '@/lib/inbox/contact-tags';
+import { cn } from '@/lib/utils';
+import type { Contact, Deal, ContactNote, Tag } from '@/types';
 import {
   Phone,
   Mail,
@@ -28,29 +29,30 @@ import {
   StickyNote,
   Plus,
   X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+  ClipboardList,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
+} from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 interface ContactSidebarProps {
   contact: Contact | null;
 }
 
 export function ContactSidebar({ contact }: ContactSidebarProps) {
-  const tSidebar = useTranslations("Inbox.sidebar");
-  const tThread = useTranslations("Inbox.messageThread");
+  const tSidebar = useTranslations('Inbox.sidebar');
+  const tThread = useTranslations('Inbox.messageThread');
   // Los nombres de los colores ya viven en Configuracion → Campos y
   // etiquetas; se reusan en vez de duplicar los ocho en tres idiomas.
-  const tColors = useTranslations("Settings.tagsAndFields");
+  const tColors = useTranslations('Settings.tagsAndFields');
 
   const { user, accountId, accountRole } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -65,10 +67,13 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagBusyId, setTagBusyId] = useState<string | null>(null);
   // Mini-formulario de creacion dentro del mismo popover.
-  const [newTagName, setNewTagName] = useState("");
+  const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState<string>(DEFAULT_TAG_COLOR);
   const [creatingTag, setCreatingTag] = useState(false);
-  const [newNote, setNewNote] = useState("");
+  // Respuestas del formulario (campos personalizados). Solo lectura:
+  // editarlas sigue siendo cosa de Contactos → Editar contacto.
+  const [formValues, setFormValues] = useState<ContactFieldValue[]>([]);
+  const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
   // Poner/sacar etiquetas escribe contact_tags via
@@ -88,23 +93,27 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     // Fetch deals, notes, contact tags and the account tag catalogue
     // (the picker below offers whatever the contact doesn't have yet).
-    const [dealsRes, notesRes, tagsRes, accountTagsRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-      supabase.from("tags").select("*").order("name"),
-    ]);
+    const [dealsRes, notesRes, tagsRes, accountTagsRes, formValuesRows] =
+      await Promise.all([
+        supabase
+          .from('deals')
+          .select('*, stage:pipeline_stages(*)')
+          .eq('contact_id', contact.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('contact_notes')
+          .select('*')
+          .eq('contact_id', contact.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('contact_tags')
+          .select('id, tag_id, tags(*)')
+          .eq('contact_id', contact.id),
+        supabase.from('tags').select('*').order('name'),
+        // Las respuestas del formulario: el loader devuelve [] ante un
+        // error, así que la sección se oculta sola en vez de romper.
+        loadContactFormValues(supabase, contact.id),
+      ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (notesRes.data) setNotes(notesRes.data);
@@ -115,6 +124,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setTags(mapped);
     }
     if (accountTagsRes.data) setAccountTags(accountTagsRes.data as Tag[]);
+    setFormValues(formValuesRows);
   }, [contact]);
 
   // Load on contact change. setContactData/setTags run inside async
@@ -137,7 +147,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   // ofrece el popover. Si no queda ninguna, el popover lo dice.
   const availableTags = useMemo(
     () => assignableTags(accountTags, tags),
-    [accountTags, tags],
+    [accountTags, tags]
   );
 
   const handleAttachTag = useCallback(
@@ -150,15 +160,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         setTags(await attachTag(contact.id, tag, tags));
         setTagPickerOpen(false);
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "";
+        const reason = err instanceof Error ? err.message : '';
         toast.error(
-          reason ? `${tSidebar("tagUpdateFailed")}: ${reason}` : tSidebar("tagUpdateFailed"),
+          reason
+            ? `${tSidebar('tagUpdateFailed')}: ${reason}`
+            : tSidebar('tagUpdateFailed')
         );
       } finally {
         setTagBusyId(null);
       }
     },
-    [contact, tags, tSidebar],
+    [contact, tags, tSidebar]
   );
 
   const handleDetachTag = useCallback(
@@ -168,21 +180,23 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       try {
         setTags(await detachTag(contact.id, tagId, tags));
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "";
+        const reason = err instanceof Error ? err.message : '';
         toast.error(
-          reason ? `${tSidebar("tagUpdateFailed")}: ${reason}` : tSidebar("tagUpdateFailed"),
+          reason
+            ? `${tSidebar('tagUpdateFailed')}: ${reason}`
+            : tSidebar('tagUpdateFailed')
         );
       } finally {
         setTagBusyId(null);
       }
     },
-    [contact, tags, tSidebar],
+    [contact, tags, tSidebar]
   );
 
   const handleCreateTag = useCallback(async () => {
     if (!contact || !accountId || !user) return;
     if (!newTagName.trim()) {
-      toast.error(tSidebar("tagNameRequired"));
+      toast.error(tSidebar('tagNameRequired'));
       return;
     }
     setCreatingTag(true);
@@ -204,16 +218,16 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       // En memoria: el proximo contacto ya la ve en el catalogo sin
       // recargar la pagina.
       setAccountTags(created.accountTags);
-      setNewTagName("");
+      setNewTagName('');
       setNewTagColor(DEFAULT_TAG_COLOR);
       setTagPickerOpen(false);
-      toast.success(tSidebar("tagCreated"));
+      toast.success(tSidebar('tagCreated'));
     } catch (err) {
       if (err instanceof TagCreateError) {
-        if (err.code === "duplicate_name") {
-          toast.error(tSidebar("tagNameExists"));
-        } else if (err.code === "empty_name") {
-          toast.error(tSidebar("tagNameRequired"));
+        if (err.code === 'duplicate_name') {
+          toast.error(tSidebar('tagNameExists'));
+        } else if (err.code === 'empty_name') {
+          toast.error(tSidebar('tagNameRequired'));
         } else {
           // attach_failed: la fila YA existe en `tags`, asi que entra
           // al catalogo igual para no perderla hasta el proximo fetch.
@@ -222,17 +236,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             setAccountTags((prev) =>
               prev.some((t) => t.id === tag.id)
                 ? prev
-                : [...prev, tag].sort((a, b) => a.name.localeCompare(b.name)),
+                : [...prev, tag].sort((a, b) => a.name.localeCompare(b.name))
             );
           }
-          toast.error(`${tSidebar("tagUpdateFailed")}: ${err.message}`);
+          toast.error(`${tSidebar('tagUpdateFailed')}: ${err.message}`);
         }
       } else {
-        const reason = err instanceof Error ? err.message : "";
+        const reason = err instanceof Error ? err.message : '';
         toast.error(
           reason
-            ? `${tSidebar("tagCreateFailed")}: ${reason}`
-            : tSidebar("tagCreateFailed"),
+            ? `${tSidebar('tagCreateFailed')}: ${reason}`
+            : tSidebar('tagCreateFailed')
         );
       }
     } finally {
@@ -261,7 +275,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const user = session?.user;
 
     const { data, error } = await supabase
-      .from("contact_notes")
+      .from('contact_notes')
       .insert({
         contact_id: contact.id,
         account_id: accountId,
@@ -273,15 +287,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
     if (!error && data) {
       setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+      setNewNote('');
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
 
   if (!contact) {
     return (
-      <div className="flex h-full w-70 items-center justify-center border-l border-border bg-card">
-        <p className="text-sm text-muted-foreground">{tThread("selectConversation")}</p>
+      <div className="border-border bg-card flex h-full w-70 items-center justify-center border-l">
+        <p className="text-muted-foreground text-sm">
+          {tThread('selectConversation')}
+        </p>
       </div>
     );
   }
@@ -290,12 +306,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
+    <div className="border-border bg-card flex h-full w-70 flex-col border-l">
       <ScrollArea className="flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
+            <div className="bg-muted text-foreground flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
@@ -306,11 +322,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 initials
               )}
             </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">
+            <h3 className="text-foreground mt-3 text-sm font-semibold">
               {displayName}
             </h3>
             {contact.company && (
-              <p className="text-xs text-muted-foreground">{contact.company}</p>
+              <p className="text-muted-foreground text-xs">{contact.company}</p>
             )}
           </div>
 
@@ -318,37 +334,39 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div className="mt-4 space-y-2">
             <button
               onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
+              className="text-muted-foreground hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
             >
-              <Phone className="h-4 w-4 text-muted-foreground" />
+              <Phone className="text-muted-foreground h-4 w-4" />
               <span className="flex-1 text-left">{contact.phone}</span>
               {copied ? (
-                <Check className="h-3 w-3 text-primary" />
+                <Check className="text-primary h-3 w-3" />
               ) : (
-                <Copy className="h-3 w-3 text-muted-foreground" />
+                <Copy className="text-muted-foreground h-3 w-3" />
               )}
             </button>
 
             {contact.email && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">
-                <Mail className="h-4 w-4 text-muted-foreground" />
+              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+                <Mail className="text-muted-foreground h-4 w-4" />
                 <span className="truncate">{contact.email}</span>
               </div>
             )}
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Tags */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <TagIcon className="h-3 w-3" />
-              {tSidebar("tags")}
+              {tSidebar('tags')}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {tags.length === 0 && (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noTags")}</p>
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noTags')}
+                </p>
               )}
               {tags.map((tag) => (
                 <span
@@ -363,8 +381,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   {canEditTags && (
                     <button
                       type="button"
-                      aria-label={tSidebar("removeTag")}
-                      title={tSidebar("removeTag")}
+                      aria-label={tSidebar('removeTag')}
+                      title={tSidebar('removeTag')}
                       disabled={tagBusyId === tag.id}
                       onClick={() => handleDetachTag(tag.id)}
                       className="rounded-full opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
@@ -377,14 +395,14 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
               {canEditTags && (
                 <Popover open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
-                  <PopoverTrigger className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                  <PopoverTrigger className="border-border text-muted-foreground hover:border-primary/40 hover:text-foreground inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium transition-colors">
                     <Plus className="h-2.5 w-2.5" />
-                    {tSidebar("addTag")}
+                    {tSidebar('addTag')}
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-64 p-0">
                     {availableTags.length === 0 ? (
-                      <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-                        {tSidebar("noTagsAvailable")}
+                      <p className="text-muted-foreground px-3 py-4 text-center text-xs">
+                        {tSidebar('noTagsAvailable')}
                       </p>
                     ) : (
                       <div className="max-h-56 overflow-y-auto py-1">
@@ -394,7 +412,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                             type="button"
                             disabled={tagBusyId === tag.id}
                             onClick={() => handleAttachTag(tag)}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-popover-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+                            className="text-popover-foreground hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors disabled:opacity-50"
                           >
                             <span
                               className="h-2 w-2 shrink-0 rounded-full"
@@ -409,20 +427,20 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     {/* Crear una etiqueta sin cortar el hilo: queda
                         aplicada al contacto en el mismo paso. */}
                     {canCreateTags && (
-                      <div className="space-y-2 border-t border-border p-2.5">
-                        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                          {tSidebar("createTag")}
+                      <div className="border-border space-y-2 border-t p-2.5">
+                        <p className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+                          {tSidebar('createTag')}
                         </p>
                         <Input
                           value={newTagName}
                           onChange={(e) => setNewTagName(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") handleCreateTag();
+                            if (e.key === 'Enter') handleCreateTag();
                           }}
-                          placeholder={tSidebar("createTagPlaceholder")}
+                          placeholder={tSidebar('createTagPlaceholder')}
                           disabled={creatingTag}
                           maxLength={40}
-                          className="h-8 border-border bg-muted text-xs text-foreground placeholder:text-muted-foreground"
+                          className="border-border bg-muted text-foreground placeholder:text-muted-foreground h-8 text-xs"
                         />
                         <div className="flex flex-wrap gap-1.5">
                           {PRESET_COLORS.map((color) => (
@@ -430,18 +448,18 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                               key={color.value}
                               type="button"
                               onClick={() => setNewTagColor(color.value)}
-                              aria-label={tColors("useColor", {
+                              aria-label={tColors('useColor', {
                                 color: tColors(
                                   `colors.${color.name}` as Parameters<
                                     typeof tColors
-                                  >[0],
+                                  >[0]
                                 ),
                               })}
                               aria-pressed={newTagColor === color.value}
                               className={cn(
-                                "size-5 rounded-md transition-transform hover:scale-110",
+                                'size-5 rounded-md transition-transform hover:scale-110',
                                 newTagColor === color.value &&
-                                  "outline outline-2 outline-offset-2 outline-primary",
+                                  'outline-primary outline outline-2 outline-offset-2'
                               )}
                               style={{ backgroundColor: color.value }}
                             />
@@ -450,12 +468,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 w-full border-border text-xs text-popover-foreground hover:bg-muted"
+                          className="border-border text-popover-foreground hover:bg-muted h-7 w-full text-xs"
                           disabled={creatingTag || !newTagName.trim()}
                           onClick={handleCreateTag}
                         >
                           <Plus className="h-3 w-3" />
-                          {tSidebar("createTagAction")}
+                          {tSidebar('createTagAction')}
                         </Button>
                       </div>
                     )}
@@ -466,29 +484,60 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
+
+          {/* Datos del formulario — las respuestas que dejó el lead en
+              el formulario (campos personalizados). Solo lectura: se
+              editan en Contactos → Editar contacto, y no hace falta un
+              segundo camino a la misma tabla. La sección entera se
+              oculta cuando el contacto no tiene ninguno cargado. */}
+          {formValues.length > 0 && (
+            <>
+              <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                <ClipboardList className="h-3 w-3" />
+                {tSidebar('formData')}
+              </div>
+              <dl className="mt-2 space-y-2">
+                {formValues.map((field) => (
+                  <div
+                    key={field.fieldId}
+                    className="bg-muted rounded-lg px-3 py-2"
+                  >
+                    <dt className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+                      {field.name}
+                    </dt>
+                    <dd className="text-foreground mt-0.5 text-xs break-words whitespace-pre-wrap">
+                      {field.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              {/* Divider */}
+              <div className="border-border my-4 border-t" />
+            </>
+          )}
 
           {/* Active Deals */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
+              {tSidebar('deals')}
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">{tSidebar("noDeals")}</p>
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noDeals')}
+                </p>
               ) : (
                 deals.map((deal) => (
-                  <div
-                    key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="text-sm font-medium text-foreground">
+                  <div key={deal.id} className="bg-muted rounded-lg px-3 py-2">
+                    <p className="text-foreground text-sm font-medium">
                       {deal.title}
                     </p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
                       <span>
-                        {deal.currency ?? "$"}
+                        {deal.currency ?? '$'}
                         {deal.value.toLocaleString()}
                       </span>
                       {deal.stage && (
@@ -510,26 +559,26 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Notes */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <StickyNote className="h-3 w-3" />
-              {tSidebar("notes")}
+              {tSidebar('notes')}
             </div>
             <div className="mt-2">
               <div className="flex gap-2">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder={tSidebar("addNotePlaceholder")}
+                  placeholder={tSidebar('addNotePlaceholder')}
                   rows={2}
-                  className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+                  className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
                 />
                 <Button
                   size="sm"
-                  className="h-auto bg-primary px-2 hover:bg-primary/90"
+                  className="bg-primary hover:bg-primary/90 h-auto px-2"
                   onClick={handleAddNote}
                   disabled={!newNote.trim() || addingNote}
                 >
@@ -539,15 +588,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
               <div className="mt-2 space-y-2">
                 {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                  <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
+                    <p className="text-muted-foreground text-xs whitespace-pre-wrap">
                       {note.note_text}
                     </p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                    <p className="text-muted-foreground mt-1 text-[10px]">
+                      {format(new Date(note.created_at), 'MMM d, yyyy HH:mm')}
                     </p>
                   </div>
                 ))}
