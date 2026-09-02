@@ -159,6 +159,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         // lista nueva: si el POST falla, la pastilla no aparece.
         setTags(await attachTag(contact.id, tag, tags));
         setTagPickerOpen(false);
+        // La lista local NO alcanza: el trigger trg_single_etapa_tag
+        // borra en la base la etapa_* anterior al poner una nueva, y
+        // la pantalla la seguia mostrando hasta recargar. Se relee.
+        await fetchContactData();
       } catch (err) {
         const reason = err instanceof Error ? err.message : '';
         toast.error(
@@ -170,7 +174,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         setTagBusyId(null);
       }
     },
-    [contact, tags, tSidebar]
+    [contact, tags, tSidebar, fetchContactData]
   );
 
   const handleDetachTag = useCallback(
@@ -179,6 +183,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setTagBusyId(tagId);
       try {
         setTags(await detachTag(contact.id, tagId, tags));
+        // Mismo motivo que en handleAttachTag: la base es la fuente
+        // de verdad de que etiquetas quedaron.
+        await fetchContactData();
       } catch (err) {
         const reason = err instanceof Error ? err.message : '';
         toast.error(
@@ -190,7 +197,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         setTagBusyId(null);
       }
     },
-    [contact, tags, tSidebar]
+    [contact, tags, tSidebar, fetchContactData]
   );
 
   const handleCreateTag = useCallback(async () => {
@@ -222,6 +229,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setNewTagColor(DEFAULT_TAG_COLOR);
       setTagPickerOpen(false);
       toast.success(tSidebar('tagCreated'));
+      // Aplicar sale por attachTag: si la nueva es una etapa_*, el
+      // trigger ya saco la anterior en la base. Se relee igual que
+      // en handleAttachTag.
+      await fetchContactData();
     } catch (err) {
       if (err instanceof TagCreateError) {
         if (err.code === 'duplicate_name') {
@@ -261,6 +272,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     accountTags,
     tags,
     tSidebar,
+    fetchContactData,
   ]);
 
   const handleAddNote = useCallback(async () => {
