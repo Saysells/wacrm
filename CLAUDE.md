@@ -367,6 +367,29 @@ no restart.
   test de DOM: lo verificado es la lógica de
   `src/lib/inbox/contact-form-values.ts`.
 
+# API v1 · etiquetas por PATCH
+
+Sesión 2026-09-02 (pedida por Eze). Bug en `setContactTags`
+(`src/lib/api/v1/contacts.ts`): armaba el set `desired` con
+`tagIdByKey.values()`, pero `resolveImportTagIds` devuelve en ese mapa
+**todas** las etiquetas de la cuenta (carga el catálogo entero para
+matchear por nombre), no solo las pedidas. Un
+`PATCH /api/v1/contacts/{id}` con `tags: ["a"]` le ponía al contacto
+todo el catálogo que le faltaba.
+
+- **Regla**: `desired` se arma únicamente con los nombres recibidos en
+  `tagNames`, buscados en el mapa con la misma normalización que usa
+  el resolvedor (`trim` + minúsculas). El mapa es un índice de
+  búsqueda, nunca la lista de lo que hay que aplicar.
+- **Guarda**: `src/lib/api/v1/contacts.test.ts` tiene el caso (cuenta
+  con a, b, c; PATCH con `["a"]`; el contacto queda solo con a). Si se
+  vuelve a tomar `.values()` del mapa, ese test falla.
+- Mismo día: la ficha del contacto en la Bandeja relee las etiquetas
+  con `fetchContactData` después de agregar, sacar o crear-y-aplicar,
+  porque el trigger `trg_single_etapa_tag` borra en la base la
+  `etapa_*` anterior y la lista local no lo sabe. Y el `ScrollArea` de
+  la ficha lleva `min-h-0` (issue #229, mismo defecto que la lista).
+
 # Roles y permisos
 
 Sesión 1 (2026-08-31). Decisión de Eze: el rol `agent` (vendedores) ve una
