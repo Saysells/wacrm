@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   decideFallback,
   resolveFallbackPolicy,
+  resolveTimeoutAction,
 } from "./fallback";
 import { DEFAULT_FALLBACK_POLICY, type FlowFallbackPolicy } from "./types";
 
@@ -62,6 +63,7 @@ const POLICY_REPROMPT_2_HANDOFF: FlowFallbackPolicy = {
   on_unknown_reply: "reprompt",
   max_reprompts: 2,
   on_timeout_hours: 24,
+  on_timeout: { action: "tag_and_end" },
   on_exhaust: "handoff",
 };
 
@@ -119,6 +121,37 @@ describe("decideFallback", () => {
     // count=1 already > max=0 → exhaust
     expect(decideFallback({ policy, reprompt_count: 1 })).toEqual({
       type: "handoff",
+    });
+  });
+});
+
+describe("resolveTimeoutAction", () => {
+  it("una política vieja, sin on_timeout, se comporta como antes", () => {
+    // El barrido cerraba la corrida y no tocaba nada más: eso es
+    // tag_and_end sin etiqueta.
+    expect(resolveFallbackPolicy({ on_timeout_hours: 12 }).on_timeout).toEqual({
+      action: "tag_and_end",
+    });
+  });
+
+  it("acepta la etiqueta y la acción configuradas", () => {
+    expect(
+      resolveTimeoutAction({ action: "tag_and_end", tag_id: "tag-1" }),
+    ).toEqual({ action: "tag_and_end", tag_id: "tag-1" });
+    expect(resolveTimeoutAction({ action: "handoff", note: "Ni bola" })).toEqual(
+      { action: "handoff", note: "Ni bola" },
+    );
+  });
+
+  it("una acción desconocida cae al default", () => {
+    expect(resolveTimeoutAction({ action: "explotar" })).toEqual({
+      action: "tag_and_end",
+    });
+  });
+
+  it("descarta una etiqueta vacía en vez de intentar aplicarla", () => {
+    expect(resolveTimeoutAction({ action: "tag_and_end", tag_id: "" })).toEqual({
+      action: "tag_and_end",
     });
   });
 });

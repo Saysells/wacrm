@@ -14,6 +14,7 @@
 import {
   DEFAULT_FALLBACK_POLICY,
   type FlowFallbackPolicy,
+  type FlowTimeoutAction,
 } from "./types";
 
 export type FallbackAction =
@@ -52,10 +53,32 @@ export function resolveFallbackPolicy(
       typeof r.on_timeout_hours === "number" && r.on_timeout_hours > 0
         ? r.on_timeout_hours
         : DEFAULT_FALLBACK_POLICY.on_timeout_hours,
+    on_timeout: resolveTimeoutAction(r.on_timeout),
     on_exhaust:
       r.on_exhaust === "handoff" || r.on_exhaust === "end"
         ? r.on_exhaust
         : DEFAULT_FALLBACK_POLICY.on_exhaust,
+  };
+}
+
+/**
+ * Normaliza `fallback_policy.on_timeout`. El campo es nuevo, así que
+ * TODA política guardada antes de esta versión llega sin él: el
+ * default (`tag_and_end` sin etiqueta) tiene que ser exactamente el
+ * comportamiento viejo del barrido — cerrar la corrida y nada más.
+ */
+export function resolveTimeoutAction(raw: unknown): FlowTimeoutAction {
+  const fallback = DEFAULT_FALLBACK_POLICY.on_timeout;
+  if (!raw || typeof raw !== "object") return fallback;
+  const r = raw as Partial<FlowTimeoutAction>;
+  const action =
+    r.action === "handoff" || r.action === "tag_and_end"
+      ? r.action
+      : fallback.action;
+  return {
+    action,
+    ...(typeof r.tag_id === "string" && r.tag_id ? { tag_id: r.tag_id } : {}),
+    ...(typeof r.note === "string" && r.note ? { note: r.note } : {}),
   };
 }
 

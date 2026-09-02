@@ -48,6 +48,8 @@ export interface SendButtonsNodeConfig {
     /** node_key the runner advances to when this button is tapped. */
     next_node_key: string;
   }>;
+  /** Sobreescribe el timeout de la política mientras la corrida está acá. */
+  timeout?: FlowNodeTimeout;
 }
 
 export interface SendListNodeConfig {
@@ -66,6 +68,8 @@ export interface SendListNodeConfig {
       next_node_key: string;
     }>;
   }>;
+  /** Sobreescribe el timeout de la política mientras la corrida está acá. */
+  timeout?: FlowNodeTimeout;
 }
 
 /**
@@ -134,6 +138,43 @@ export interface CollectInputNodeConfig {
   regex?: string;
   /** Node to advance to after capture. */
   next_node_key: string;
+  /** Sobreescribe el timeout de la política mientras la corrida está acá. */
+  timeout?: FlowNodeTimeout;
+}
+
+/**
+ * Qué hacer con una corrida que se quedó esperando una respuesta que
+ * no llegó.
+ *
+ *   - `tag_and_end`: le pone una etiqueta al contacto (si hay una
+ *     configurada) y cierra la corrida. Es el "No responde" del
+ *     embudo: el lead sigue ahí, marcado, para retomarlo después.
+ *   - `handoff`: pasa la conversación a pendiente y la corrida
+ *     termina como traspasada. Para el caso en que el silencio NO
+ *     significa desinterés — alguien que ya dijo que sí y solo no
+ *     mandó el horario.
+ */
+export interface FlowTimeoutAction {
+  action: "tag_and_end" | "handoff";
+  /** Etiqueta a aplicar. Solo la mira `tag_and_end`. */
+  tag_id?: string;
+  /** Nota interna del traspaso; interpola variables como cualquier texto. */
+  note?: string;
+}
+
+/**
+ * Sobreescritura del timeout en un nodo puntual.
+ *
+ * El caso que la pide: el último paso del bot de Kosmo pregunta el
+ * rango horario a alguien que YA dijo que quiere la llamada. Que no
+ * conteste eso no es "no responde", es un traspaso — la política de
+ * la cuenta diría otra cosa y estaría mal.
+ *
+ * Lo que el nodo no define lo hereda de la política.
+ */
+export interface FlowNodeTimeout extends Partial<FlowTimeoutAction> {
+  /** Horas de silencio antes de aplicar la acción. */
+  hours?: number;
 }
 
 /**
@@ -151,6 +192,8 @@ export interface WaitNodeConfig {
   /** Cuánto esperar antes de seguir. */
   seconds: number;
   next_node_key: string;
+  /** Sobreescribe el timeout de la política mientras la corrida está acá. */
+  timeout?: FlowNodeTimeout;
 }
 
 /**
@@ -184,6 +227,8 @@ export interface ClassifyReplyNodeConfig {
   unknown_next: string;
   /** Si está, guarda el texto CRUDO del cliente en `flow_runs.vars`. */
   var_key?: string;
+  /** Sobreescribe el timeout de la política mientras la corrida está acá. */
+  timeout?: FlowNodeTimeout;
 }
 
 export type ConditionOperator =
@@ -344,6 +389,12 @@ export interface FlowFallbackPolicy {
   max_reprompts: number;
   /** Stale-run sweep cutoff. */
   on_timeout_hours: number;
+  /**
+   * Qué hacer cuando se cumple el cutoff. Antes el barrido solo
+   * marcaba la corrida `timed_out` y no tocaba nada más — el contacto
+   * quedaba sin rastro de que se lo perdió.
+   */
+  on_timeout: FlowTimeoutAction;
   /** What to do once max_reprompts has been hit. */
   on_exhaust: "handoff" | "end";
 }
@@ -352,6 +403,8 @@ export const DEFAULT_FALLBACK_POLICY: FlowFallbackPolicy = {
   on_unknown_reply: "reprompt",
   max_reprompts: 2,
   on_timeout_hours: 24,
+  // Sin etiqueta: cada cuenta pone la suya (en Kosmo, "No responde").
+  on_timeout: { action: "tag_and_end" },
   on_exhaust: "handoff",
 };
 

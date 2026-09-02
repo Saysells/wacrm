@@ -2,7 +2,8 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { resolveFallbackPolicy } from '@/lib/flows/fallback'
-import { resumeFlowRun } from '@/lib/flows/engine'
+import { applyFlowTimeout, resumeFlowRun } from '@/lib/flows/engine'
+import { selectExpiredRuns, type SweepCandidate } from '@/lib/flows/timeout'
 
 /**
  * Cron de flujos. Hace dos cosas, en este orden:
@@ -20,10 +21,13 @@ import { resumeFlowRun } from '@/lib/flows/engine'
  * (una corrida encolada no se pierde aunque el cron se atrase); la
  * frecuencia solo define la precisión.
  *
- * El barrido, en detalle: reads each active run's parent-flow `fallback_policy.on_timeout_hours`
- * to compute the staleness cutoff (default 24h), then marks any run
- * past its cutoff as `timed_out`. Writes a matching `flow_run_events`
- * row for the audit trail.
+ * El barrido, en detalle: para cada corrida activa se resuelve qué
+ * timeout rige — el del nodo donde está parada si lo trae, si no el de
+ * la política del flujo — y, si venció, se aplica la acción
+ * configurada: `tag_and_end` (etiqueta al contacto y cierra) o
+ * `handoff` (deja la conversación pendiente). Antes esto solo marcaba
+ * la corrida `timed_out` y del lado del contacto no quedaba rastro de
+ * que se lo había perdido.
  *
  * Without this sweep, a customer who abandons a flow mid-conversation
  * keeps a row in `idx_one_active_run_per_contact` (the partial unique
@@ -66,13 +70,17 @@ export async function GET(request: Request) {
   // ============================================================
   const resumed = await drainDueResumes(admin, now)
 
-  // Pull all currently-active runs along with their parent flow's
-  // fallback_policy. Joined in one query — the small set of active
-  // runs per tenant keeps this cheap.
+  // ============================================================
+  // 2. Corridas vencidas
+  // ============================================================
+  //
+  // Se trae la corrida, la política de su flujo y el nodo donde está
+  // parada — el nodo puede sobreescribir el timeout, y sin él no se
+  // sabría que el paso 4 de un bot no es "No responde" sino traspaso.
   const { data: runs, error } = await admin
     .from('flow_runs')
     .select(
-      'id, flow_id, user_id, contact_id, last_advanced_at, flows ( fallback_policy )',
+      'id, flow_id, current_node_key, last_advanced_at, flows ( fallback_policy )',
     )
     .eq('status', 'active')
 
@@ -85,45 +93,40 @@ export async function GET(request: Request) {
   type Row = {
     id: string
     flow_id: string
-    user_id: string
-    contact_id: string | null
+    current_node_key: string | null
     last_advanced_at: string
     flows: { fallback_policy: unknown } | { fallback_policy: unknown }[] | null
   }
+  const typed = runs as Row[]
+
+  // Una sola consulta para los nodos de todos los flujos en juego, en
+  // vez de una por corrida. El conjunto de flujos con corridas activas
+  // es chico.
+  const nodeConfigs = await loadNodeConfigs(
+    admin,
+    [...new Set(typed.map((r) => r.flow_id))],
+  )
+
+  const candidates: SweepCandidate[] = typed.map((r) => {
+    const flowsField = Array.isArray(r.flows) ? r.flows[0] : r.flows
+    return {
+      id: r.id,
+      last_advanced_at: r.last_advanced_at,
+      policy: resolveFallbackPolicy(flowsField?.fallback_policy ?? null),
+      nodeConfig: r.current_node_key
+        ? (nodeConfigs.get(`${r.flow_id}:${r.current_node_key}`) ?? null)
+        : null,
+    }
+  })
 
   let swept = 0
-  for (const r of runs as Row[]) {
-    const flowsField = Array.isArray(r.flows) ? r.flows[0] : r.flows
-    const policy = resolveFallbackPolicy(flowsField?.fallback_policy ?? null)
-    const lastAdvanced = new Date(r.last_advanced_at)
-    const ageHours = (now.getTime() - lastAdvanced.getTime()) / (1000 * 60 * 60)
-    if (ageHours < policy.on_timeout_hours) continue
-
-    // Mark timed_out — guarded by the precondition `status='active'`
-    // so concurrent advance from a late inbound doesn't overwrite a
-    // legitimate update.
-    const { data: updated } = await admin
-      .from('flow_runs')
-      .update({
-        status: 'timed_out',
-        ended_at: now.toISOString(),
-        end_reason: 'stale_sweep',
-      })
-      .eq('id', r.id)
-      .eq('status', 'active')
-      .select('id')
-
-    if (Array.isArray(updated) && updated.length > 0) {
-      await admin.from('flow_run_events').insert({
-        flow_run_id: r.id,
-        event_type: 'timeout',
-        payload: {
-          age_hours: Math.round(ageHours * 10) / 10,
-          policy_hours: policy.on_timeout_hours,
-        },
-      })
-      swept += 1
-    }
+  for (const decision of selectExpiredRuns(candidates, now)) {
+    const result = await applyFlowTimeout({
+      runId: decision.id,
+      timeout: decision.timeout,
+      ageHours: decision.age_hours,
+    })
+    if (result.applied) swept += 1
   }
 
   return NextResponse.json({ swept, resumed })
@@ -187,4 +190,35 @@ async function drainDueResumes(
     if (result.resumed) resumed += 1
   }
   return resumed
+}
+
+/**
+ * Configs de los nodos de estos flujos, indexadas por
+ * `flow_id:node_key`. Solo se usa el campo `timeout`, pero traer el
+ * config entero es una columna menos que enumerar.
+ */
+async function loadNodeConfigs(
+  admin: ReturnType<typeof supabaseAdmin>,
+  flowIds: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>()
+  if (flowIds.length === 0) return map
+  const { data, error } = await admin
+    .from('flow_nodes')
+    .select('flow_id, node_key, config')
+    .in('flow_id', flowIds)
+  if (error) {
+    // Sin los nodos se pierde la sobreescritura, pero la política
+    // sigue rigiendo: el barrido corre igual, con el timeout de cuenta.
+    console.error('[flows-cron] node-config scan failed:', error.message)
+    return map
+  }
+  for (const row of (data ?? []) as {
+    flow_id: string
+    node_key: string
+    config: Record<string, unknown> | null
+  }[]) {
+    map.set(`${row.flow_id}:${row.node_key}`, row.config ?? {})
+  }
+  return map
 }

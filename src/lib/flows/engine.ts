@@ -43,6 +43,7 @@ import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { classifyReply } from "./classify";
 import { hasContactVars, interpolate } from "./interpolate";
 import { loadContactVars, type ContactVars } from "./contact-vars";
+import type { ResolvedTimeout } from "./timeout";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -1469,5 +1470,122 @@ export async function resumeFlowRun(args: {
       err instanceof Error ? err.message : err,
     );
     return { resumed: false, reason: "run_not_found" };
+  }
+}
+
+// ============================================================
+// Timeout — la corrida se quedó esperando una respuesta que no llegó.
+// La dispara el cron; qué timeout rige lo decide `timeout.ts`.
+// ============================================================
+
+export interface ApplyTimeoutResult {
+  applied: boolean;
+  action?: "tag_and_end" | "handoff";
+  /** Por qué no se aplicó, cuando no se aplicó. */
+  reason?: "run_not_found" | "run_not_active" | "lost_race";
+}
+
+/**
+ * Cierra una corrida vencida aplicando la acción configurada.
+ *
+ * El orden importa: primero se CLAVA el estado final de la corrida con
+ * la precondición `status = 'active'`. Si otra pasada del cron (o un
+ * mensaje que entró justo) ya la movió, esa UPDATE no afecta filas y
+ * salimos sin tocar nada. Recién con la corrida ganada se hacen los
+ * efectos visibles — etiqueta, conversación pendiente — para que un
+ * timeout no pueda etiquetar dos veces al mismo contacto.
+ */
+export async function applyFlowTimeout(args: {
+  runId: string;
+  timeout: ResolvedTimeout;
+  ageHours: number;
+}): Promise<ApplyTimeoutResult> {
+  const db = supabaseAdmin();
+  const { timeout } = args;
+  try {
+    const { data, error } = await db
+      .from("flow_runs")
+      .select("*")
+      .eq("id", args.runId)
+      .maybeSingle();
+    if (error || !data) return { applied: false, reason: "run_not_found" };
+    const run = data as FlowRunRow;
+    if (run.status !== "active") {
+      return { applied: false, reason: "run_not_active" };
+    }
+
+    const status = timeout.action === "handoff" ? "handed_off" : "timed_out";
+    const { data: claimed } = await db
+      .from("flow_runs")
+      .update({
+        status,
+        ended_at: new Date().toISOString(),
+        end_reason: `timeout_${timeout.action}`,
+      })
+      .eq("id", args.runId)
+      .eq("status", "active")
+      .select("id");
+    if (!Array.isArray(claimed) || claimed.length === 0) {
+      return { applied: false, reason: "lost_race" };
+    }
+
+    await logEvent(db, run.id, "timeout", run.current_node_key, {
+      action: timeout.action,
+      source: timeout.source,
+      age_hours: args.ageHours,
+      policy_hours: timeout.hours,
+      tag_id: timeout.tag_id ?? null,
+    });
+
+    if (timeout.action === "tag_and_end") {
+      if (timeout.tag_id && run.contact_id) {
+        try {
+          // Por el camino compartido: valida tenencia, trata el
+          // duplicado como no-op y dispara las automatizaciones de
+          // tag_added. No hay una segunda forma de escribir
+          // contact_tags.
+          await addContactTagAndDispatch({
+            db,
+            accountId: run.account_id,
+            contactId: run.contact_id,
+            tagId: timeout.tag_id,
+            context: {
+              conversation_id: run.conversation_id ?? undefined,
+              vars: run.vars,
+            },
+          });
+        } catch (err) {
+          // La corrida ya está cerrada; que falle la etiqueta no puede
+          // revivirla. Queda el evento para el visor.
+          await logEvent(db, run.id, "error", run.current_node_key, {
+            reason: "timeout_tag_failed",
+            detail: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return { applied: true, action: "tag_and_end" };
+    }
+
+    // handoff
+    if (run.conversation_id) {
+      await db
+        .from("conversations")
+        .update({ status: "pending", updated_at: new Date().toISOString() })
+        .eq("id", run.conversation_id);
+    }
+    const note = timeout.note
+      ? await render(timeout.note, run, makeContactVarsGetter(db, run))
+      : null;
+    await logEvent(db, run.id, "handoff", run.current_node_key, {
+      reason: "timeout",
+      note,
+    });
+    return { applied: true, action: "handoff" };
+  } catch (err) {
+    console.error(
+      "[flows] applyFlowTimeout threw:",
+      err instanceof Error ? err.message : err,
+    );
+    return { applied: false, reason: "run_not_found" };
   }
 }
