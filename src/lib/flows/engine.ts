@@ -528,13 +528,32 @@ async function handoffRun(
   );
 }
 
+/**
+ * Ejecuta un nodo `handoff` y devuelve por dónde sigue la corrida.
+ *
+ * Con `next_node_key` en el config, el traspaso pasa a ser un punto
+ * del guion en vez del final: se asigna la conversación, se deja
+ * pendiente y se registra el evento igual que siempre, pero la corrida
+ * queda ACTIVA y avanza al nodo indicado. Sin la clave, cierra como
+ * hasta ahora (`handed_off`).
+ *
+ * Lo pide el seguimiento del catálogo: la conversación ya es de
+ * Matías, y si en 24 horas nadie dice nada el bot todavía tiene algo
+ * que preguntar. Cerrar la corrida ahí perdería ese hilo. Si Matías
+ * contesta antes, `send-message.ts` pausa la corrida
+ * (`paused_by_agent`) y el seguimiento no sale — que es lo buscado.
+ */
 async function executeHandoff(
   db: AdminClient,
   run: FlowRunRow,
   node: FlowNodeRow,
   getContact: ContactVarsGetter,
-): Promise<void> {
-  const cfg = node.config as { assign_to?: string; note?: string };
+): Promise<string | null> {
+  const cfg = node.config as {
+    assign_to?: string;
+    note?: string;
+    next_node_key?: string;
+  };
   const convUpdate: Record<string, unknown> = {
     status: "pending",
     updated_at: new Date().toISOString(),
@@ -550,11 +569,16 @@ async function executeHandoff(
   // Sin esto, "Quiere la llamada. Rango: {{vars.rango_horario}}" le
   // llega al agente con las llaves puestas y sin el rango.
   const note = cfg.note ? await render(cfg.note, run, getContact) : null;
+  // El evento se registra en los dos casos: para quien mira el visor,
+  // el traspaso pasó igual.
   await logEvent(db, run.id, "handoff", node.node_key, {
     note,
     assigned_to: cfg.assign_to ?? null,
+    next_node_key: cfg.next_node_key ?? null,
   });
+  if (cfg.next_node_key) return cfg.next_node_key;
   await endRun(db, run.id, "handed_off", "handoff_node");
+  return null;
 }
 
 /**
@@ -1071,7 +1095,11 @@ async function advanceFromNodeKey(
       return { outcome: "advanced" };
     }
     if (node.node_type === "handoff") {
-      await executeHandoff(db, run, node, getContact);
+      const sigue = await executeHandoff(db, run, node, getContact);
+      if (sigue) {
+        currentKey = sigue;
+        continue;
+      }
       return { outcome: "handed_off" };
     }
     if (node.node_type === "end") {

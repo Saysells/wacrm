@@ -165,9 +165,24 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
         break;
       }
 
-      case "handoff":
+      case "handoff": {
+        // Un traspaso que sigue el guion (config con `next_node_key`)
+        // tiene una arista como cualquier otro nodo; el terminal, que
+        // es el caso normal, no tiene ninguna.
+        const next = (cfg as { next_node_key?: string }).next_node_key;
+        if (next && knownKeys.has(next)) {
+          edges.push({
+            id: `${node.node_key}--next--${next}`,
+            source: node.node_key,
+            target: next,
+            sourceHandle: "next",
+          });
+        }
+        break;
+      }
+
       case "end":
-        // Terminal nodes — no outgoing edges.
+        // Terminal node — no outgoing edges.
         break;
     }
   }
@@ -269,7 +284,13 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
       return slots;
     }
 
+    // El traspaso solo ofrece salida cuando ya la tiene configurada:
+    // el caso normal sigue siendo terminal y no lleva handle.
     case "handoff":
+      return (node.config as { next_node_key?: string }).next_node_key
+        ? [{ id: "next", label: "Next" }]
+        : [];
+
     case "end":
       return [];
   }
@@ -369,7 +390,17 @@ export function applyEdgeConnection(
       return matched ? { sections: next } : null;
     }
 
+    // Se puede reapuntar un traspaso que ya sigue el guion, pero no
+    // convertir uno terminal en no terminal desde el canvas.
     case "handoff":
+      if (
+        sourceHandle === "next" &&
+        (node.config as { next_node_key?: string }).next_node_key
+      ) {
+        return { next_node_key: targetKey };
+      }
+      return null;
+
     case "end":
       return null;
   }
@@ -481,7 +512,14 @@ function patchedConfigWithoutKey(
       return dirty ? { ...cfg, sections: next } : null;
     }
 
-    case "handoff":
+    case "handoff": {
+      // Un traspaso que sigue el guion también queda colgado si le
+      // borran el nodo de destino.
+      const next = (cfg as { next_node_key?: string }).next_node_key;
+      if (next !== deletedKey) return null;
+      return { ...cfg, next_node_key: "" };
+    }
+
     case "end":
       return null;
   }

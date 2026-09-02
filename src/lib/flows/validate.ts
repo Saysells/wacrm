@@ -856,10 +856,26 @@ function validateNode(
       break;
     }
 
-    case "handoff":
+    case "handoff": {
+      // El traspaso es terminal salvo que traiga `next_node_key`, y
+      // ahí sí tiene que apuntar a un nodo que exista: una referencia
+      // rota deja la corrida viva apuntando a la nada.
+      const cfg = node.config as { next_node_key?: string };
+      if (cfg.next_node_key && !knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Handoff points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "end":
-      // Terminal nodes have no outgoing edges; nothing to validate
-      // beyond their existence.
+      // Terminal node — no outgoing edges; nothing to validate beyond
+      // its existence.
       break;
 
     default:
@@ -955,7 +971,11 @@ function outgoingEdges(node: NodeInput): string[] {
       }
       return out;
     }
-    case "handoff":
+    case "handoff": {
+      // Solo el traspaso que sigue el guion tiene arista saliente.
+      const cfg = node.config as { next_node_key?: string };
+      return cfg.next_node_key ? [cfg.next_node_key] : [];
+    }
     case "end":
     default:
       return [];

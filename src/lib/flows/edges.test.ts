@@ -589,3 +589,49 @@ describe("unlinkNodeReferences", () => {
     expect(after[1]).toBe(nodes[1]);
   });
 });
+
+describe("handoff que sigue el guion", () => {
+  const conNext: BuilderNode[] = nodes(
+    {
+      node_key: "h",
+      node_type: "handoff",
+      config: { note: "x", next_node_key: "sigue" },
+    },
+    { node_key: "sigue", node_type: "end", config: {} },
+  );
+
+  it("dibuja la arista del traspaso que sigue", () => {
+    const edges = deriveCanvasEdges(conNext);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({
+      source: "h",
+      target: "sigue",
+      sourceHandle: "next",
+    });
+  });
+
+  it("le da un handle de salida solo cuando ya tiene destino", () => {
+    expect(outgoingSlots(conNext[0]).map((s) => s.id)).toEqual(["next"]);
+    expect(
+      outgoingSlots({ node_key: "h", node_type: "handoff", config: {} }),
+    ).toEqual([]);
+  });
+
+  it("se puede reapuntar, pero no convertir uno terminal", () => {
+    expect(applyEdgeConnection(conNext[0], "next", "otro")).toEqual({
+      next_node_key: "otro",
+    });
+    expect(
+      applyEdgeConnection(
+        { node_key: "h", node_type: "handoff", config: {} },
+        "next",
+        "otro",
+      ),
+    ).toBeNull();
+  });
+
+  it("borrar el destino le limpia la referencia", () => {
+    const out = unlinkNodeReferences(conNext, "sigue");
+    expect(out[0].config).toMatchObject({ next_node_key: "" });
+  });
+});

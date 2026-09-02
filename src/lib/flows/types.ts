@@ -109,6 +109,17 @@ export interface HandoffNodeConfig {
    * node fires. Leave unset to flip the status without assignment.
    */
   assign_to?: string;
+  /**
+   * Con esta clave el traspaso deja de ser el final del guion: se hace
+   * igual (asignación, nota, conversación pendiente) pero la corrida
+   * sigue ACTIVA y avanza a este nodo. Sin ella, cierra la corrida
+   * como siempre.
+   *
+   * Existe para el seguimiento del catálogo: la conversación ya es de
+   * la persona que atiende, y si en 24 horas nadie dice nada el bot
+   * todavía tiene algo para preguntar.
+   */
+  next_node_key?: string;
 }
 
 /**

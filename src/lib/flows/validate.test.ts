@@ -664,3 +664,63 @@ describe("validateFlowForActivation — classify_reply", () => {
     expect(issues).toEqual([]);
   });
 });
+
+describe("validateFlowForActivation — handoff que sigue el guion", () => {
+  const conNext = [
+    { node_key: "start", node_type: "start", config: { next_node_key: "ho" } },
+    {
+      node_key: "ho",
+      node_type: "handoff",
+      config: { note: "x", next_node_key: "cierre" },
+    },
+    { node_key: "cierre", node_type: "end", config: {} },
+  ];
+
+  it("acepta un traspaso que apunta a un nodo existente", () => {
+    expect(
+      validateFlowForActivation(
+        { ...validFlow, entry_node_id: "start" },
+        conNext,
+      ),
+    ).toEqual([]);
+  });
+
+  it("rechaza un traspaso que apunta a un nodo que no existe", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, entry_node_id: "start" },
+      [
+        conNext[0],
+        {
+          node_key: "ho",
+          node_type: "handoff",
+          config: { next_node_key: "cierrre" },
+        },
+        conNext[2],
+      ],
+    );
+    expect(
+      issues.some(
+        (i) =>
+          i.node_key === "ho" &&
+          i.severity === "error" &&
+          i.field === "next_node_key",
+      ),
+    ).toBe(true);
+  });
+
+  it("lo que cuelga de un traspaso es alcanzable", () => {
+    expect([...reachableFromEntry("start", conNext)].sort()).toEqual([
+      "cierre",
+      "ho",
+      "start",
+    ]);
+  });
+
+  it("un traspaso terminal sigue sin aristas salientes", () => {
+    expect([...reachableFromEntry("start", [
+      conNext[0],
+      { node_key: "ho", node_type: "handoff", config: { note: "x" } },
+      conNext[2],
+    ])].sort()).toEqual(["ho", "start"]);
+  });
+});
