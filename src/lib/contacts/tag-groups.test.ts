@@ -16,6 +16,7 @@ function tag(name: string, grupo: Tag['grupo'] = null): Tag {
     name,
     color: '#000',
     grupo,
+    requiere_fecha: false,
     created_at: '',
   };
 }

@@ -116,6 +116,12 @@ export interface Contact {
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  /**
+   * Fecha y hora de la llamada agendada (migracion 047). La carga el
+   * setter desde la Bandeja al aplicar una etiqueta con
+   * `requiere_fecha`, y viaja al CRM junto con la etiqueta de estado.
+   */
+  fecha_llamada: string | null;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];
@@ -135,6 +141,12 @@ export interface Tag {
   name: string;
   color: string;
   grupo: TagGrupo | null;
+  /**
+   * Al aplicarla desde la Bandeja pide fecha y hora de la llamada
+   * (migracion 047: Agendado a Paola, Agendado a Gustavo, Agendada,
+   * Reagendado). La fecha se guarda ANTES de aplicar la etiqueta.
+   */
+  requiere_fecha: boolean;
   created_at: string;
 }
 

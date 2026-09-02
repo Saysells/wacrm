@@ -22,6 +22,7 @@ function makeConversation(
           user_id: "u1",
           account_id: "a1",
           phone: "123",
+          fecha_llamada: null,
           created_at: "",
           updated_at: "",
           ...contact,
@@ -36,6 +37,7 @@ const tag = (id: string, name = id) => ({
   name,
   color: "#fff",
   grupo: null,
+  requiere_fecha: false,
   created_at: "",
 });
 
@@ -116,6 +118,7 @@ describe("normalizeConversation", () => {
         user_id: "u1",
         account_id: "a1",
         phone: "123",
+        fecha_llamada: null,
         created_at: "",
         updated_at: "",
         contact_tags: [{ tags: tag("t1", "VIP") }, { tags: null }],

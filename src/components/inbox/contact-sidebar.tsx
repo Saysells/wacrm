@@ -7,6 +7,14 @@ import { canEditSettings, canSendMessages } from '@/lib/auth/roles';
 import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
 import { isEstadoTag } from '@/lib/contacts/tag-groups';
 import {
+  formatCallDateShort,
+  fromDatetimeLocalValue,
+  initialCallDate,
+  saveFechaLlamada,
+  scheduleWithDate,
+  toDatetimeLocalValue,
+} from '@/lib/inbox/fecha-llamada';
+import {
   loadContactFormValues,
   type ContactFieldValue,
 } from '@/lib/inbox/contact-form-values';
@@ -32,8 +40,18 @@ import {
   Plus,
   X,
   ClipboardList,
+  CalendarClock,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
@@ -80,6 +98,19 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState<string>(DEFAULT_TAG_COLOR);
   const [creatingTag, setCreatingTag] = useState(false);
+  // Fecha y hora de la llamada (contacts.fecha_llamada). Se relee de la
+  // base junto con lo demas: el `contact` de la prop viene de la lista y
+  // puede quedar viejo despues de guardar.
+  const [fechaLlamada, setFechaLlamada] = useState<string | null>(null);
+  // Modal "Fecha y hora de la llamada". `tag` es la etiqueta que la
+  // pidio (se aplica DESPUES de guardar la fecha) o null cuando solo
+  // se corrige la fecha con el lapiz.
+  const [dateDialog, setDateDialog] = useState<{
+    open: boolean;
+    tag: Tag | null;
+  }>({ open: false, tag: null });
+  const [dateValue, setDateValue] = useState('');
+  const [savingDate, setSavingDate] = useState(false);
   // Respuestas del formulario (campos personalizados). Solo lectura:
   // editarlas sigue siendo cosa de Contactos → Editar contacto.
   const [formValues, setFormValues] = useState<ContactFieldValue[]>([]);
@@ -103,8 +134,14 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
 
     // Fetch deals, notes, contact tags and the account tag catalogue
     // (the picker below offers whatever the contact doesn't have yet).
-    const [dealsRes, notesRes, tagsRes, accountTagsRes, formValuesRows] =
-      await Promise.all([
+    const [
+      dealsRes,
+      notesRes,
+      tagsRes,
+      accountTagsRes,
+      formValuesRows,
+      contactRes,
+    ] = await Promise.all([
         supabase
           .from('deals')
           .select('*, stage:pipeline_stages(*)')
@@ -123,6 +160,11 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
         // Las respuestas del formulario: el loader devuelve [] ante un
         // error, así que la sección se oculta sola en vez de romper.
         loadContactFormValues(supabase, contact.id),
+        supabase
+          .from('contacts')
+          .select('fecha_llamada')
+          .eq('id', contact.id)
+          .maybeSingle(),
       ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -136,6 +178,12 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
     }
     if (accountTagsRes.data) setAccountTags(accountTagsRes.data as Tag[]);
     setFormValues(formValuesRows);
+    if (contactRes.data) {
+      setFechaLlamada(
+        (contactRes.data as { fecha_llamada: string | null }).fecha_llamada ??
+          null
+      );
+    }
   }, [contact, onTagsChange]);
 
   // Load on contact change. setContactData/setTags run inside async
@@ -167,9 +215,27 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
   const orderedTags = useMemo(() => orderAttachedTags(tags), [tags]);
   const hasEstado = tags.some(isEstadoTag);
 
+  // Abre el modal de fecha. Con `tag`, la etiqueta se aplica al
+  // confirmar; sin `tag`, solo se corrige la fecha (lapiz).
+  const openDateDialog = useCallback(
+    (tag: Tag | null) => {
+      setDateValue(toDatetimeLocalValue(initialCallDate(fechaLlamada)));
+      setDateDialog({ open: true, tag });
+      setTagPickerOpen(false);
+    },
+    [fechaLlamada]
+  );
+
   const handleAttachTag = useCallback(
     async (tag: Tag) => {
       if (!contact) return;
+      // Etiqueta que pide fecha (Agendado a ..., Agendada, Reagendado):
+      // no se aplica todavia. Se abre el modal y la aplicacion sale de
+      // handleConfirmDate, DESPUES de guardar la fecha.
+      if (tag.requiere_fecha) {
+        openDateDialog(tag);
+        return;
+      }
       setTagBusyId(tag.id);
       try {
         // attachTag persiste primero y recien despues devuelve la
@@ -191,8 +257,51 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
         setTagBusyId(null);
       }
     },
-    [contact, tags, tSidebar, fetchContactData]
+    [contact, tags, tSidebar, fetchContactData, openDateDialog]
   );
+
+  const handleConfirmDate = useCallback(async () => {
+    if (!contact) return;
+    const fecha = fromDatetimeLocalValue(dateValue);
+    if (!fecha) {
+      toast.error(tSidebar('callDateInvalid'));
+      return;
+    }
+    const tag = dateDialog.tag;
+    setSavingDate(true);
+    try {
+      if (tag) {
+        // Primero la fecha, despues la etiqueta: el aviso al CRM sale
+        // del INSERT de la etiqueta y lee contacts.fecha_llamada.
+        const result = await scheduleWithDate({
+          db: createClient(),
+          contactId: contact.id,
+          tag,
+          fecha,
+          attached: tags,
+        });
+        setFechaLlamada(result.fechaLlamada);
+        setTags(result.attached);
+      } else {
+        // Corregir la fecha no vuelve a aplicar la etiqueta (y por lo
+        // tanto no dispara otro aviso al CRM).
+        setFechaLlamada(
+          await saveFechaLlamada(createClient(), contact.id, fecha)
+        );
+      }
+      setDateDialog({ open: false, tag: null });
+      await fetchContactData();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : '';
+      toast.error(
+        reason
+          ? `${tSidebar('callDateSaveFailed')}: ${reason}`
+          : tSidebar('callDateSaveFailed')
+      );
+    } finally {
+      setSavingDate(false);
+    }
+  }, [contact, dateValue, dateDialog.tag, tags, tSidebar, fetchContactData]);
 
   const handleDetachTag = useCallback(
     async (tagId: string) => {
@@ -467,6 +576,27 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
                 )
               )}
 
+              {/* Fecha y hora de la llamada, al lado del estado. El
+                  lapiz reabre el modal solo para corregirla: guarda la
+                  fecha y no vuelve a aplicar la etiqueta. */}
+              {fechaLlamada && (
+                <span className="bg-muted text-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1.5 pl-2 text-[11px] font-medium">
+                  <CalendarClock className="text-muted-foreground h-3 w-3" />
+                  {formatCallDateShort(fechaLlamada)}
+                  {canEditTags && (
+                    <button
+                      type="button"
+                      aria-label={tSidebar('callDateEdit')}
+                      title={tSidebar('callDateEdit')}
+                      onClick={() => openDateDialog(null)}
+                      className="rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100"
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </span>
+              )}
+
               {canEditTags && (
                 <Popover open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
                   <PopoverTrigger className="border-border text-muted-foreground hover:border-primary/40 hover:text-foreground inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium transition-colors">
@@ -686,6 +816,54 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
           </div>
         </div>
       </ScrollArea>
+
+      {/* Modal chico: fecha y hora de la llamada. Cancelar no aplica la
+          etiqueta. */}
+      <Dialog
+        open={dateDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !savingDate) setDateDialog({ open: false, tag: null });
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{tSidebar('callDateTitle')}</DialogTitle>
+            <DialogDescription>
+              {dateDialog.tag
+                ? tSidebar('callDateFor', { tag: dateDialog.tag.name })
+                : tSidebar('callDateEditDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="datetime-local"
+            value={dateValue}
+            onChange={(e) => setDateValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirmDate();
+            }}
+            disabled={savingDate}
+            aria-label={tSidebar('callDateTitle')}
+            className="border-border bg-muted text-foreground"
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDateDialog({ open: false, tag: null })}
+              disabled={savingDate}
+            >
+              {tSidebar('cancel')}
+            </Button>
+            <Button
+              onClick={handleConfirmDate}
+              disabled={savingDate || !fromDatetimeLocalValue(dateValue)}
+            >
+              {dateDialog.tag
+                ? tSidebar('callDateConfirm')
+                : tSidebar('callDateSave')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

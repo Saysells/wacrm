@@ -22,6 +22,7 @@ function tag(id: string, name = id): Tag {
     name,
     color: "#22c55e",
     grupo: null,
+    requiere_fecha: false,
     created_at: "2026-01-01T00:00:00.000Z",
   };
 }
