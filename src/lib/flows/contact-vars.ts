@@ -10,8 +10,15 @@
  * porque el dato falta seguido:
  *
  *   `{{contact.nombre}}`        primera palabra de `contacts.name`
- *   `{{contact.nombre_coma}}`   " Juan," — el nombre con su coma
+ *   `{{contact.nombre_coma}}`   " Juan," — el nombre con su coma detrás
+ *   `{{contact.coma_nombre}}`   ", Juan" — la coma delante
  *   `{{contact.tipo_negocio}}`  el campo de Tally, o "tu negocio"
+ *
+ * Las dos formas del nombre existen porque en un guion aparece de las
+ * dos maneras: "Hola{{nombre_coma}} te escribe Kosmo" y "...con el
+ * asesor{{coma_nombre}}? Sí o no." Sin la segunda no hay forma de
+ * poner el nombre al final de una frase y que la oración cierre bien
+ * cuando el nombre no está.
  *
  * Además, cualquier `{{contact.<field_name>}}` que coincida con un
  * campo personalizado de la cuenta se resuelve solo: los valores ya
@@ -77,6 +84,10 @@ export function buildContactVars(input: ContactVarsInput): ContactVars {
   // coma se queda incluso sin nombre porque la alternativa ("Hola te
   // escribe Kosmo.") no es castellano.
   vars.nombre_coma = nombre ? ` ${nombre},` : ",";
+  // Y la forma espejo, para cuando el nombre va al final:
+  // "...con el asesor{{contact.coma_nombre}}? Sí o no." Acá la coma SÍ
+  // se va con el nombre: "con el asesor? Sí o no." ya está bien.
+  vars.coma_nombre = nombre ? `, ${nombre}` : "";
 
   const negocio = (input.customValues.tipo_negocio ?? "").trim();
   vars.tipo_negocio = negocio ? negocio.toLocaleLowerCase("es-AR") : NEGOCIO_POR_DEFECTO;

@@ -42,6 +42,7 @@ describe("buildContactVars", () => {
     });
     expect(v.nombre).toBe("Juan");
     expect(v.nombre_coma).toBe(" Juan,");
+    expect(v.coma_nombre).toBe(", Juan");
     expect(v.tipo_negocio).toBe("local de celular");
   });
 
@@ -51,6 +52,9 @@ describe("buildContactVars", () => {
     const v = buildContactVars({ name: null, customValues: {} });
     expect(v.nombre).toBe("");
     expect(v.nombre_coma).toBe(",");
+    // Acá la coma se va con el nombre: "con el asesor? Sí o no." ya
+    // está bien, y "con el asesor,? Sí o no." no.
+    expect(v.coma_nombre).toBe("");
   });
 
   it("sin tipo de negocio usa el genérico", () => {
@@ -139,5 +143,29 @@ describe("hasContactVars", () => {
     expect(hasContactVars("Hola {{vars.x}}")).toBe(false);
     expect(hasContactVars("")).toBe(false);
     expect(hasContactVars(null)).toBe(false);
+  });
+});
+
+describe("las dos formas del nombre en una frase real", () => {
+  const REPREGUNTA =
+    "¿Coordinamos la llamada de 10 minutos con el asesor" +
+    "{{contact.coma_nombre}}? Sí o no.";
+
+  it("con nombre, la coma va delante", () => {
+    expect(
+      interpolate(REPREGUNTA, {
+        vars: {},
+        contact: buildContactVars({ name: "Juan Pérez", customValues: {} }),
+      }),
+    ).toBe("¿Coordinamos la llamada de 10 minutos con el asesor, Juan? Sí o no.");
+  });
+
+  it("sin nombre, la frase cierra igual", () => {
+    expect(
+      interpolate(REPREGUNTA, {
+        vars: {},
+        contact: buildContactVars({ name: null, customValues: {} }),
+      }),
+    ).toBe("¿Coordinamos la llamada de 10 minutos con el asesor? Sí o no.");
   });
 });

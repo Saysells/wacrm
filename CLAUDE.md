@@ -569,3 +569,155 @@ Dónde vive cada cosa:
   real es la misma migración RLS.
 - El export pagina de a 1000 sin límite superior; para cuentas enormes
   convendría streaming o un tope.
+
+# Flujos · nodos nuevos, timeout y el bot de Kosmo
+
+Sesión 2026-09-02 (pedida por Eze). El motor de Flujos tenía todo para
+un bot de botones y le faltaba todo para uno de texto libre. Tres
+migraciones nuevas: **048** (nodos + cola), **049** (reentrada + beta)
+y **050** (el flujo). Ninguna aplicada — las aplica Emi con
+`npm run migrar` desde el instalador.
+
+El flujo quedó en la **050 y no en la 048** como decía el pedido: el
+`CHECK` de `flow_nodes.node_type` y el flag de beta tienen que estar
+aplicados ANTES de que el flujo inserte un nodo `wait`, así que las dos
+migraciones de las que depende se llevaron los números de adelante.
+
+## Nodos nuevos
+
+- **`wait`** (`{ seconds, next_node_key }`): suspende la corrida N
+  segundos y sigue sola. **No es un `setTimeout`** y no puede serlo: el
+  proceso que atiende el webhook se apaga apenas contesta el 200 a
+  Meta. La espera se encola en `flow_pending_resumes` (migración 048,
+  misma forma que `automation_pending_executions`) y la drena el cron.
+  La corrida queda estacionada en el propio nodo `wait`, no en el
+  siguiente, para que un mensaje que llegue durante la espera se
+  reconozca como "todavía esperando" (se consume, no repregunta).
+  **Consecuencia operativa: el cron de flujos ahora conviene correrlo
+  cada minuto.** La cola no pierde nada si se atrasa, pero la
+  frecuencia del cron *es* la precisión de la espera: con el cron cada
+  10 minutos, un `wait` de 25 segundos puede tardar 10 minutos.
+
+- **`classify_reply`**: interpreta texto libre y ramifica. El criterio
+  está en `src/lib/flows/classify.ts`, puro:
+  - Compara **por palabra o frase completa**, nunca por subcadena: el
+    "no" adentro de "nono" o de "sino" no es un no.
+  - Evalúa **extra → negativo → positivo → desconocido**. El negativo
+    antes que el positivo porque quien dice que no dijo que no; el
+    extra antes que todo porque suele venir mezclado con un negativo
+    ("nunca compré, llamada no puedo, mejor por catálogo" pide la
+    lista, no es un no a secas).
+  - El desconocido **tiene su propia salida** (`unknown_next`), no cae
+    en la política de fallback: el guion decide si repregunta o
+    traspasa.
+  - Con `prompt_text` pregunta y espera; sin él clasifica el último
+    mensaje del cliente.
+
+Los dos están en el editor (formulario, canvas, validador, i18n en las
+tres lenguas). Lo que el editor **no** expone todavía es el `timeout`
+por nodo: se carga por JSONB, como el flujo de Kosmo.
+
+## Variables del contacto
+
+`{{contact.nombre}}`, `{{contact.nombre_coma}}` (" Juan," / ","),
+`{{contact.coma_nombre}}` (", Juan" / ""), `{{contact.tipo_negocio}}`
+(minúscula, o "tu negocio"), y cualquier `{{contact.<field_name>}}` que
+coincida con un campo personalizado de la cuenta.
+
+- Las **dos formas del nombre** existen porque en el guion aparece de
+  las dos maneras ("Hola{{nombre_coma}} te escribe" y "...con el
+  asesor{{coma_nombre}}? Sí o no."). Sin la segunda no hay forma de
+  poner el nombre al final de una frase y que cierre bien sin él.
+- Un contacto que **se llama como su teléfono** (los que crea el
+  webhook de Meta) NO tiene nombre: "Hola 5491122334455" es peor que no
+  saludar.
+- La lectura es perezosa: un texto sin `{{contact.` no paga consulta.
+- `handoff.note` interpola como cualquier otro texto (`interpolate`,
+  salido de `engine.ts` a `src/lib/flows/interpolate.ts`).
+
+## Timeout
+
+`fallback_policy.on_timeout` = `{ action: 'tag_and_end' | 'handoff',
+tag_id?, note? }`. Default `tag_and_end` sin etiqueta, que es
+exactamente lo que hacía el barrido antes (cerrar y nada más), así que
+toda política vieja se sigue comportando igual.
+
+Cada nodo que espera puede sobreescribirlo con `timeout: { hours,
+action, tag_id?, note? }`, **campo por campo**. Lo necesita el paso 4
+del bot: quien ya dijo que quiere la llamada y solo no mandó el horario
+no es "No responde", es un traspaso.
+
+`applyFlowTimeout` **clava primero el estado final de la corrida** con
+la precondición `status='active'` y recién después hace los efectos
+visibles (etiqueta, conversación pendiente), para que dos pasadas
+solapadas del cron no etiqueten dos veces al mismo contacto.
+
+## Reentrada tras "No responde"
+
+`src/lib/inbox/reentrada.ts`, llamado desde el webhook al lado de
+`reopenClosedConversation`. Un contacto marcado "No responde" que
+vuelve a escribir: se le pone "En gestión", se le saca "No responde" y
+la conversación vuelve a pendiente asignada a
+`accounts.agente_reentrada` (columna nueva; en NULL queda pendiente sin
+dueño).
+
+**Por qué ahí y no en una automatización**: ninguna acción existente
+sabe "sacar la etiqueta anterior Y asignar la conversación" — serían
+dos encadenadas por `tag_added`, justo el lazo que el motor limita por
+profundidad. Y no puede ser un nodo de flujo porque no hay corrida: la
+anterior murió por timeout, de eso se trata. Cuesta **una consulta** en
+el caso común. El bot no se reinicia: su disparador es el primer
+mensaje entrante y este no lo es.
+
+Se pone "En gestión" **antes** de sacar "No responde": el trigger
+`trg_single_etapa_tag` borra la anterior al insertar la nueva, y al
+revés el contacto quedaría un instante sin estado.
+
+## Archivos en medio del guion
+
+Una foto, un audio o un documento llegaban al motor como
+`{ kind: 'text', text: '' }`, así que el bot los leía como "no entendí"
+y repreguntaba. Ahora viajan como `kind: 'media'` y una corrida activa
+que recibe uno **traspasa** con la nota "Mandó un archivo".
+
+## El flujo de Kosmo (migración 050)
+
+19 nodos: `wait` 25 s → "En gestión" → los cuatro pasos del guion. Las
+cuatro etiquetas se resuelven **por nombre dentro de la cuenta** y
+Matías **por email** (`matias@saysells.com`); no hay un solo UUID
+pegado a mano, y hay un test que lo verifica.
+
+Idempotente y **no destructiva**: si el flujo ya existe por nombre se
+reemplaza su contenido conservando la fila (se actualizan los campos,
+se borran los nodos y se reinsertan). Borrar el flujo entero se
+llevaría puestas las corridas y su historial (`flow_runs` cascadea).
+Como los `node_key` no cambian, una corrida en curso sigue funcionando
+después de correr la migración.
+
+`src/lib/flows/flujo-kosmo.test.ts` **parsea el SQL** en vez de duplicar
+el grafo en TypeScript, y verifica que toda referencia entre nodos
+cierre y que el grafo pase el validador de activación. Un
+`'positive_next', 'paso_3'` donde el nodo se llama `paso3` no lo
+detecta ni Postgres (es JSONB) ni el editor: se descubriría con un lead
+real, cuando la corrida muere a mitad del guion.
+
+## Pendientes de esta sesión
+
+- **Nada se probó contra Meta ni contra Supabase reales.** No hay
+  Postgres local: las tres migraciones no se ejecutaron nunca. Lo
+  verificado es la lógica pura, el motor contra un Supabase falso y la
+  integridad del grafo leyendo el SQL.
+- **El cron tiene que pasar a cada minuto** o el `wait` de 25 segundos
+  se va a sentir como varios minutos. Es un cambio de configuración del
+  pinger, fuera del repo.
+- El `timeout` por nodo **no tiene UI**: se carga por JSONB.
+- Un `wait` está capado a 1 hora (`MAX_WAIT_SECONDS` en `validate.ts`)
+  porque mantiene la corrida activa ocupando el índice único de
+  una-corrida-por-contacto. Para pausas largas, la herramienta es el
+  timeout.
+- La señal `senal_lead_grande` del formulario (`volumen_restock` >
+  USD 3.000) del guion **no** está: es una automatización por
+  `tag_added`, no parte del bot.
+- La reentrada asigna la conversación **aunque ya tenga agente**. Un
+  contacto en "No responde" es, por definición, uno que nadie está
+  atendiendo, pero si eso molesta el cambio es una condición.
