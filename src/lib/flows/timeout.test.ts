@@ -159,3 +159,42 @@ describe("selectExpiredRuns", () => {
     expect(out.map((d) => d.id)).toEqual(["a", "c"]);
   });
 });
+
+describe("resolveTimeout — la acción goto", () => {
+  const politica = {
+    on_unknown_reply: "reprompt" as const,
+    max_reprompts: 1,
+    on_timeout_hours: 24,
+    on_timeout: { action: "tag_and_end" as const, tag_id: "tag-no-responde" },
+    on_exhaust: "handoff" as const,
+  };
+
+  it("el nodo puede convertir su timeout en un salto", () => {
+    expect(
+      resolveTimeout(politica, {
+        timeout: { hours: 24, action: "goto", next_node_key: "seguimiento" },
+      }),
+    ).toMatchObject({
+      hours: 24,
+      action: "goto",
+      next_node_key: "seguimiento",
+      source: "node",
+    });
+  });
+
+  it("un goto sin destino se cae a la acción de la política", () => {
+    expect(
+      resolveTimeout(politica, { timeout: { hours: 2, action: "goto" } }),
+    ).toMatchObject({ hours: 2, action: "tag_and_end", tag_id: "tag-no-responde" });
+  });
+
+  it("el nodo que solo acorta las horas hereda el destino de la política", () => {
+    const conGoto = {
+      ...politica,
+      on_timeout: { action: "goto" as const, next_node_key: "seguimiento" },
+    };
+    expect(
+      resolveTimeout(conGoto, { timeout: { hours: 3 } }),
+    ).toMatchObject({ hours: 3, action: "goto", next_node_key: "seguimiento" });
+  });
+});

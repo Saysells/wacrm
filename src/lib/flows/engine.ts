@@ -1560,13 +1560,17 @@ export async function resumeFlowRun(args: {
 
 export interface ApplyTimeoutResult {
   applied: boolean;
-  action?: "tag_and_end" | "handoff";
+  action?: "tag_and_end" | "handoff" | "goto";
   /** Por qué no se aplicó, cuando no se aplicó. */
   reason?: "run_not_found" | "run_not_active" | "lost_race";
 }
 
 /**
- * Cierra una corrida vencida aplicando la acción configurada.
+ * Aplica a una corrida vencida la acción que le corresponde.
+ *
+ * Dos de las tres acciones la cierran (`tag_and_end`, `handoff`); la
+ * tercera (`goto`) la mueve a otro nodo y la deja viva, que es como el
+ * silencio pasa a ser un paso más del guion.
  *
  * El orden importa: primero se CLAVA el estado final de la corrida con
  * la precondición `status = 'active'`. Si otra pasada del cron (o un
@@ -1591,7 +1595,45 @@ export async function applyFlowTimeout(args: {
     if (error || !data) return { applied: false, reason: "run_not_found" };
     const run = data as FlowRunRow;
     if (run.status !== "active") {
+      // Corrida pausada por un agente, ya traspasada o ya vencida: no
+      // hay nada que aplicar. Es el caso que hace que el seguimiento
+      // NO salga si la persona contestó dentro de las 24 horas —
+      // `send-message.ts` la dejó en `paused_by_agent`.
       return { applied: false, reason: "run_not_active" };
+    }
+
+    // ---- goto: la única acción que NO cierra la corrida ----
+    if (timeout.action === "goto" && timeout.next_node_key) {
+      const destino = timeout.next_node_key;
+      // El claim es el propio movimiento del puntero, condicionado a
+      // que la corrida siga activa Y parada donde la leímos: dos
+      // pasadas solapadas del cron no pueden avanzarla dos veces.
+      const claimed = await advanceCurrentNodeKey(
+        db,
+        run.id,
+        run.current_node_key,
+        destino,
+      );
+      if (!claimed) return { applied: false, reason: "lost_race" };
+      await logEvent(db, run.id, "timeout", run.current_node_key, {
+        action: "goto",
+        source: timeout.source,
+        age_hours: args.ageHours,
+        policy_hours: timeout.hours,
+        next_node_key: destino,
+      });
+      const nodes = await loadAllNodes(db, run.flow_id);
+      // El puntero ya está en el destino, así que la corrida que ve el
+      // avance también: si el destino suspende, `parkAtNode` escribe
+      // sobre el valor correcto en vez de perder la carrera consigo
+      // mismo.
+      await advanceFromNodeKey(
+        db,
+        { ...run, current_node_key: destino },
+        destino,
+        nodes,
+      );
+      return { applied: true, action: "goto" };
     }
 
     const status = timeout.action === "handoff" ? "handed_off" : "timed_out";

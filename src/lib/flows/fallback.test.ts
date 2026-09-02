@@ -155,3 +155,19 @@ describe("resolveTimeoutAction", () => {
     });
   });
 });
+
+describe("resolveTimeoutAction — goto", () => {
+  it("acepta el salto cuando trae destino", () => {
+    expect(
+      resolveTimeoutAction({ action: "goto", next_node_key: "seguimiento" }),
+    ).toEqual({ action: "goto", next_node_key: "seguimiento" });
+  });
+
+  it("un goto sin destino se degrada al default", () => {
+    // Falla cerrado: dejar la corrida viva apuntando a la nada es
+    // peor que cerrarla como siempre.
+    expect(resolveTimeoutAction({ action: "goto" })).toEqual({
+      action: "tag_and_end",
+    });
+  });
+});

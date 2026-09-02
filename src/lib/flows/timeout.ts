@@ -12,7 +12,10 @@
  * campo". No es un capricho: un mismo flujo puede tener pasos donde el
  * silencio significa desinterés (No responde) y pasos donde significa
  * lo contrario — alguien que ya dijo que sí y solo no mandó el
- * horario. Ahí el timeout es un traspaso.
+ * horario. Ahí el timeout es un traspaso. Y con `goto`, el silencio
+ * puede ser directamente el disparador del paso siguiente: 24 horas
+ * después de mandar el catálogo es cuando corresponde preguntar si lo
+ * pudo ver.
  */
 
 import { resolveTimeoutAction } from "./fallback";
@@ -20,9 +23,11 @@ import type { FlowFallbackPolicy, FlowNodeTimeout } from "./types";
 
 export interface ResolvedTimeout {
   hours: number;
-  action: "tag_and_end" | "handoff";
+  action: "tag_and_end" | "handoff" | "goto";
   tag_id?: string;
   note?: string;
+  /** A dónde sigue la corrida. Solo lo mira `goto`, que lo exige. */
+  next_node_key?: string;
   /** De dónde salió la acción. Solo para el evento de auditoría. */
   source: "policy" | "node";
 }
@@ -47,10 +52,20 @@ export function resolveTimeout(
     typeof raw.hours === "number" && raw.hours > 0
       ? raw.hours
       : policy.on_timeout_hours;
-  const action =
-    raw.action === "handoff" || raw.action === "tag_and_end"
+  const next_node_key =
+    typeof raw.next_node_key === "string" && raw.next_node_key
+      ? raw.next_node_key
+      : base.next_node_key;
+  let action =
+    raw.action === "handoff" ||
+    raw.action === "tag_and_end" ||
+    raw.action === "goto"
       ? raw.action
       : base.action;
+  // Un `goto` sin destino no puede aplicarse: la corrida quedaría viva
+  // apuntando a la nada. Se cae a la acción de la política, que nunca
+  // es un `goto` roto (`resolveTimeoutAction` ya lo degradó).
+  if (action === "goto" && !next_node_key) action = base.action;
   const tag_id = typeof raw.tag_id === "string" && raw.tag_id ? raw.tag_id : base.tag_id;
   const note = typeof raw.note === "string" && raw.note ? raw.note : base.note;
   return {
@@ -58,6 +73,7 @@ export function resolveTimeout(
     action,
     ...(tag_id ? { tag_id } : {}),
     ...(note ? { note } : {}),
+    ...(next_node_key ? { next_node_key } : {}),
     source: "node",
   };
 }

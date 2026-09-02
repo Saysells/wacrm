@@ -24,10 +24,16 @@ import { selectExpiredRuns, type SweepCandidate } from '@/lib/flows/timeout'
  * El barrido, en detalle: para cada corrida activa se resuelve qué
  * timeout rige — el del nodo donde está parada si lo trae, si no el de
  * la política del flujo — y, si venció, se aplica la acción
- * configurada: `tag_and_end` (etiqueta al contacto y cierra) o
- * `handoff` (deja la conversación pendiente). Antes esto solo marcaba
- * la corrida `timed_out` y del lado del contacto no quedaba rastro de
- * que se lo había perdido.
+ * configurada: `tag_and_end` (etiqueta al contacto y cierra),
+ * `handoff` (deja la conversación pendiente) o `goto` (avanza a otro
+ * nodo y la corrida sigue viva). Antes esto solo marcaba la corrida
+ * `timed_out` y del lado del contacto no quedaba rastro de que se lo
+ * había perdido.
+ *
+ * El `goto` es el que convierte al cron en parte del guion y no solo
+ * en el que limpia: el seguimiento del catálogo de Kosmo son 24 horas
+ * de silencio después de mandar la lista, y quien las cuenta es este
+ * barrido.
  *
  * Without this sweep, a customer who abandons a flow mid-conversation
  * keeps a row in `idx_one_active_run_per_contact` (the partial unique

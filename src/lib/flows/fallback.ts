@@ -66,19 +66,30 @@ export function resolveFallbackPolicy(
  * TODA política guardada antes de esta versión llega sin él: el
  * default (`tag_and_end` sin etiqueta) tiene que ser exactamente el
  * comportamiento viejo del barrido — cerrar la corrida y nada más.
+ *
+ * `goto` sin `next_node_key` no es `goto`: se degrada al default en
+ * vez de dejar una corrida viva apuntando a la nada. Falla cerrado,
+ * como el resto del resolvedor.
  */
 export function resolveTimeoutAction(raw: unknown): FlowTimeoutAction {
   const fallback = DEFAULT_FALLBACK_POLICY.on_timeout;
   if (!raw || typeof raw !== "object") return fallback;
   const r = raw as Partial<FlowTimeoutAction>;
+  const nextKey =
+    typeof r.next_node_key === "string" && r.next_node_key
+      ? r.next_node_key
+      : undefined;
   const action =
-    r.action === "handoff" || r.action === "tag_and_end"
+    r.action === "handoff" ||
+    r.action === "tag_and_end" ||
+    (r.action === "goto" && nextKey)
       ? r.action
       : fallback.action;
   return {
     action,
     ...(typeof r.tag_id === "string" && r.tag_id ? { tag_id: r.tag_id } : {}),
     ...(typeof r.note === "string" && r.note ? { note: r.note } : {}),
+    ...(nextKey ? { next_node_key: nextKey } : {}),
   };
 }
 

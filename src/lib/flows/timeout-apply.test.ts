@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   state: {
     run: null as Record<string, unknown> | null,
+    /** Nodos del flujo, para el avance del `goto`. */
+    nodes: [] as unknown[],
     /** Filas que la UPDATE con precondición devuelve. Vacío = perdí la carrera. */
     claimReturns: [{ id: "run-1" }] as unknown[],
     inserted: [] as { table: string; row: Record<string, unknown> }[],
@@ -44,8 +46,14 @@ vi.mock("./admin-client", () => {
       then: (resolve: (r: { data: unknown[]; error: null }) => unknown) =>
         resolve({
           // La UPDATE de claim sobre flow_runs es la única que mira el
-          // resultado; para el resto da igual.
-          data: table === "flow_runs" ? h.state.claimReturns : [],
+          // resultado; para el resto da igual, salvo los nodos que el
+          // `goto` necesita para seguir.
+          data:
+            table === "flow_runs"
+              ? h.state.claimReturns
+              : table === "flow_nodes"
+                ? h.state.nodes
+                : [],
           error: null,
         }),
     };
@@ -115,6 +123,45 @@ const HANDOFF: ResolvedTimeout = {
   source: "node",
 };
 
+/** Nodos del seguimiento: el `goto` cae en `seguimiento`, que pregunta. */
+const NODOS = [
+  {
+    id: "seguimiento",
+    flow_id: "flow-1",
+    node_key: "seguimiento",
+    node_type: "classify_reply",
+    config: {
+      prompt_text: "¿Pudiste ver el catálogo?",
+      negative: ["no"],
+      positive: ["si"],
+      negative_next: "traspaso_no_quiere",
+      positive_next: "paso4",
+      unknown_next: "traspaso_no_quiere",
+    },
+  },
+  {
+    id: "paso4",
+    flow_id: "flow-1",
+    node_key: "paso4",
+    node_type: "end",
+    config: {},
+  },
+  {
+    id: "traspaso_no_quiere",
+    flow_id: "flow-1",
+    node_key: "traspaso_no_quiere",
+    node_type: "end",
+    config: {},
+  },
+];
+
+const GOTO: ResolvedTimeout = {
+  hours: 24,
+  action: "goto",
+  next_node_key: "seguimiento",
+  source: "node",
+};
+
 function updatesTo(table: string) {
   return h.state.updated.filter((u) => u.table === table).map((u) => u.row);
 }
@@ -127,6 +174,7 @@ function events() {
 
 beforeEach(() => {
   h.state.run = activeRun();
+  h.state.nodes = NODOS;
   h.state.claimReturns = [{ id: "run-1" }];
   h.state.inserted = [];
   h.state.updated = [];
@@ -246,5 +294,70 @@ describe("applyFlowTimeout — corridas que ya no aplican", () => {
         ageHours: 25,
       }),
     ).toEqual({ applied: false, reason: "run_not_found" });
+  });
+});
+
+describe("applyFlowTimeout — goto", () => {
+  it("mueve el puntero al nodo indicado y no cierra la corrida", async () => {
+    const result = await applyFlowTimeout({
+      runId: "run-1",
+      timeout: GOTO,
+      ageHours: 24.2,
+    });
+
+    expect(result).toEqual({ applied: true, action: "goto" });
+    const runs = updatesTo("flow_runs");
+    expect(runs[0]).toMatchObject({ current_node_key: "seguimiento" });
+    // Ninguna escritura la termina.
+    expect(runs.filter((r) => "ended_at" in r)).toEqual([]);
+    expect(h.state.taggedWith).toEqual([]);
+    // No es un traspaso: la conversación no se toca.
+    expect(updatesTo("conversations")).toEqual([]);
+  });
+
+  it("deja el evento de timeout con el destino", async () => {
+    await applyFlowTimeout({ runId: "run-1", timeout: GOTO, ageHours: 24.2 });
+
+    const timeout = events().find((e) => e.event_type === "timeout");
+    expect(timeout?.payload).toMatchObject({
+      action: "goto",
+      source: "node",
+      age_hours: 24.2,
+      next_node_key: "seguimiento",
+    });
+  });
+
+  it("no avanza dos veces si otra pasada del cron le ganó la corrida", async () => {
+    h.state.claimReturns = [];
+
+    const result = await applyFlowTimeout({
+      runId: "run-1",
+      timeout: GOTO,
+      ageHours: 24.2,
+    });
+
+    expect(result).toEqual({ applied: false, reason: "lost_race" });
+    expect(events()).toEqual([]);
+  });
+
+  it("no sale el seguimiento si el agente contestó dentro de las 24 h", async () => {
+    // send-message.ts deja en `paused_by_agent` toda corrida activa
+    // del contacto cuando un agente manda un mensaje. Que Matías
+    // conteste es, entonces, lo que apaga el seguimiento — y es lo
+    // buscado: si ya hay conversación, el bot se corre.
+    h.state.run = activeRun({
+      status: "paused_by_agent",
+      end_reason: "agent_replied",
+    });
+
+    const result = await applyFlowTimeout({
+      runId: "run-1",
+      timeout: GOTO,
+      ageHours: 26,
+    });
+
+    expect(result).toEqual({ applied: false, reason: "run_not_active" });
+    expect(updatesTo("flow_runs")).toEqual([]);
+    expect(events()).toEqual([]);
   });
 });

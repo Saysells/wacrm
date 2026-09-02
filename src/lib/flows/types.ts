@@ -164,13 +164,20 @@ export interface CollectInputNodeConfig {
  *     termina como traspasada. Para el caso en que el silencio NO
  *     significa desinterés — alguien que ya dijo que sí y solo no
  *     mandó el horario.
+ *   - `goto`: la corrida AVANZA a `next_node_key` y sigue activa. La
+ *     única de las tres que no es terminal. Es el silencio que
+ *     habilita el paso siguiente del guion: el lead recibió el
+ *     catálogo, pasaron 24 horas sin que nadie diga nada, y recién ahí
+ *     tiene sentido preguntarle si lo pudo ver.
  */
 export interface FlowTimeoutAction {
-  action: "tag_and_end" | "handoff";
+  action: "tag_and_end" | "handoff" | "goto";
   /** Etiqueta a aplicar. Solo la mira `tag_and_end`. */
   tag_id?: string;
   /** Nota interna del traspaso; interpola variables como cualquier texto. */
   note?: string;
+  /** A dónde sigue la corrida. Obligatorio para `goto`, ignorado por el resto. */
+  next_node_key?: string;
 }
 
 /**
