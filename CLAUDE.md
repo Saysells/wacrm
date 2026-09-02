@@ -423,9 +423,46 @@ llevan grupo `origen` / `senal`; el resto queda en `null`.
   deshabilitado con tooltip).
 - **API v1**: cada tag de `/contacts` y `/conversations` trae `grupo`
   (`serializeTag` en `src/lib/api/v1/contacts.ts`).
-- El gestor de etiquetas de Configuración filtra por `user_id` (código
-  upstream): un admin que no es owner no ve las de estado, que la 046
-  creó a nombre del owner.
+- ~~El gestor de etiquetas de Configuración filtra por `user_id`~~:
+  desde la sesión de cierre filtra por `account_id`, como la ficha, así
+  cualquier admin ve las 13 de estado (creadas a nombre del owner).
+
+## Fecha de la llamada y realtime (sesión de cierre, 2026-09-02)
+
+Migración **047** (aplicada): `contacts.fecha_llamada` (timestamptz) y
+`tags.requiere_fecha` (true en Agendado a Paola, Agendado a Gustavo,
+Agendada y Reagendado). `contact_tags` y `contacts` entran en la
+publicación `supabase_realtime` (REPLICA IDENTITY FULL en
+`contact_tags`). El trigger del puente manda `fecha_llamada` al CRM
+junto con la etiqueta.
+
+- **Primero la fecha, después la etiqueta. No es negociable.** El aviso
+  al CRM sale del INSERT en `contact_tags` y lee
+  `contacts.fecha_llamada`: si la etiqueta entrara antes, el CRM
+  recibiría la fecha vieja. `scheduleWithDate`
+  (`src/lib/inbox/fecha-llamada.ts`) guarda la fecha con un update
+  directo (RLS `contacts_update`, agent+) y recién después llama a
+  `attachTag`; si guardar falla, no aplica nada. Hay un test que fija
+  ese orden.
+- **Ficha**: al elegir una etiqueta con `requiere_fecha` se abre el
+  modal "Fecha y hora de la llamada" (`datetime-local`; sugerida mañana
+  10:00 hora local, o la del contacto si ya tiene). Cancelar no aplica
+  la etiqueta. Al lado del estado se ve la fecha corta
+  ("Jue 03/09 · 10:00") con un lápiz que solo corrige la fecha (no
+  vuelve a aplicar la etiqueta ni dispara otro aviso).
+- **API v1**: `PATCH /api/v1/contacts/{id}` acepta `fecha_llamada`
+  (ISO 8601 válida, se normaliza a UTC, o null; otro tipo → 400) vía
+  `parseContactUpdates`; `serializeContact` la expone. Es el camino de
+  vuelta CRM → Bandeja.
+- **Realtime de la ficha**: `subscribeToContactChanges`
+  (`src/lib/inbox/contact-realtime.ts`) arma un canal por contacto
+  (`contact_tags` INSERT/DELETE por `contact_id`, `contacts` UPDATE por
+  `id`) y ante cualquier evento la ficha relee (`fetchContactData`).
+  Se desuscribe al desmontar o cambiar de contacto. La lista se entera
+  por `onTagsChange`, el mismo aviso que ya usaba.
+- **Pendiente sin navegador**: nada de esto se probó contra Supabase
+  real; lo verificado es la lógica pura y que la suscripción se arma
+  con los filtros correctos (mock).
 
 # Roles y permisos
 

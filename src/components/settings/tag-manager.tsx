@@ -60,21 +60,26 @@ export function TagManager() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
+    if (!user || !accountId) {
       setLoading(false);
       return;
     }
-    fetchTags(user.id);
+    fetchTags(accountId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id]);
+  }, [authLoading, user?.id, accountId]);
 
-  async function fetchTags(userId: string) {
+  // Las etiquetas son de la CUENTA, no de quien las creo: se filtra por
+  // account_id (como hace la ficha de la Bandeja) y no por user_id
+  // (upstream), que le escondia a un admin no-owner las 13 de estado
+  // que la migracion 046 creo a nombre del owner. Los permisos siguen
+  // en la RLS: tags_update/tags_delete piden admin+.
+  async function fetchTags(forAccountId: string) {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('tags')
         .select('*')
-        .eq('user_id', userId)
+        .eq('account_id', forAccountId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -118,7 +123,7 @@ export function TagManager() {
       setNewTagName('');
       setSelectedColor(DEFAULT_TAG_COLOR);
       setSelectedGrupo('none');
-      await fetchTags(user.id);
+      await fetchTags(accountId);
     } catch (err) {
       console.error('Create error:', err);
       toast.error(t('failedToCreateTag'));
