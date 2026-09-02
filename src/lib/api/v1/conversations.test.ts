@@ -19,14 +19,17 @@ describe('serializeConversation', () => {
         id: 'c1',
         phone: '+1',
         name: 'Jane',
-        tags: [{ id: 't1', name: 'vip', color: '#fff' }],
+        tags: [{ id: 't1', name: 'vip', color: '#fff', grupo: 'estado' }],
       },
     } as unknown as Conversation;
 
     const out = serializeConversation(conv);
     expect(out).not.toHaveProperty('user_id');
     expect(out).not.toHaveProperty('account_id');
-    expect(out.contact?.tags).toEqual([{ id: 't1', name: 'vip', color: '#fff' }]);
+    // Misma forma de tag que /contacts: id, name, color y grupo.
+    expect(out.contact?.tags).toEqual([
+      { id: 't1', name: 'vip', color: '#fff', grupo: 'estado' },
+    ]);
     expect(out.unread_count).toBe(2);
   });
 });

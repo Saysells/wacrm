@@ -20,7 +20,7 @@ describe('serializeContact', () => {
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
       contact_tags: [
-        { tags: { id: 't1', name: 'vip', color: '#fff' } },
+        { tags: { id: 't1', name: 'vip', color: '#fff', grupo: null } },
         { tags: null }, // orphaned join — dropped
       ],
     };
@@ -31,10 +31,30 @@ describe('serializeContact', () => {
       email: null,
       company: 'Acme',
       avatar_url: null,
-      tags: [{ id: 't1', name: 'vip', color: '#fff' }],
+      tags: [{ id: 't1', name: 'vip', color: '#fff', grupo: null }],
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
     });
+  });
+
+  it('expone el grupo de cada etiqueta (estado / origen / senal / null)', () => {
+    const row = {
+      id: 'c1',
+      phone: '+1',
+      created_at: 'a',
+      updated_at: 'b',
+      contact_tags: [
+        { tags: { id: 'e1', name: 'En gestión', color: '#06b6d4', grupo: 'estado' } },
+        { tags: { id: 'o1', name: 'origen_form', color: '#000', grupo: 'origen' } },
+        // Fila vieja sin la columna (antes de la 046): sale como null.
+        { tags: { id: 'f1', name: 'vip', color: '#fff' } },
+      ],
+    };
+    expect(serializeContact(row).tags.map((t) => [t.name, t.grupo])).toEqual([
+      ['En gestión', 'estado'],
+      ['origen_form', 'origen'],
+      ['vip', null],
+    ]);
   });
 
   it('tolerates a row with no contact_tags key', () => {

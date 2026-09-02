@@ -168,7 +168,10 @@ send), `template_malformed` (500).
 
 List contacts, newest first. Scope: `contacts:read`. Paginated (see
 [Pagination](#pagination)). Optional filters: `?search=` (matches name
-or phone) and `?tag=<tagId>`.
+or phone) and `?tag=<tagId>`. Each tag carries `grupo`: `"estado"` for
+the pipeline-stage tags (a contact has at most one, enforced in the
+database), `"origen"` / `"senal"` for bot-managed tags, or `null` for
+free-form tags.
 
 ```json
 {
@@ -176,7 +179,7 @@ or phone) and `?tag=<tagId>`.
     {
       "id": "…", "phone": "+14155550123", "name": "Jane Doe",
       "email": null, "company": "Acme", "avatar_url": null,
-      "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6" }],
+      "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6", "grupo": null }],
       "created_at": "…", "updated_at": "…"
     }
   ],

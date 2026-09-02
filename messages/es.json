@@ -1377,6 +1377,14 @@
       "deleteConfirm": "¿Eliminar la etiqueta \"{name}\"? Se quita de todos los contactos y no se puede deshacer.",
       "cancel": "Cancelar",
       "deleting": "Eliminando...",
+      "grupoLabel": "Grupo",
+      "grupos": {
+        "none": "Ninguno",
+        "estado": "Estado",
+        "origen": "Origen",
+        "senal": "Señal"
+      },
+      "estadoTagLocked": "Es una etiqueta de estado del CRM",
       "colors": {
         "red": "Rojo",
         "orange": "Naranja",

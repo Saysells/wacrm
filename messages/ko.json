@@ -1377,6 +1377,14 @@
       "deleteConfirm": "\"{name}\" 태그를 삭제하시겠습니까? 모든 연락처에서 제거되며 되돌릴 수 없습니다.",
       "cancel": "취소",
       "deleting": "삭제 중...",
+      "grupoLabel": "그룹",
+      "grupos": {
+        "none": "없음",
+        "estado": "상태",
+        "origen": "출처",
+        "senal": "신호"
+      },
+      "estadoTagLocked": "CRM 상태 태그입니다",
       "colors": {
         "red": "빨강",
         "orange": "주황",

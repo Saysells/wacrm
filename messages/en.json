@@ -1377,6 +1377,14 @@
       "deleteConfirm": "Delete the tag \"{name}\"? This removes it from all contacts and cannot be undone.",
       "cancel": "Cancel",
       "deleting": "Deleting...",
+      "grupoLabel": "Group",
+      "grupos": {
+        "none": "None",
+        "estado": "Status",
+        "origen": "Source",
+        "senal": "Signal"
+      },
+      "estadoTagLocked": "This is a CRM status tag",
       "colors": {
         "red": "Red",
         "orange": "Orange",

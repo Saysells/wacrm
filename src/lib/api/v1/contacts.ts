@@ -13,6 +13,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import type { TagGrupo } from '@/types';
 
 /** Row select that embeds the contact's tags for serialization. */
 export const CONTACT_SELECT = '*, contact_tags(tags(*))';
@@ -24,9 +25,30 @@ export interface ApiContact {
   email: string | null;
   company: string | null;
   avatar_url: string | null;
-  tags: { id: string; name: string; color: string }[];
+  tags: ApiTag[];
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Forma publica de una etiqueta. `grupo` (migracion 046) distingue las
+ * 13 de estado del proceso comercial de las libres; un integrador que
+ * lee contactos sabe asi cual es "el estado" sin comparar nombres.
+ */
+export interface ApiTag {
+  id: string;
+  name: string;
+  color: string;
+  grupo: TagGrupo | null;
+}
+
+export function serializeTag(t: {
+  id: string;
+  name: string;
+  color: string;
+  grupo?: TagGrupo | null;
+}): ApiTag {
+  return { id: t.id, name: t.name, color: t.color, grupo: t.grupo ?? null };
 }
 
 /** Thrown by the helpers below; routes map `.status`/`.message`. */
@@ -39,7 +61,9 @@ export class ContactError extends Error {
   }
 }
 
-type RawTagJoin = { tags: { id: string; name: string; color: string } | null };
+type RawTagJoin = {
+  tags: { id: string; name: string; color: string; grupo?: TagGrupo | null } | null;
+};
 
 /** Flatten a `CONTACT_SELECT` row into the public contact shape. */
 export function serializeContact(row: Record<string, unknown>): ApiContact {
@@ -54,7 +78,7 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
     tags: joins
       .map((j) => j.tags)
       .filter((t): t is NonNullable<RawTagJoin['tags']> => t != null)
-      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
+      .map(serializeTag),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };

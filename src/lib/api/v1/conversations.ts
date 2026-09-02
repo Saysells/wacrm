@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { Conversation, Message } from '@/types';
+import { serializeTag, type ApiTag } from '@/lib/api/v1/contacts';
 
 export interface ApiConversation {
   id: string;
@@ -26,7 +27,7 @@ export interface ApiConversation {
     name: string | null;
     email: string | null;
     company: string | null;
-    tags: { id: string; name: string; color: string }[];
+    tags: ApiTag[];
   } | null;
 }
 
@@ -69,11 +70,7 @@ export function serializeConversation(conv: Conversation): ApiConversation {
           name: c.name ?? null,
           email: c.email ?? null,
           company: c.company ?? null,
-          tags: (c.tags ?? []).map((t) => ({
-            id: t.id,
-            name: t.name,
-            color: t.color,
-          })),
+          tags: (c.tags ?? []).map(serializeTag),
         }
       : null,
   };

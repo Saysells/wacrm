@@ -22,10 +22,21 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
+import { isEstadoTag, TAG_GRUPOS } from '@/lib/contacts/tag-groups';
 import { useTranslations } from 'next-intl';
-import type { Tag } from '@/types';
+import type { Tag, TagGrupo } from '@/types';
+
+/** Opcion del selector "Grupo": los tres grupos o ninguno (null). */
+type GrupoOption = TagGrupo | 'none';
 
 /**
  * Tags card — colour-coded contact labels. Creation is an inline row
@@ -45,6 +56,7 @@ export function TagManager() {
   const [deleting, setDeleting] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [selectedColor, setSelectedColor] = useState(DEFAULT_TAG_COLOR);
+  const [selectedGrupo, setSelectedGrupo] = useState<GrupoOption>('none');
 
   useEffect(() => {
     if (authLoading) return;
@@ -95,6 +107,9 @@ export function TagManager() {
         account_id: accountId,
         name: newTagName.trim(),
         color: selectedColor,
+        // `grupo` (migracion 046): 'estado' entra en la regla de "una
+        // sola por contacto" y avisa al CRM; la base lo valida (CHECK).
+        grupo: selectedGrupo === 'none' ? null : selectedGrupo,
       });
 
       if (error) throw error;
@@ -102,6 +117,7 @@ export function TagManager() {
       toast.success(t('tagCreated'));
       setNewTagName('');
       setSelectedColor(DEFAULT_TAG_COLOR);
+      setSelectedGrupo('none');
       await fetchTags(user.id);
     } catch (err) {
       console.error('Create error:', err);
@@ -175,14 +191,32 @@ export function TagManager() {
                       style={{ backgroundColor: tag.color }}
                     />
                     {tag.name}
-                    <button
-                      type="button"
-                      onClick={() => confirmDelete(tag)}
-                      aria-label={t('deleteAria', { name: tag.name })}
-                      className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+                    {tag.grupo && (
+                      <span className="text-[10px] font-normal uppercase tracking-wider opacity-70">
+                        {t(`grupos.${tag.grupo}`)}
+                      </span>
+                    )}
+                    {/* Las de estado no se borran desde la UI: son el
+                        embudo del CRM. El title va en el span (no en el
+                        boton) porque Safari no dispara mouseover sobre
+                        un control deshabilitado, ver gated-button.tsx. */}
+                    <span
+                      className={cn(
+                        'inline-flex',
+                        isEstadoTag(tag) && 'cursor-not-allowed'
+                      )}
+                      title={isEstadoTag(tag) ? t('estadoTagLocked') : undefined}
                     >
-                      <X className="size-3" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmDelete(tag)}
+                        disabled={isEstadoTag(tag)}
+                        aria-label={t('deleteAria', { name: tag.name })}
+                        className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-white/10"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
                   </span>
                 ))}
               </div>
@@ -223,6 +257,26 @@ export function TagManager() {
                   />
                 ))}
               </div>
+              <Select
+                value={selectedGrupo}
+                onValueChange={(v) => v && setSelectedGrupo(v as GrupoOption)}
+              >
+                <SelectTrigger
+                  aria-label={t('grupoLabel')}
+                  disabled={saving}
+                  className="w-32 bg-muted border-border text-foreground"
+                >
+                  <SelectValue>{t(`grupos.${selectedGrupo}`)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('grupos.none')}</SelectItem>
+                  {TAG_GRUPOS.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {t(`grupos.${g}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 size="sm"

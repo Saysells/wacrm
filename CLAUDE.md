@@ -390,6 +390,43 @@ todo el catálogo que le faltaba.
   `etapa_*` anterior y la lista local no lo sabe. Y el `ScrollArea` de
   la ficha lleva `min-h-0` (issue #229, mismo defecto que la lista).
 
+# Etiquetas de estado (`tags.grupo`)
+
+Sesión 2026-09-02 (pedida por Eze). Migración **046** (aplicada):
+`tags.grupo` es `'estado' | 'origen' | 'senal' | null` (CHECK en la
+base). Las `etapa_*` ya no existen: las 13 etiquetas de **estado**
+tienen nombre humano y siguen el embudo del setter, en este orden:
+Nuevo, En gestión, No responde, Agendado a Paola, Agendado a Gustavo,
+Agendada, No se presentó, Reagendado, Realizada, Propuesta,
+En negociación, Ganada, Perdido. `origen_*` y `senal_*` (bot de Kosmo)
+llevan grupo `origen` / `senal`; el resto queda en `null`.
+
+- **La regla de "una sola de estado por contacto" vive en la base**
+  (trigger `trg_single_etapa_tag`, ahora por `grupo = 'estado'`), y el
+  aviso al CRM (`trg_notify_crm_on_etapa_tag`) también. El frontend no
+  la replica: `withTagAttached` solo saca del estado local el estado
+  anterior para que la ficha no muestre dos un instante, y después
+  relee (`fetchContactData`).
+- **Dónde se conoce el grupo**: `Tag.grupo` en `src/types/index.ts`;
+  `src/lib/contacts/tag-groups.ts` (`ESTADO_FUNNEL`, `isEstadoTag`,
+  `sortByFunnel`, `findEstadoTag`); `groupAssignableTags` y
+  `orderAttachedTags` en `src/lib/inbox/contact-tags.ts`.
+- **Bandeja**: la etiqueta de estado va primera en la ficha, como
+  pastilla llena con rótulo "Estado" y **sin X** (se cambia eligiendo
+  otra; dejar sin estado se hace desde Contactos). El popover se parte
+  en "Estado" (orden de embudo) y "Otras" (alfabético). La lista de
+  conversaciones muestra el estado como chip al lado del nombre; la
+  ficha avisa a la página (`onTagsChange`) para que el chip no quede
+  viejo.
+- **Configuración → Etiquetas**: muestra el grupo, ofrece un selector
+  "Grupo" al crear, y las de estado no se borran desde la UI (botón
+  deshabilitado con tooltip).
+- **API v1**: cada tag de `/contacts` y `/conversations` trae `grupo`
+  (`serializeTag` en `src/lib/api/v1/contacts.ts`).
+- El gestor de etiquetas de Configuración filtra por `user_id` (código
+  upstream): un admin que no es owner no ve las de estado, que la 046
+  creó a nombre del owner.
+
 # Roles y permisos
 
 Sesión 1 (2026-08-31). Decisión de Eze: el rol `agent` (vendedores) ve una
