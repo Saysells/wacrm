@@ -102,11 +102,11 @@ BEGIN
   -- ============================================================
   SELECT p.user_id, p.account_id INTO v_matias, v_cuenta
     FROM profiles p
-   WHERE lower(p.email) = 'matias@saysells.com'
+   WHERE lower(p.email) = 'saysellsmatias@gmail.com'
    LIMIT 1;
 
   IF v_matias IS NULL OR v_cuenta IS NULL THEN
-    RAISE EXCEPTION 'No hay perfil matias@saysells.com con cuenta: el flujo asigna los traspasos a él y no se puede cargar sin ese dato.';
+    RAISE EXCEPTION 'No hay perfil saysellsmatias@gmail.com con cuenta: el flujo asigna los traspasos a él y no se puede cargar sin ese dato.';
   END IF;
 
   SELECT a.owner_user_id INTO v_owner FROM accounts a WHERE a.id = v_cuenta;

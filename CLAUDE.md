@@ -684,7 +684,7 @@ que recibe uno **traspasa** con la nota "Mandó un archivo".
 
 19 nodos: `wait` 25 s → "En gestión" → los cuatro pasos del guion. Las
 cuatro etiquetas se resuelven **por nombre dentro de la cuenta** y
-Matías **por email** (`matias@saysells.com`); no hay un solo UUID
+Matías **por email** (`saysellsmatias@gmail.com`); no hay un solo UUID
 pegado a mano, y hay un test que lo verifica.
 
 Idempotente y **no destructiva**: si el flujo ya existe por nombre se

@@ -16,7 +16,7 @@
 --   3. `agente_reentrada` apuntando a Matías en esa cuenta.
 --
 -- Cómo se identifica "la cuenta de Kosmo": es la cuenta a la que
--- pertenece el perfil `matias@saysells.com`. Es el mismo dato que ya
+-- pertenece el perfil `saysellsmatias@gmail.com`. Es el mismo dato que ya
 -- usa el flujo del bot para las asignaciones, así que no se agrega una
 -- segunda forma de nombrarla. Si ese perfil no existe, la migración
 -- avisa y no toca nada — adivinar la cuenta podría prenderle una beta a
@@ -43,11 +43,11 @@ DECLARE
 BEGIN
   SELECT p.user_id, p.account_id INTO v_matias, v_cuenta
     FROM profiles p
-   WHERE lower(p.email) = 'matias@saysells.com'
+   WHERE lower(p.email) = 'saysellsmatias@gmail.com'
    LIMIT 1;
 
   IF v_matias IS NULL OR v_cuenta IS NULL THEN
-    RAISE NOTICE 'No hay perfil matias@saysells.com con cuenta: no se activa la beta de Flujos ni el agente de reentrada.';
+    RAISE NOTICE 'No hay perfil saysellsmatias@gmail.com con cuenta: no se activa la beta de Flujos ni el agente de reentrada.';
     RETURN;
   END IF;
 
