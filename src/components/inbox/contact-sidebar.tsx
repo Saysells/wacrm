@@ -319,7 +319,13 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   return (
     <div className="border-border bg-card flex h-full w-70 flex-col border-l">
-      <ScrollArea className="flex-1">
+      {/* `min-h-0` es imprescindible: un hijo flex arranca con
+          min-height:auto, asi que sin el este ScrollArea crece hasta el
+          alto del contenido (etiquetas, campos del formulario...), se
+          pasa del panel y el overflow-hidden del padre lo recorta sin
+          barra: oportunidades y notas quedan inaccesibles. Mismo caso
+          que la lista de conversaciones (issue #229). */}
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
