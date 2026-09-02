@@ -40,9 +40,12 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { classifyReply } from "./classify";
+import { interpolate } from "./interpolate";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
+  type ClassifyReplyNodeConfig,
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
   type DispatchInboundInput,
@@ -57,6 +60,7 @@ import {
   type SendMessageNodeConfig,
   type SetTagNodeConfig,
   type StartNodeConfig,
+  type WaitNodeConfig,
   type KeywordTriggerConfig,
 } from "./types";
 
@@ -144,12 +148,20 @@ export function isAutoAdvancing(node_type: string): boolean {
   );
 }
 
-/** Nodes that send a prompt and suspend awaiting a customer reply. */
+/**
+ * Nodes that suspend the run instead of advancing straight through.
+ *
+ * `wait` is in here even though nothing the customer does wakes it —
+ * from the graph's point of view "the run is parked at this node" is
+ * the same shape, and the cron is what supplies the wake-up.
+ */
 export function isSuspending(node_type: string): boolean {
   return (
     node_type === "send_buttons" ||
     node_type === "send_list" ||
-    node_type === "collect_input"
+    node_type === "collect_input" ||
+    node_type === "classify_reply" ||
+    node_type === "wait"
   );
 }
 
@@ -481,8 +493,12 @@ async function executeHandoff(
       .update(convUpdate)
       .eq("id", run.conversation_id);
   }
+  // La nota se interpola con las mismas variables que un send_message.
+  // Sin esto, "Quiere la llamada. Rango: {{vars.rango_horario}}" le
+  // llega al agente con las llaves puestas y sin el rango.
+  const note = cfg.note ? interpolate(cfg.note, { vars: run.vars }) : null;
   await logEvent(db, run.id, "handoff", node.node_key, {
-    note: cfg.note ?? null,
+    note,
     assigned_to: cfg.assign_to ?? null,
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
@@ -542,17 +558,168 @@ async function evaluateConditionNode(
 }
 
 /**
- * Tiny `{{vars.foo}}` interpolation. Used by send_message + collect_input
- * prompt text so a captured `name` can show up in the next prompt
- * ("Thanks {{vars.name}}, what's your email?"). Missing vars render as
- * empty string — the same behavior as the automations engine.
+ * Envía un texto al cliente y deja la corrida estacionada en este nodo
+ * esperando la respuesta. Es el cuerpo compartido de `collect_input` y
+ * de `classify_reply` con `prompt_text`: los dos preguntan y suspenden;
+ * lo único que cambia es qué hacen con lo que vuelva.
+ *
+ * Guarda `last_prompt_message_id` para que la bandeja pueda citar la
+ * pregunta que el cliente está contestando.
  */
-function interpolateVars(template: string, vars: Record<string, unknown>): string {
-  if (!template) return "";
-  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+)\}\}/g, (_, key) => {
-    const v = vars[key];
-    return v === undefined || v === null ? "" : String(v);
+async function sendPromptAndPark(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+  text: string,
+  failReason: string,
+): Promise<boolean> {
+  try {
+    const { whatsapp_message_id } = await engineSendText({
+      accountId: run.account_id,
+      userId: run.user_id,
+      conversationId: run.conversation_id!,
+      contactId: run.contact_id!,
+      text,
+    });
+    await logEvent(db, run.id, "message_sent", node.node_key, {
+      node_type: node.node_type,
+      whatsapp_message_id,
+    });
+    const { data: msg } = await db
+      .from("messages")
+      .select("id")
+      .eq("message_id", whatsapp_message_id)
+      .maybeSingle();
+    await db
+      .from("flow_runs")
+      .update({
+        last_prompt_message_id: (msg as { id: string } | null)?.id ?? null,
+      })
+      .eq("id", run.id);
+    return true;
+  } catch (err) {
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: failReason,
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    await endRun(db, run.id, "failed", failReason);
+    return false;
+  }
+}
+
+/**
+ * Mueve el puntero de la corrida a `node` con el UPDATE optimista de
+ * siempre. Se usa en cada nodo que suspende.
+ */
+async function parkAtNode(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+): Promise<void> {
+  const advanced = await advanceCurrentNodeKey(
+    db,
+    run.id,
+    run.current_node_key,
+    node.node_key,
+  );
+  if (!advanced) {
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "lost_race_during_advance",
+    });
+  }
+}
+
+/**
+ * Encola la reanudación de una corrida para dentro de N segundos.
+ *
+ * La cola es una tabla (`flow_pending_resumes`), no un timer: el
+ * proceso que atiende el webhook se apaga apenas contesta el 200 a
+ * Meta, y un `setTimeout` se apagaría con él. Mismo patrón que
+ * `automation_pending_executions`.
+ */
+async function scheduleFlowResume(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+  resumeNodeKey: string,
+  seconds: number,
+): Promise<void> {
+  const runAt = new Date(Date.now() + Math.max(0, seconds) * 1000);
+  const { error } = await db.from("flow_pending_resumes").insert({
+    flow_run_id: run.id,
+    account_id: run.account_id,
+    node_key: node.node_key,
+    resume_node_key: resumeNodeKey,
+    run_at: runAt.toISOString(),
   });
+  if (error) {
+    // Sin fila encolada la corrida se queda dormida para siempre, así
+    // que esto no puede pasar en silencio: se falla la corrida y queda
+    // el evento para el visor.
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "wait_enqueue_failed",
+      detail: error.message,
+    });
+    await endRun(db, run.id, "failed", "wait_enqueue_failed");
+    return;
+  }
+  await logEvent(db, run.id, "node_entered", node.node_key, {
+    node_type: "wait",
+    seconds,
+    resume_at: runAt.toISOString(),
+    resume_node_key: resumeNodeKey,
+  });
+}
+
+/**
+ * Clasifica `text` con las listas del nodo y devuelve a qué node_key
+ * hay que saltar. Guarda el texto CRUDO en vars si el nodo lo pide —
+ * crudo y no normalizado porque lo que se muestra en la ficha o se
+ * pega en la nota del handoff es lo que la persona escribió.
+ *
+ * Devuelve `null` cuando la rama que tocó no está configurada; el
+ * llamador la trata como "no hubo match" y cae en la política de
+ * fallback en vez de romper la corrida.
+ */
+async function routeClassifyReply(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+  text: string,
+): Promise<string | null> {
+  const cfg = node.config as unknown as ClassifyReplyNodeConfig;
+  const outcome = classifyReply(text, {
+    extra: cfg.extra?.keywords,
+    negative: cfg.negative,
+    positive: cfg.positive,
+  });
+
+  if (cfg.var_key) {
+    const newVars = { ...run.vars, [cfg.var_key]: text };
+    const { error } = await db
+      .from("flow_runs")
+      .update({ vars: newVars })
+      .eq("id", run.id);
+    // Espejo en memoria para que la interpolación del resto del avance
+    // vea el valor sin releer la fila.
+    if (!error) run.vars = newVars;
+  }
+
+  const target =
+    outcome === "extra"
+      ? (cfg.extra?.next_node_key ?? null)
+      : outcome === "negative"
+        ? (cfg.negative_next ?? null)
+        : outcome === "positive"
+          ? (cfg.positive_next ?? null)
+          : (cfg.unknown_next ?? null);
+
+  await logEvent(db, run.id, "node_entered", node.node_key, {
+    node_type: "classify_reply",
+    classified_as: outcome,
+    advancing_to: target,
+  });
+  return target && target.length > 0 ? target : null;
 }
 
 async function endRun(
@@ -578,11 +745,25 @@ async function endRun(
 // new current_node_key before returning.
 // ============================================================
 
+/**
+ * Lo que el avance sabe del mensaje que lo despertó.
+ *
+ * Solo lo necesita `classify_reply` sin `prompt_text`: ese nodo no
+ * pregunta nada, mira "el último mensaje del cliente". Cuando el
+ * avance no viene de un mensaje entrante (un `wait` que venció, por
+ * ejemplo) el campo va vacío y el nodo suspende esperando la próxima
+ * respuesta en vez de clasificar aire.
+ */
+interface AdvanceContext {
+  lastInboundText?: string;
+}
+
 async function advanceFromNodeKey(
   db: AdminClient,
   run: FlowRunRow,
   startNodeKey: string,
   nodes: Map<string, FlowNodeRow>,
+  ctx: AdvanceContext = {},
 ): Promise<{ outcome: "advanced" | "completed" | "handed_off" }> {
   let currentKey: string | null = startNodeKey;
   // Defensive cap — if a flow has a cycle (which the validator
@@ -619,7 +800,7 @@ async function advanceFromNodeKey(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.text, run.vars),
+          text: interpolate(cfg.text, { vars: run.vars }),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_message",
@@ -647,7 +828,7 @@ async function advanceFromNodeKey(
           kind: cfg.media_type,
           link: cfg.media_url,
           caption: cfg.caption
-            ? interpolateVars(cfg.caption, run.vars)
+            ? interpolate(cfg.caption, { vars: run.vars })
             : undefined,
           filename: cfg.filename,
         });
@@ -671,49 +852,63 @@ async function advanceFromNodeKey(
       // Send the prompt and suspend. Customer's next TEXT reply will
       // wake us up via handleReplyForActiveRun's collect_input branch.
       const cfg = node.config as unknown as CollectInputNodeConfig;
-      try {
-        const { whatsapp_message_id } = await engineSendText({
-          accountId: run.account_id,
-    userId: run.user_id,
-          conversationId: run.conversation_id!,
-          contactId: run.contact_id!,
-          text: interpolateVars(cfg.prompt_text, run.vars),
-        });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
-          node_type: "collect_input",
-          whatsapp_message_id,
-        });
-        const { data: msg } = await db
-          .from("messages")
-          .select("id")
-          .eq("message_id", whatsapp_message_id)
-          .maybeSingle();
-        await db
-          .from("flow_runs")
-          .update({
-            last_prompt_message_id: (msg as { id: string } | null)?.id ?? null,
-          })
-          .eq("id", run.id);
-      } catch (err) {
+      const sent = await sendPromptAndPark(
+        db,
+        run,
+        node,
+        interpolate(cfg.prompt_text, { vars: run.vars }),
+        "collect_input_prompt_failed",
+      );
+      if (!sent) return { outcome: "completed" };
+      await parkAtNode(db, run, node);
+      return { outcome: "advanced" };
+    }
+    if (node.node_type === "wait") {
+      // Se estaciona en el propio nodo `wait` y encola la reanudación.
+      // El puntero queda acá (no en next_node_key) para que un mensaje
+      // que llegue durante la espera se reconozca como "todavía
+      // esperando" y no como una respuesta al nodo siguiente.
+      const cfg = node.config as unknown as WaitNodeConfig;
+      const seconds = typeof cfg.seconds === "number" ? cfg.seconds : 0;
+      await parkAtNode(db, run, node);
+      await scheduleFlowResume(db, run, node, cfg.next_node_key, seconds);
+      return { outcome: "advanced" };
+    }
+    if (node.node_type === "classify_reply") {
+      const cfg = node.config as unknown as ClassifyReplyNodeConfig;
+      if (cfg.prompt_text) {
+        const sent = await sendPromptAndPark(
+          db,
+          run,
+          node,
+          interpolate(cfg.prompt_text, { vars: run.vars }),
+          "classify_prompt_failed",
+        );
+        if (!sent) return { outcome: "completed" };
+        await parkAtNode(db, run, node);
+        return { outcome: "advanced" };
+      }
+      // Sin prompt: clasifica el mensaje que despertó la corrida. Si no
+      // hay ninguno, suspende y clasifica el próximo que llegue.
+      if (ctx.lastInboundText === undefined) {
+        await parkAtNode(db, run, node);
+        return { outcome: "advanced" };
+      }
+      const target = await routeClassifyReply(
+        db,
+        run,
+        node,
+        ctx.lastInboundText,
+      );
+      if (!target) {
         await logEvent(db, run.id, "error", node.node_key, {
-          reason: "collect_input_prompt_failed",
-          detail: err instanceof Error ? err.message : String(err),
+          reason: "classify_branch_missing",
         });
-        await endRun(db, run.id, "failed", "collect_input_prompt_failed");
+        await endRun(db, run.id, "failed", "classify_branch_missing");
         return { outcome: "completed" };
       }
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
-      if (!advanced) {
-        await logEvent(db, run.id, "error", node.node_key, {
-          reason: "lost_race_during_advance",
-        });
-      }
-      return { outcome: "advanced" };
+      currentKey = target;
+      continue;
     }
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
@@ -773,32 +968,12 @@ async function advanceFromNodeKey(
     if (node.node_type === "send_buttons") {
       await sendButtonsAndSuspend(db, run, node);
       // Persist the new current_node_key via optimistic UPDATE.
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
-      if (!advanced) {
-        await logEvent(db, run.id, "error", node.node_key, {
-          reason: "lost_race_during_advance",
-        });
-      }
+      await parkAtNode(db, run, node);
       return { outcome: "advanced" };
     }
     if (node.node_type === "send_list") {
       await sendListAndSuspend(db, run, node);
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
-      if (!advanced) {
-        await logEvent(db, run.id, "error", node.node_key, {
-          reason: "lost_race_during_advance",
-        });
-      }
+      await parkAtNode(db, run, node);
       return { outcome: "advanced" };
     }
     if (node.node_type === "handoff") {
@@ -956,6 +1131,14 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Estacionada en un `wait`: el bot todavía no habló. El mensaje no
+  // contesta nada, así que no se cuenta como fallback (repreguntar
+  // sería absurdo — no hubo pregunta) y tampoco se le pasa a las
+  // automatizaciones: la conversación es del flujo hasta que despierte.
+  if (currentNode.node_type === "wait") {
+    return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
+  }
+
   // Two ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
@@ -968,6 +1151,15 @@ async function handleReplyForActiveRun(
       currentNode.node_type === "send_list")
   ) {
     matched = matchReplyId(currentNode, message.reply_id);
+  } else if (currentNode.node_type === "classify_reply") {
+    // Un tap también sirve: lo que se clasifica es el rótulo visible,
+    // que es lo que la persona habría escrito si el botón no estuviera.
+    matched = await routeClassifyReply(
+      db,
+      run,
+      currentNode,
+      message.kind === "text" ? message.text : message.reply_title,
+    );
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"
@@ -1014,7 +1206,10 @@ async function handleReplyForActiveRun(
         .eq("id", run.id);
       if (!error) run.reprompt_count = 0;
     }
-    const outcome = await advanceFromNodeKey(db, run, matched, nodes);
+    const outcome = await advanceFromNodeKey(db, run, matched, nodes, {
+      lastInboundText:
+        message.kind === "text" ? message.text : message.reply_title,
+    });
     return {
       consumed: true,
       flow_run_id: run.id,
@@ -1047,23 +1242,32 @@ async function handleReplyForActiveRun(
       await sendButtonsAndSuspend(db, run, currentNode);
     } else if (currentNode.node_type === "send_list") {
       await sendListAndSuspend(db, run, currentNode);
-    } else if (currentNode.node_type === "collect_input") {
+    } else if (
+      currentNode.node_type === "collect_input" ||
+      currentNode.node_type === "classify_reply"
+    ) {
       // Customer typed something we couldn't accept (empty after trim,
       // or var_key missing — rare). Re-send the prompt so they try again.
-      const cfg = currentNode.config as unknown as CollectInputNodeConfig;
-      try {
-        await engineSendText({
-          accountId: run.account_id,
-    userId: run.user_id,
-          conversationId: run.conversation_id!,
-          contactId: run.contact_id!,
-          text: interpolateVars(cfg.prompt_text, run.vars),
-        });
-      } catch (err) {
-        await logEvent(db, run.id, "error", currentNode.node_key, {
-          reason: "reprompt_send_failed",
-          detail: err instanceof Error ? err.message : String(err),
-        });
+      // Un classify_reply solo llega acá si le falta la rama que tocó:
+      // el desconocido tiene su propia salida y no usa la política.
+      const cfg = currentNode.config as unknown as {
+        prompt_text?: string;
+      };
+      if (cfg.prompt_text) {
+        try {
+          await engineSendText({
+            accountId: run.account_id,
+            userId: run.user_id,
+            conversationId: run.conversation_id!,
+            contactId: run.contact_id!,
+            text: interpolate(cfg.prompt_text, { vars: run.vars }),
+          });
+        } catch (err) {
+          await logEvent(db, run.id, "error", currentNode.node_key, {
+            reason: "reprompt_send_failed",
+            detail: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
     return { consumed: true, flow_run_id: run.id, outcome: "fallback_fired" };
@@ -1146,10 +1350,76 @@ async function startNewRun(
   }
 
   // Run the advance loop starting from the entry node.
-  const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes);
+  // El mensaje que disparó el flujo es "el último mensaje del cliente"
+  // para un classify_reply sin prompt que aparezca al principio.
+  const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes, {
+    lastInboundText:
+      input.message.kind === "text"
+        ? input.message.text
+        : input.message.reply_title,
+  });
   return {
     consumed: true,
     flow_run_id: run.id,
     outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
   };
+}
+
+// ============================================================
+// Reanudación diferida — la llama el cron de flujos cuando vence una
+// fila de `flow_pending_resumes` (nodo `wait`).
+// ============================================================
+
+export interface ResumeFlowRunResult {
+  resumed: boolean;
+  reason?: "run_not_found" | "run_not_active" | "already_moved";
+  outcome?: "advanced" | "completed" | "handed_off";
+}
+
+/**
+ * Sigue una corrida estacionada en un `wait` desde `resumeNodeKey`.
+ *
+ * Se verifica que la corrida siga activa Y que siga parada en el mismo
+ * nodo `wait` que encoló la espera: si mientras tanto la corrida
+ * terminó (traspaso, timeout, agente que la pausó) o avanzó por otra
+ * vía, la fila vencida ya no aplica y reanudar mandaría un mensaje
+ * fuera de guion.
+ */
+export async function resumeFlowRun(args: {
+  runId: string;
+  /** node_key del `wait` que encoló la espera. */
+  waitNodeKey: string;
+  /** Desde dónde seguir. */
+  resumeNodeKey: string;
+}): Promise<ResumeFlowRunResult> {
+  const db = supabaseAdmin();
+  try {
+    const { data, error } = await db
+      .from("flow_runs")
+      .select("*")
+      .eq("id", args.runId)
+      .maybeSingle();
+    if (error || !data) return { resumed: false, reason: "run_not_found" };
+    const run = data as FlowRunRow;
+    if (run.status !== "active") {
+      return { resumed: false, reason: "run_not_active" };
+    }
+    if (run.current_node_key !== args.waitNodeKey) {
+      return { resumed: false, reason: "already_moved" };
+    }
+    const nodes = await loadAllNodes(db, run.flow_id);
+    const outcome = await advanceFromNodeKey(
+      db,
+      run,
+      args.resumeNodeKey,
+      nodes,
+    );
+    return { resumed: true, outcome: outcome.outcome };
+  } catch (err) {
+    console.error(
+      "[flows] resumeFlowRun threw:",
+      err instanceof Error ? err.message : err,
+    );
+    return { resumed: false, reason: "run_not_found" };
+  }
 }

@@ -547,3 +547,120 @@ describe("reachableFromEntry", () => {
     expect(set).toEqual(new Set(["a", "b"]));
   });
 });
+
+// ============================================================
+// wait / classify_reply — el motor los entiende, pero si el
+// validador no, el flujo no se puede activar desde el editor.
+// ============================================================
+
+const KOSMO_FLOW = {
+  name: "Primer contacto",
+  trigger_type: "first_inbound_message" as const,
+  trigger_config: {},
+  entry_node_id: "inicio",
+};
+
+function kosmoNodes(overrides: {
+  wait?: Record<string, unknown>;
+  classify?: Record<string, unknown>;
+} = {}): Array<{
+  node_key: string;
+  node_type: string;
+  config: Record<string, unknown>;
+}> {
+  return [
+    { node_key: "inicio", node_type: "start", config: { next_node_key: "espera" } },
+    {
+      node_key: "espera",
+      node_type: "wait",
+      config: { seconds: 25, next_node_key: "paso1", ...overrides.wait },
+    },
+    {
+      node_key: "paso1",
+      node_type: "classify_reply",
+      config: {
+        prompt_text: "¿Estoy en lo correcto?",
+        negative: ["no"],
+        positive: ["si"],
+        negative_next: "traspaso",
+        positive_next: "fin",
+        unknown_next: "fin",
+        ...overrides.classify,
+      },
+    },
+    { node_key: "traspaso", node_type: "handoff", config: {} },
+    { node_key: "fin", node_type: "end", config: {} },
+  ];
+}
+
+describe("validateFlowForActivation — wait", () => {
+  it("acepta un flujo con wait y classify_reply bien armados", () => {
+    expect(validateFlowForActivation(KOSMO_FLOW, kosmoNodes())).toEqual([]);
+  });
+
+  it("rechaza una espera sin segundos o de cero", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({ wait: { seconds: 0 } }),
+    );
+    expect(issues.some((i) => i.field === "seconds")).toBe(true);
+  });
+
+  it("rechaza una espera de más de una hora", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({ wait: { seconds: 7200 } }),
+    );
+    expect(issues.some((i) => i.field === "seconds")).toBe(true);
+  });
+
+  it("rechaza una espera que apunta a un nodo que no existe", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({ wait: { next_node_key: "fantasma" } }),
+    );
+    expect(issues.some((i) => i.field === "next_node_key")).toBe(true);
+  });
+});
+
+describe("validateFlowForActivation — classify_reply", () => {
+  it("exige las tres salidas: el desconocido no cae en el fallback", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({ classify: { unknown_next: "" } }),
+    );
+    expect(issues.some((i) => i.field === "unknown_next")).toBe(true);
+  });
+
+  it("exige al menos una palabra en cada lista", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({ classify: { positive: [] } }),
+    );
+    expect(issues.some((i) => i.field === "positive")).toBe(true);
+  });
+
+  it("una rama extra a medias es un error, no se ignora", () => {
+    const issues = validateFlowForActivation(
+      KOSMO_FLOW,
+      kosmoNodes({
+        classify: { extra: { keywords: ["catalogo"], next_node_key: "" } },
+      }),
+    );
+    expect(issues.some((i) => i.field === "extra.next_node_key")).toBe(true);
+  });
+
+  it("cuenta las ramas como aristas: un nodo colgado de una rama es alcanzable", () => {
+    const nodes = kosmoNodes({
+      classify: { unknown_next: "repregunta" },
+    }).concat([
+      {
+        node_key: "repregunta",
+        node_type: "send_message",
+        config: { text: "¿Sí o no?", next_node_key: "fin" },
+      },
+    ]);
+    const issues = validateFlowForActivation(KOSMO_FLOW, nodes);
+    expect(issues).toEqual([]);
+  });
+});

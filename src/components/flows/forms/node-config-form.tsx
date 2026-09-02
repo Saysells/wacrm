@@ -38,6 +38,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -171,6 +172,51 @@ export function NodeConfigForm({
             label={t("advanceAfterCapture")}
           />
         </>
+      );
+
+    case "wait":
+      return (
+        <>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("waitSecondsLabel")}
+            </label>
+            <Input
+              type="number"
+              min={1}
+              value={String((cfg as { seconds?: number }).seconds ?? "")}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                onUpdateConfig({
+                  seconds: Number.isFinite(n) && n > 0 ? Math.floor(n) : 0,
+                });
+              }}
+              className="bg-muted"
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {t("waitSecondsHelp")}
+            </p>
+          </div>
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label={t("advancesTo")}
+          />
+        </>
+      );
+
+    case "classify_reply":
+      return (
+        <ClassifyReplyForm
+          cfg={cfg as ClassifyReplyCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+          showAdvanced={showAdvanced}
+          t={t}
+        />
       );
 
     case "condition":
@@ -1059,6 +1105,214 @@ function SendMediaForm({
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
         label={t("advanceAfterSending")}
       />
+    </>
+  );
+}
+
+// ============================================================
+// classify_reply
+// ============================================================
+
+interface ClassifyReplyCfg {
+  prompt_text?: string;
+  negative?: string[];
+  positive?: string[];
+  extra?: { keywords?: string[]; next_node_key?: string };
+  negative_next?: string;
+  positive_next?: string;
+  unknown_next?: string;
+  var_key?: string;
+}
+
+/**
+ * Las listas de palabras se editan como texto separado por comas o
+ * saltos de línea: es como las trae el guion escrito y como las pega
+ * quien lo arma. La normalización (minúsculas, acentos, signos) la
+ * hace el motor al comparar, así que acá se guardan tal cual se
+ * escriben y siguen siendo legibles.
+ */
+function parseWordList(raw: string): string[] {
+  return raw
+    .split(/[\n,]/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 0);
+}
+
+function WordListRow({
+  label,
+  help,
+  value,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  // Mientras se escribe manda el borrador local; sin él, tipear una
+  // coma reordena el texto debajo del cursor en cada tecla (el config
+  // guarda un array, no la cadena). Al salir del campo vuelve a
+  // mostrarse lo que quedó guardado, que es lo que verá el próximo
+  // nodo que se seleccione.
+  const [draft, setDraft] = useState<string | null>(null);
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
+      <Textarea
+        value={draft ?? value.join(", ")}
+        rows={2}
+        className="bg-muted text-xs"
+        onChange={(e) => {
+          setDraft(e.target.value);
+          onChange(parseWordList(e.target.value));
+        }}
+        onBlur={() => setDraft(null)}
+      />
+      <p className="mt-1 text-[10px] text-muted-foreground">{help}</p>
+    </div>
+  );
+}
+
+function ClassifyReplyForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+  showAdvanced,
+  t,
+}: {
+  cfg: ClassifyReplyCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  showAdvanced: boolean;
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  const hasExtra = Boolean(cfg.extra);
+  return (
+    <>
+      <TextRow
+        label={t("classifyPromptLabel")}
+        value={cfg.prompt_text ?? ""}
+        onChange={(v) => onUpdateConfig({ prompt_text: v })}
+        rows={3}
+      />
+      <p className="-mt-1 text-[10px] text-muted-foreground">
+        {t("classifyPromptHelp")}
+      </p>
+
+      <WordListRow
+        label={t("classifyNegativeLabel")}
+        help={t("classifyListHelp")}
+        value={cfg.negative ?? []}
+        onChange={(v) => onUpdateConfig({ negative: v })}
+      />
+      <NextNodeRow
+        value={cfg.negative_next ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ negative_next: v })}
+        label={t("classifyNegativeNext")}
+      />
+
+      <WordListRow
+        label={t("classifyPositiveLabel")}
+        help={t("classifyListHelp")}
+        value={cfg.positive ?? []}
+        onChange={(v) => onUpdateConfig({ positive: v })}
+      />
+      <NextNodeRow
+        value={cfg.positive_next ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ positive_next: v })}
+        label={t("classifyPositiveNext")}
+      />
+
+      <NextNodeRow
+        value={cfg.unknown_next ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ unknown_next: v })}
+        label={t("classifyUnknownNext")}
+      />
+
+      <div className="rounded-md border border-border/60 p-2">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {t("classifyExtraTitle")}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              onUpdateConfig({
+                extra: hasExtra
+                  ? undefined
+                  : { keywords: [], next_node_key: "" },
+              })
+            }
+          >
+            {hasExtra ? (
+              <>
+                <X className="mr-1 h-3 w-3" />
+                {t("classifyExtraRemove")}
+              </>
+            ) : (
+              <>
+                <Plus className="mr-1 h-3 w-3" />
+                {t("classifyExtraAdd")}
+              </>
+            )}
+          </Button>
+        </div>
+        <p className="mb-2 text-[10px] text-muted-foreground">
+          {t("classifyExtraHelp")}
+        </p>
+        {hasExtra ? (
+          <div className="space-y-2">
+            <WordListRow
+              label={t("classifyExtraKeywords")}
+              help={t("classifyListHelp")}
+              value={cfg.extra?.keywords ?? []}
+              onChange={(v) =>
+                onUpdateConfig({ extra: { ...cfg.extra, keywords: v } })
+              }
+            />
+            <NextNodeRow
+              value={cfg.extra?.next_node_key ?? ""}
+              allNodes={allNodes}
+              currentKey={currentKey}
+              onChange={(v) =>
+                onUpdateConfig({ extra: { ...cfg.extra, next_node_key: v } })
+              }
+              label={t("classifyExtraNext")}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {showAdvanced ? (
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">
+            {t("classifyVarKeyLabel")}
+          </label>
+          <Input
+            value={cfg.var_key ?? ""}
+            onChange={(e) =>
+              onUpdateConfig({
+                var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+              })
+            }
+            className="bg-muted font-mono text-xs"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t("classifyVarKeyHelp")}
+          </p>
+        </div>
+      ) : null}
     </>
   );
 }

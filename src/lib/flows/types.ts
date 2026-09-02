@@ -136,6 +136,56 @@ export interface CollectInputNodeConfig {
   next_node_key: string;
 }
 
+/**
+ * Suspende la corrida N segundos y sigue sola, sin esperar al cliente.
+ *
+ * No se implementa con un timer en memoria: el proceso que atiende el
+ * webhook muere apenas contesta, y un `setTimeout` se va con él. La
+ * espera se encola en `flow_pending_resumes` (migración 048) y la
+ * drena el cron de flujos, igual que `automation_pending_executions`
+ * para las automatizaciones. La resolución real de la espera es, por
+ * lo tanto, la frecuencia del cron: para que un `wait` de 25 segundos
+ * se sienta como 25 segundos hay que pegarle al cron cada minuto.
+ */
+export interface WaitNodeConfig {
+  /** Cuánto esperar antes de seguir. */
+  seconds: number;
+  next_node_key: string;
+}
+
+/**
+ * Interpreta una respuesta de texto libre y ramifica.
+ *
+ * El criterio de coincidencia (por palabra o frase completa, y el
+ * orden extra → negativo → positivo → desconocido) vive en
+ * `classify.ts`; acá solo está la forma del config.
+ *
+ * `prompt_text` decide si el nodo pregunta o si solo mira:
+ *   - con `prompt_text`: envía ese texto y suspende esperando la
+ *     respuesta.
+ *   - sin `prompt_text`: clasifica el último mensaje del cliente (el
+ *     que despertó la corrida). Si no hay uno a mano — el nodo se
+ *     alcanzó auto-avanzando, sin mensaje entrante — suspende igual y
+ *     clasifica la próxima respuesta.
+ */
+export interface ClassifyReplyNodeConfig {
+  prompt_text?: string;
+  /** Palabras y frases que cuentan como "no". */
+  negative: string[];
+  /** Palabras y frases que cuentan como "sí". */
+  positive: string[];
+  /** Rama específica opcional; se evalúa antes que negativo. */
+  extra?: {
+    keywords: string[];
+    next_node_key: string;
+  };
+  negative_next: string;
+  positive_next: string;
+  unknown_next: string;
+  /** Si está, guarda el texto CRUDO del cliente en `flow_runs.vars`. */
+  var_key?: string;
+}
+
 export type ConditionOperator =
   | "equals"
   | "contains"
@@ -191,6 +241,8 @@ export type FlowNodeConfig =
   | { node_type: "send_list"; config: SendListNodeConfig }
   | { node_type: "send_media"; config: SendMediaNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
+  | { node_type: "classify_reply"; config: ClassifyReplyNodeConfig }
+  | { node_type: "wait"; config: WaitNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }

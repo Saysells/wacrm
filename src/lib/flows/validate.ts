@@ -25,6 +25,14 @@
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
 
+/**
+ * Tope del nodo `wait`. Una hora es holgado para lo que el nodo
+ * existe (dejar respirar el primer mensaje unos segundos) y bien
+ * lejos del timeout de la política, que es la herramienta correcta
+ * para las esperas largas.
+ */
+export const MAX_WAIT_SECONDS = 3600;
+
 export interface ValidationIssue {
   severity: "error" | "warning";
   scope: "flow" | "trigger" | "node";
@@ -584,6 +592,153 @@ function validateNode(
       break;
     }
 
+    case "wait": {
+      const cfg = node.config as {
+        seconds?: number;
+        next_node_key?: string;
+      };
+      if (
+        typeof cfg.seconds !== "number" ||
+        !Number.isFinite(cfg.seconds) ||
+        cfg.seconds <= 0
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "seconds",
+          message: "Wait needs a positive number of seconds.",
+        });
+      } else if (cfg.seconds > MAX_WAIT_SECONDS) {
+        // Un `wait` largo mantiene la corrida activa ocupando el índice
+        // único de una-corrida-por-contacto, y encima compite con el
+        // barrido por timeout. Para pausas de horas, la herramienta es
+        // el timeout de la política, no este nodo.
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "seconds",
+          message: `Wait is capped at ${MAX_WAIT_SECONDS} seconds (${MAX_WAIT_SECONDS / 3600}h).`,
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "Wait must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Wait points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "classify_reply": {
+      const cfg = node.config as {
+        prompt_text?: string;
+        negative?: unknown;
+        positive?: unknown;
+        extra?: { keywords?: unknown; next_node_key?: string };
+        negative_next?: string;
+        positive_next?: string;
+        unknown_next?: string;
+        var_key?: string;
+      };
+      const wordList = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+      if (wordList(cfg.negative).length === 0) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "negative",
+          message: "Classify-reply needs at least one negative word.",
+        });
+      }
+      if (wordList(cfg.positive).length === 0) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "positive",
+          message: "Classify-reply needs at least one positive word.",
+        });
+      }
+      // Las tres salidas son obligatorias: el desconocido no cae en la
+      // política de fallback, tiene su propia rama. Un unknown_next
+      // vacío deja la corrida sin salida.
+      for (const [field, target, label] of [
+        ["negative_next", cfg.negative_next, "negative"],
+        ["positive_next", cfg.positive_next, "positive"],
+        ["unknown_next", cfg.unknown_next, "unknown"],
+      ] as const) {
+        if (!target) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field,
+            message: `Classify-reply needs a target for the ${label} branch.`,
+          });
+        } else if (!knownKeys.has(target)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field,
+            message: `Classify-reply ${label} branch points to non-existent node "${target}".`,
+          });
+        }
+      }
+      if (cfg.extra) {
+        if (wordList(cfg.extra.keywords).length === 0) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "extra.keywords",
+            message: "The extra branch needs at least one keyword.",
+          });
+        }
+        if (!cfg.extra.next_node_key) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "extra.next_node_key",
+            message: "The extra branch needs a target node.",
+          });
+        } else if (!knownKeys.has(cfg.extra.next_node_key)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "extra.next_node_key",
+            message: `The extra branch points to non-existent node "${cfg.extra.next_node_key}".`,
+          });
+        }
+      }
+      if (cfg.var_key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cfg.var_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
+        });
+      }
+      break;
+    }
+
     case "condition": {
       const cfg = node.config as {
         subject?: "var" | "tag" | "contact_field";
@@ -751,9 +906,24 @@ function outgoingEdges(node: NodeInput): string[] {
     case "send_message":
     case "send_media":
     case "collect_input":
+    case "wait":
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];
+    }
+    case "classify_reply": {
+      const cfg = node.config as {
+        negative_next?: string;
+        positive_next?: string;
+        unknown_next?: string;
+        extra?: { next_node_key?: string };
+      };
+      return [
+        cfg.extra?.next_node_key,
+        cfg.negative_next,
+        cfg.positive_next,
+        cfg.unknown_next,
+      ].filter((k): k is string => !!k);
     }
     case "condition": {
       const cfg = node.config as {

@@ -172,6 +172,21 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         var_key: "answer",
         next_node_key: "",
       };
+    case "classify_reply":
+      // Las listas arrancan vacías a propósito: son del guion de cada
+      // cuenta, no del motor. Un nodo sin listas manda todo a
+      // `unknown_next`, que es lo esperable mientras se lo está
+      // armando.
+      return {
+        prompt_text: "",
+        negative: [],
+        positive: [],
+        negative_next: "",
+        positive_next: "",
+        unknown_next: "",
+      };
+    case "wait":
+      return { seconds: 25, next_node_key: "" };
     case "condition":
       return {
         subject: "var",

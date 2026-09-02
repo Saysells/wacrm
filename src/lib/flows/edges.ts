@@ -48,6 +48,7 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
       case "send_message":
       case "send_media":
       case "collect_input":
+      case "wait":
       case "set_tag": {
         const next = (cfg as { next_node_key?: string }).next_node_key;
         if (next && knownKeys.has(next)) {
@@ -80,6 +81,32 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             target: falseNext,
             sourceHandle: "false",
             label: "false",
+          });
+        }
+        break;
+      }
+
+      case "classify_reply": {
+        const c = cfg as {
+          positive_next?: string;
+          negative_next?: string;
+          unknown_next?: string;
+          extra?: { next_node_key?: string };
+        };
+        const branches: Array<[string, string | undefined]> = [
+          ["extra", c.extra?.next_node_key],
+          ["negative", c.negative_next],
+          ["positive", c.positive_next],
+          ["unknown", c.unknown_next],
+        ];
+        for (const [slot, target] of branches) {
+          if (!target || !knownKeys.has(target)) continue;
+          edges.push({
+            id: `${node.node_key}--${slot}--${target}`,
+            source: node.node_key,
+            target,
+            sourceHandle: slot,
+            label: slot,
           });
         }
         break;
@@ -178,6 +205,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "send_message":
     case "send_media":
     case "collect_input":
+    case "wait":
     case "set_tag":
       return [{ id: "next", label: "Next" }];
 
@@ -186,6 +214,21 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
         { id: "true", label: "true" },
         { id: "false", label: "false" },
       ];
+
+    // El orden es el de evaluación (extra → negativo → positivo →
+    // desconocido) para que el canvas se lea como el clasificador
+    // decide. `extra` solo aparece si el nodo la tiene configurada.
+    case "classify_reply": {
+      const hasExtra = Boolean(
+        (cfg as { extra?: { keywords?: unknown[] } }).extra,
+      );
+      return [
+        ...(hasExtra ? [{ id: "extra", label: "extra" }] : []),
+        { id: "negative", label: "negative" },
+        { id: "positive", label: "positive" },
+        { id: "unknown", label: "unknown" },
+      ];
+    }
 
     case "send_buttons": {
       const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
@@ -252,6 +295,7 @@ export function applyEdgeConnection(
     case "send_message":
     case "send_media":
     case "collect_input":
+    case "wait":
     case "set_tag":
       if (sourceHandle === "next") return { next_node_key: targetKey };
       return null;
@@ -260,6 +304,21 @@ export function applyEdgeConnection(
       if (sourceHandle === "true") return { true_next: targetKey };
       if (sourceHandle === "false") return { false_next: targetKey };
       return null;
+
+    case "classify_reply": {
+      if (sourceHandle === "negative") return { negative_next: targetKey };
+      if (sourceHandle === "positive") return { positive_next: targetKey };
+      if (sourceHandle === "unknown") return { unknown_next: targetKey };
+      if (sourceHandle === "extra") {
+        const extra = (node.config as { extra?: Record<string, unknown> })
+          .extra;
+        // Sin rama extra configurada no hay handle que arrastrar; el
+        // canvas no debería ofrecerlo (ver outgoingSlots).
+        if (!extra) return null;
+        return { extra: { ...extra, next_node_key: targetKey } };
+      }
+      return null;
+    }
 
     case "send_buttons": {
       if (!sourceHandle.startsWith("button:")) return null;
@@ -346,10 +405,28 @@ function patchedConfigWithoutKey(
     case "send_message":
     case "send_media":
     case "collect_input":
+    case "wait":
     case "set_tag": {
       const next = (cfg as { next_node_key?: string }).next_node_key;
       if (next !== deletedKey) return null;
       return { ...cfg, next_node_key: "" };
+    }
+
+    case "classify_reply": {
+      const c = cfg as {
+        positive_next?: string;
+        negative_next?: string;
+        unknown_next?: string;
+        extra?: Record<string, unknown>;
+      };
+      const patch: Record<string, unknown> = {};
+      if (c.positive_next === deletedKey) patch.positive_next = "";
+      if (c.negative_next === deletedKey) patch.negative_next = "";
+      if (c.unknown_next === deletedKey) patch.unknown_next = "";
+      if (c.extra && c.extra.next_node_key === deletedKey) {
+        patch.extra = { ...c.extra, next_node_key: "" };
+      }
+      return Object.keys(patch).length > 0 ? { ...cfg, ...patch } : null;
     }
 
     case "condition": {

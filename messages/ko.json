@@ -1200,7 +1200,25 @@
         "filenamePlaceholder": "invoice.pdf",
         "advanceAfterSending": "전송 후 다음 진행",
         "pickNextNode": "다음 노드를 선택하세요…",
-        "none": "— 없음 —"
+        "none": "— 없음 —",
+        "waitSecondsLabel": "대기 시간(초)",
+        "waitSecondsHelp": "고객을 기다리지 않고 플로우를 멈춥니다. 정확도는 플로우 크론 실행 주기에 따라 달라집니다.",
+        "classifyPromptLabel": "보낼 질문(선택)",
+        "classifyPromptHelp": "비워 두면 고객이 이미 보낸 메시지를 분류합니다.",
+        "classifyNegativeLabel": "아니오를 뜻하는 단어",
+        "classifyPositiveLabel": "예를 뜻하는 단어",
+        "classifyListHelp": "쉼표 또는 줄바꿈으로 구분합니다. 대소문자, 악센트, 문장부호는 무시하며 단어와 구 전체만 비교합니다.",
+        "classifyNegativeNext": "아니오이면 이동할 노드",
+        "classifyPositiveNext": "예이면 이동할 노드",
+        "classifyUnknownNext": "이해하지 못하면 이동할 노드",
+        "classifyExtraTitle": "추가 분기",
+        "classifyExtraHelp": "예와 아니오보다 먼저 확인합니다. 아니오지만 특정한 요청(\"목록 보내 주세요\")인 답장을 위한 것입니다.",
+        "classifyExtraAdd": "추가",
+        "classifyExtraRemove": "제거",
+        "classifyExtraKeywords": "추가 분기 단어",
+        "classifyExtraNext": "일치하면 이동할 노드",
+        "classifyVarKeyLabel": "답장을 저장할 키",
+        "classifyVarKeyHelp": "선택. 고객이 입력한 원문을 저장합니다."
       },
       "categories": {
         "messaging": "메시징",
@@ -1231,6 +1249,14 @@
         "collect_input": {
           "label": "입력 수집",
           "blurb": "질문을 하고 응답을 저장합니다"
+        },
+        "classify_reply": {
+          "label": "답장 분류",
+          "blurb": "자유 입력 답장을 예 / 아니오 / 기타로 해석합니다"
+        },
+        "wait": {
+          "label": "대기",
+          "blurb": "플로우를 몇 초 동안 멈춥니다"
         },
         "condition": {
           "label": "만약 / 아니면",
@@ -1278,7 +1304,9 @@
       "modeAdd": "추가",
       "modeRemove": "제거",
       "tagPicked": "{tag} 태그 {mode}…",
-      "tagNone": "태그 {mode} (선택된 태그 없음)"
+      "tagNone": "태그 {mode} (선택된 태그 없음)",
+      "waitSeconds": "{seconds}초 대기",
+      "classifyWordCounts": "예 {positive} / 아니오 {negative}"
     }
   },
   "Settings": {
@@ -1424,13 +1452,11 @@
       "deleteLocallyAria": "로컬에서 템플릿 삭제",
       "deleteMetaLocallyTitle": "Meta와 로컬에서 삭제",
       "deleteLocallyTitle": "로컬에서 삭제",
-
       "dialogEditTitle": "메시지 템플릿 수정",
       "dialogNewTitle": "새 메시지 템플릿",
       "dialogEditDesc": "변경 사항을 저장해 Meta에 재제출하세요. 검토 중에는 상태가 다시 대기 중으로 바뀝니다.",
       "dialogNewDesc": "템플릿을 만들어 Meta 승인을 요청하세요. 승인되면 브로드캐스트와 인박스에서 사용할 수 있습니다.",
       "authWarning": "AUTHENTICATION 템플릿은 본문과 OTP 버튼 형식이 고정되어 있어 별도의 빌더가 필요합니다. 지금은 Meta WhatsApp 관리자에서 만든 뒤 <bold>Meta에서 동기화</bold>로 가져오세요.",
-
       "templateName": "템플릿 이름",
       "namePlaceholder": "예: order_confirmation",
       "nameFixed": "템플릿이 Meta에 존재하면 이름이 고정됩니다 — 변경하려면 새 템플릿을 만드세요.",
@@ -1439,7 +1465,6 @@
       "language": "언어",
       "langFixed": "템플릿이 Meta에 존재하면 언어가 고정됩니다.",
       "langHint": "Meta의 정확한 코드와 일치해야 합니다 — <code>en_US</code>와 <code>en</code>은 다른 코드입니다.",
-
       "header": "헤더",
       "headerNone": "없음",
       "headerText": "텍스트",
@@ -1449,7 +1474,6 @@
       "headerTextPlaceholder": "헤더 텍스트 (최대 60자, {{1}} 선택 가능)",
       "headerSampleAria": "헤더 변수 샘플 값",
       "headerSamplePlaceholder": "{{1}}의 샘플 값 (Meta 검토에 필요)",
-
       "uploadImage": "이미지 업로드",
       "uploadHint": "JPEG 또는 PNG, 5MB 이하",
       "mediaUrlPlaceholder": "https://… (또는 공개 {format} 링크 붙여넣기)",
@@ -1457,17 +1481,14 @@
       "mediaHint": "공개적으로 접근 가능한 HTTPS 링크여야 합니다. Meta가 검토 중 한 번 가져오므로 약 24시간 동안 살아있어야 합니다.",
       "videoHint": " 권장: MP4 / 3GPP, 16MB 이하, 60초 이하.",
       "documentHint": " 권장: PDF, 100MB 이하.",
-
       "bodyText": "본문 텍스트",
       "bodyPlaceholder": "안녕하세요 {{1}}님, 주문 {{2}}이(가) 확정되었습니다.",
       "sampleValues": "샘플 값 (Meta가 템플릿 검토에 사용합니다)",
       "bodyHint": "변수에는 {{1}}, {{2}}를 사용하세요 ({{1}}부터 연속되어야 합니다).",
       "sampleAria": "본문 변수 {var}의 샘플 값",
       "samplePlaceholder": "{var}의 샘플",
-
       "footer": "푸터 (선택)",
       "footerPlaceholder": "선택적 푸터 텍스트 (최대 60자)",
-
       "buttons": "버튼 (선택)",
       "addButton": "버튼 추가",
       "buttonsLimit": "최대 {max}개 버튼. QUICK_REPLY 버튼은 URL / 전화 / 코드 복사 버튼보다 앞에 와야 합니다.",
@@ -1480,19 +1501,16 @@
       "urlSamplePlaceholder": "{{1}}의 예시 값 (URL에 변수가 있을 때 필요)",
       "phonePlaceholder": "+15551234567",
       "codePlaceholder": "예시 코드 (예: SUMMER20)",
-
       "cancel": "취소",
       "saving": "저장 중…",
       "submitting": "제출 중…",
       "saveResubmit": "저장 & 재제출",
       "submitApproval": "승인 요청",
-
       "deleteDialogTitle": "템플릿을 삭제하시겠습니까?",
       "deleteMetaDesc": "\"{name}\"이(가) Meta와 wacrm에서 삭제됩니다. 이 템플릿을 사용하는 활성 브로드캐스트는 다음 전송부터 실패하기 시작합니다. 되돌릴 수 없습니다.",
       "deleteLocalDesc": "\"{name}\"이(가) wacrm에서 삭제됩니다. Meta에 제출된 적이 없으므로 별도의 원격 정리가 필요하지 않습니다.",
       "deleting": "삭제 중…",
       "delete": "삭제",
-
       "toastLoadFailed": "템플릿을 불러오지 못했습니다",
       "toastSubmitFailed": "제출하지 못했습니다",
       "toastSubmitEditSuccess": "수정 사항이 제출되었습니다 — Meta는 보통 24시간 이내에 검토합니다.",
@@ -1650,7 +1668,6 @@
       "profileSaved": "프로필이 저장되었습니다",
       "emailChangeFailed": "이메일 변경 실패: {message}",
       "profileSavedEmailCheck": "프로필이 저장되었습니다 — 이메일 주소 변경을 확인하려면 이메일을 확인하세요",
-
       "passwordTitle": "비밀번호",
       "passwordDesc": "최소 {min}자 이상 사용하세요. 변경 후에도 이 기기에서는 로그인이 유지됩니다.",
       "currentPassword": "현재 비밀번호",
@@ -1664,7 +1681,6 @@
       "currentPasswordIncorrect": "현재 비밀번호가 올바르지 않습니다",
       "passwordUpdateFailed": "비밀번호 업데이트 실패: {message}",
       "passwordUpdated": "비밀번호가 업데이트되었습니다",
-
       "sessionsTitle": "활성 세션",
       "sessionsDesc": "이 기기를 포함해 로그인되어 있는 모든 기기에서 로그아웃합니다. 노트북을 분실했거나 비밀번호를 공유한 경우 유용합니다.",
       "signOutAll": "모든 기기에서 로그아웃",

@@ -1200,7 +1200,25 @@
         "filenamePlaceholder": "factura.pdf",
         "advanceAfterSending": "Después de enviar, avanzar a",
         "pickNextNode": "Elegí el nodo siguiente…",
-        "none": "(Ninguno)"
+        "none": "(Ninguno)",
+        "waitSecondsLabel": "Esperar (segundos)",
+        "waitSecondsHelp": "El flujo hace una pausa sin esperar al cliente. La precisión depende de cada cuánto corre el cron de flujos.",
+        "classifyPromptLabel": "Pregunta que se envía (opcional)",
+        "classifyPromptHelp": "Dejalo vacío para clasificar el mensaje que el cliente ya mandó.",
+        "classifyNegativeLabel": "Palabras que significan no",
+        "classifyPositiveLabel": "Palabras que significan sí",
+        "classifyListHelp": "Separadas por comas o saltos de línea. No importan mayúsculas, acentos ni signos; se comparan palabras y frases completas.",
+        "classifyNegativeNext": "Si es un no, ir a",
+        "classifyPositiveNext": "Si es un sí, ir a",
+        "classifyUnknownNext": "Si no entendimos, ir a",
+        "classifyExtraTitle": "Rama extra",
+        "classifyExtraHelp": "Se evalúa antes que el sí y el no. Para una respuesta que es un no pero pide algo puntual (\"mandame la lista\").",
+        "classifyExtraAdd": "Agregar",
+        "classifyExtraRemove": "Sacar",
+        "classifyExtraKeywords": "Palabras de la rama extra",
+        "classifyExtraNext": "Si coincide, ir a",
+        "classifyVarKeyLabel": "Guardar la respuesta en",
+        "classifyVarKeyHelp": "Opcional. Guarda el texto tal cual lo escribió el cliente."
       },
       "categories": {
         "messaging": "Mensajería",
@@ -1231,6 +1249,14 @@
         "collect_input": {
           "label": "Capturar respuesta",
           "blurb": "Hace una pregunta y guarda la respuesta"
+        },
+        "classify_reply": {
+          "label": "Clasificar respuesta",
+          "blurb": "Lee una respuesta escrita como sí / no / otra cosa"
+        },
+        "wait": {
+          "label": "Esperar",
+          "blurb": "Pausa el flujo unos segundos"
         },
         "condition": {
           "label": "Si / no",
@@ -1278,7 +1304,9 @@
       "modeAdd": "Agregar",
       "modeRemove": "Quitar",
       "tagPicked": "{mode} etiqueta {tag}…",
-      "tagNone": "{mode} etiqueta (ninguna elegida)"
+      "tagNone": "{mode} etiqueta (ninguna elegida)",
+      "waitSeconds": "espera {seconds}s",
+      "classifyWordCounts": "{positive} sí / {negative} no"
     }
   },
   "Settings": {

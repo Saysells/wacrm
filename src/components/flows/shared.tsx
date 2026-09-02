@@ -19,6 +19,8 @@
 import {
   Flag,
   GitFork,
+  Split,
+  Timer,
   Inbox,
   ListChecks,
   ListPlus,
@@ -47,6 +49,8 @@ export type NodeType =
   | 'send_list'
   | 'send_media'
   | 'collect_input'
+  | 'classify_reply'
+  | 'wait'
   | 'condition'
   | 'set_tag'
   | 'handoff'
@@ -138,6 +142,20 @@ export const NODE_META: Record<
     blurb: 'Asks a question, saves the reply',
     category: 'logic',
   },
+  classify_reply: {
+    label: 'Classify reply',
+    icon: Split,
+    color: 'text-amber-400',
+    blurb: 'Reads a free-text reply as yes / no / other',
+    category: 'logic',
+  },
+  wait: {
+    label: 'Wait',
+    icon: Timer,
+    color: 'text-slate-400',
+    blurb: 'Pauses the flow for a few seconds',
+    category: 'flow',
+  },
   condition: {
     label: 'If / else',
     icon: GitFork,
@@ -203,6 +221,8 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   send_list: { l: 0.62, c: 0.15, h: 277 }, // indigo
   send_media: { l: 0.65, c: 0.12, h: 210 }, // sky
   collect_input: { l: 0.65, c: 0.1, h: 185 }, // teal — capture
+  classify_reply: { l: 0.7, c: 0.14, h: 90 }, // lime — reads and forks
+  wait: { l: 0.6, c: 0.03, h: 260 }, // slate — nothing happens here yet
   condition: { l: 0.72, c: 0.15, h: 65 }, // amber — a fork in the road
   set_tag: { l: 0.65, c: 0.15, h: 350 }, // pink
   handoff: { l: 0.65, c: 0.17, h: 16 }, // rose — hands off
@@ -378,6 +398,25 @@ export function summarizeNode(
           : truncate(prompt);
       }
       return varKey ? `→ vars.${varKey}` : null;
+    }
+    case 'wait': {
+      const seconds =
+        typeof cfg.seconds === 'number' && cfg.seconds > 0 ? cfg.seconds : 0;
+      return seconds > 0
+        ? t
+          ? t('waitSeconds', { seconds })
+          : `${seconds}s`
+        : null;
+    }
+    case 'classify_reply': {
+      const prompt =
+        typeof cfg.prompt_text === 'string' ? cfg.prompt_text : '';
+      const positive = Array.isArray(cfg.positive) ? cfg.positive.length : 0;
+      const negative = Array.isArray(cfg.negative) ? cfg.negative.length : 0;
+      const counts = t
+        ? t('classifyWordCounts', { positive, negative })
+        : `${positive} yes / ${negative} no`;
+      return prompt.length > 0 ? `${truncate(prompt, 50)} · ${counts}` : counts;
     }
     case 'condition': {
       const subjectKey =
