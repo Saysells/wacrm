@@ -724,3 +724,54 @@ describe("validateFlowForActivation — handoff que sigue el guion", () => {
     ])].sort()).toEqual(["ho", "start"]);
   });
 });
+
+describe("validateFlowForActivation — timeout goto", () => {
+  const conGoto = (destino: string) => [
+    { node_key: "start", node_type: "start", config: { next_node_key: "espera" } },
+    {
+      node_key: "espera",
+      node_type: "classify_reply",
+      config: {
+        prompt_text: "x",
+        negative: ["no"],
+        positive: ["si"],
+        negative_next: "fin",
+        positive_next: "fin",
+        unknown_next: "fin",
+        timeout: { hours: 24, action: "goto", next_node_key: destino },
+      },
+    },
+    { node_key: "fin", node_type: "end", config: {} },
+    { node_key: "seguimiento", node_type: "end", config: {} },
+  ];
+
+  it("acepta un salto a un nodo que existe", () => {
+    expect(
+      validateFlowForActivation(
+        { ...validFlow, entry_node_id: "start" },
+        conGoto("seguimiento"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("rechaza un salto a un nodo que no existe", () => {
+    // Sin esto, la corrida avanza a la nada 24 horas después, cuando
+    // ya nadie está mirando.
+    const issues = validateFlowForActivation(
+      { ...validFlow, entry_node_id: "start" },
+      conGoto("sequimiento").slice(0, 3),
+    );
+    expect(
+      issues.some(
+        (i) => i.severity === "error" && i.field === "timeout.next_node_key",
+      ),
+    ).toBe(true);
+  });
+
+  it("lo que cuelga de un timeout goto no es inalcanzable", () => {
+    // Es una arista igual, solo que la recorre el cron.
+    expect([...reachableFromEntry("start", conGoto("seguimiento"))]).toContain(
+      "seguimiento",
+    );
+  });
+});

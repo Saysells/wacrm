@@ -196,6 +196,21 @@ function validateNode(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
+  // El timeout `goto` es una arista más, solo que la recorre el cron y
+  // no el cliente: si apunta a un nodo que no existe, la corrida
+  // avanza a la nada 24 horas después, cuando ya nadie está mirando.
+  // Vale para cualquier tipo de nodo que espere.
+  const goto = timeoutGoto(node);
+  if (goto && !knownKeys.has(goto)) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: node.node_key,
+      field: "timeout.next_node_key",
+      message: `Timeout goto points to non-existent node "${goto}".`,
+    });
+  }
+
   switch (node.node_type) {
     case "start": {
       const cfg = node.config as { next_node_key?: string };
@@ -916,7 +931,32 @@ export function reachableFromEntry(
   return visited;
 }
 
+/**
+ * El destino del timeout `goto` de un nodo, si tiene uno.
+ *
+ * Es una arista real del grafo aunque no salga de ninguna respuesta
+ * del cliente: la recorre el barrido del cron cuando se cumplen las
+ * horas de silencio.
+ */
+function timeoutGoto(node: NodeInput): string | null {
+  const t = (
+    node.config as {
+      timeout?: { action?: string; next_node_key?: string };
+    }
+  ).timeout;
+  if (!t || t.action !== "goto") return null;
+  return typeof t.next_node_key === "string" && t.next_node_key
+    ? t.next_node_key
+    : null;
+}
+
 function outgoingEdges(node: NodeInput): string[] {
+  const goto = timeoutGoto(node);
+  return goto ? [...directEdges(node), goto] : directEdges(node);
+}
+
+/** Las aristas que sí salen de una respuesta del cliente. */
+function directEdges(node: NodeInput): string[] {
   switch (node.node_type) {
     case "start":
     case "send_message":

@@ -26,6 +26,10 @@
   `PRESET_COLORS`, y `src/app/layout.tsx` +
   `src/components/layout/sidebar.tsx`, de los que salió el nombre de
   la app a `NEXT_PUBLIC_APP_NAME` (ver abajo).
+- **Matías tiene dos identidades y no se mezclan**: en la Bandeja
+  (esta base) es `saysellsmatias@gmail.com`, y en el CRM Saysells, que
+  es **otra** base, es `matias@saysells.com`. Las migraciones de este
+  repo resuelven la cuenta y los traspasos por el **primero**.
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
@@ -617,6 +621,17 @@ Los dos están en el editor (formulario, canvas, validador, i18n en las
 tres lenguas). Lo que el editor **no** expone todavía es el `timeout`
 por nodo: se carga por JSONB, como el flujo de Kosmo.
 
+- **`handoff` con `next_node_key`** (sesión 2026-09-02, seguimiento):
+  el traspaso se hace igual —asignación, nota, conversación pendiente,
+  evento `handoff`— pero la corrida queda **activa** y avanza a ese
+  nodo. Sin la clave, cierra como siempre (`handed_off`). El evento se
+  registra en los dos casos. Lo pide el seguimiento del catálogo: la
+  conversación ya es de Matías y el bot todavía tiene algo que
+  preguntar 24 horas después. En el canvas el traspaso muestra handle
+  de salida **solo** cuando ya tiene destino: el terminal, que es el
+  caso normal, sigue sin ninguno. Tampoco tiene formulario: se carga
+  por JSONB, como el `timeout`.
+
 ## Variables del contacto
 
 `{{contact.nombre}}`, `{{contact.nombre_coma}}` (" Juan," / ","),
@@ -637,20 +652,33 @@ coincida con un campo personalizado de la cuenta.
 
 ## Timeout
 
-`fallback_policy.on_timeout` = `{ action: 'tag_and_end' | 'handoff',
-tag_id?, note? }`. Default `tag_and_end` sin etiqueta, que es
-exactamente lo que hacía el barrido antes (cerrar y nada más), así que
-toda política vieja se sigue comportando igual.
+`fallback_policy.on_timeout` = `{ action: 'tag_and_end' | 'handoff' |
+'goto', tag_id?, note?, next_node_key? }`. Default `tag_and_end` sin
+etiqueta, que es exactamente lo que hacía el barrido antes (cerrar y
+nada más), así que toda política vieja se sigue comportando igual.
 
 Cada nodo que espera puede sobreescribirlo con `timeout: { hours,
-action, tag_id?, note? }`, **campo por campo**. Lo necesita el paso 4
-del bot: quien ya dijo que quiere la llamada y solo no mandó el horario
-no es "No responde", es un traspaso.
+action, tag_id?, note?, next_node_key? }`, **campo por campo**. Lo
+necesita el paso 4 del bot: quien ya dijo que quiere la llamada y solo
+no mandó el horario no es "No responde", es un traspaso.
+
+**`goto` (sesión 2026-09-02, seguimiento) es la única de las tres que
+no cierra la corrida**: al vencer, avanza a `next_node_key` y la deja
+`active`. Con eso el silencio deja de ser solo un final posible y pasa
+a poder disparar el paso siguiente del guion — 24 horas después de
+mandar el catálogo es exactamente cuando corresponde preguntar si lo
+pudo ver. Un `goto` sin destino **no es un `goto`**: se degrada a la
+acción de la política (`resolveTimeoutAction`, `resolveTimeout`) en vez
+de dejar una corrida viva apuntando a la nada. El destino es una
+arista real del grafo aunque la recorra el cron y no el cliente, así
+que el validador exige que exista y la reachability la sigue.
 
 `applyFlowTimeout` **clava primero el estado final de la corrida** con
 la precondición `status='active'` y recién después hace los efectos
 visibles (etiqueta, conversación pendiente), para que dos pasadas
-solapadas del cron no etiqueten dos veces al mismo contacto.
+solapadas del cron no etiqueten dos veces al mismo contacto. En el
+`goto` el claim es el propio movimiento del puntero, condicionado a que
+la corrida siga parada donde se la leyó.
 
 ## Reentrada tras "No responde"
 
@@ -721,3 +749,78 @@ real, cuando la corrida muere a mitad del guion.
 - La reentrada asigna la conversación **aunque ya tenga agente**. Un
   contacto en "No responde" es, por definición, uno que nadie está
   atendiendo, pero si eso molesta el cambio es una condición.
+
+# Seguimiento del catálogo (migración 053)
+
+Sesión 2026-09-02 (pedida por Eze). El bot de primer contacto ya está
+**en producción y probado de punta a punta** (02/09: apertura,
+calificación, rama de la lista y traspaso a Matías). Lo que faltaba era
+qué pasa después con el lead que pidió el catálogo y no dijo nada más:
+la rama de la lista terminaba en el traspaso y ahí se acababa todo.
+
+Migración **053, no aplicada** — la aplica Emi con `npm run migrar`.
+Es un parche sobre el flujo que ya está cargado: idempotente
+(`ON CONFLICT (flow_id, node_key) DO UPDATE`) y no destructiva. **Ojo
+con el orden**: la 050 borra y reinserta TODOS los nodos del flujo, así
+que si alguna vez se vuelve a correr hay que correr detrás la 052 y la
+053.
+
+## El mapa de la rama de la lista
+
+Antes:
+
+```
+paso3_no (senal_prefiere_chat) → paso3_lista_msg → traspaso_lista (cierra)
+```
+
+Ahora:
+
+```
+paso3_no (senal_prefiere_chat) → paso3_lista_msg
+  → traspaso_lista   handoff a Matías, next_node_key: lista_cierre — SIGUE
+  → lista_cierre     "Cualquier duda o consulta me avisás."
+       cualquier respuesta → fin_lista (end)
+       24 h de silencio    → timeout goto → seguimiento
+  → seguimiento      "Hola{{contact.nombre_coma}} ¿pudiste ver el catálogo?…"
+       sí                  → paso4 (el rango horario, ya existía)
+       no / no se entiende → traspaso_no_quiere
+       24 h de silencio    → timeout handoff, "No respondió al seguimiento
+                             del catálogo"
+  → traspaso_no_quiere  handoff a Matías, "Vio el catálogo, no quiere
+                        llamada". Terminal.
+```
+
+- **Las tres salidas de `lista_cierre` van al mismo `end`** a
+  propósito: cualquier cosa que conteste ahí significa que hay
+  conversación, y donde hay conversación el bot se corre. Lo que ese
+  nodo aporta no es la ramificación sino el reloj.
+- **El silencio del `seguimiento` es un traspaso, no un "No
+  responde"**: a esa persona ya le mandamos el catálogo y su
+  conversación es de Matías. La política de la cuenta diría lo otro y
+  estaría mal, por eso el nodo se la sobreescribe.
+- **Si Matías contesta en cualquier momento de esas 24 horas**, la
+  corrida pasa a `paused_by_agent` (`send-message.ts`, cerca de la
+  línea 515) y el seguimiento no sale. Eso es lo buscado, no un efecto
+  colateral: hay test.
+- Las 24 horas las cuenta el barrido de `/api/flows/cron`, que corre
+  cada minuto por pg_cron. Para una espera de un día, sobra.
+- Nada hardcodeado: la cuenta sale del perfil `saysellsmatias@gmail.com`
+  y el flujo de su nombre (`Bot de primer contacto`), igual que la 050.
+- `src/lib/flows/seguimiento-catalogo.test.ts` arma el grafo leyendo
+  **las tres migraciones en orden** (050 carga, 052 saca el `espera`,
+  053 cuelga el seguimiento) y verifica que toda referencia cierre y
+  que pase el validador de activación sin una sola advertencia.
+
+## Pendientes de esta sesión
+
+- **La 053 no se corrió nunca**: no hay Postgres local. Lo verificado
+  es la lógica pura, el motor contra un Supabase falso y la integridad
+  del grafo leyendo el SQL.
+- Ni el `next_node_key` del traspaso ni el `timeout` por nodo tienen
+  formulario en el editor: se cargan por JSONB.
+- El seguimiento sale **una sola vez**. Si el lead tampoco contesta
+  eso, es un traspaso y ahí queda; no hay una segunda insistencia.
+- Un lead que reciba el catálogo y no conteste nada tiene la corrida
+  viva ~48 horas (24 del cierre + 24 del seguimiento) ocupando el
+  índice único de una-corrida-por-contacto. En ese lapso no se le puede
+  disparar otro flujo.
