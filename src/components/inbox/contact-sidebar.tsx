@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings, canSendMessages } from '@/lib/auth/roles';
 import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
 import { isEstadoTag } from '@/lib/contacts/tag-groups';
+import { subscribeToContactChanges } from '@/lib/inbox/contact-realtime';
 import {
   formatCallDateShort,
   fromDatetimeLocalValue,
@@ -191,6 +192,24 @@ export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
   useEffect(() => {
     fetchContactData();
   }, [fetchContactData]);
+
+  // Realtime: si el CRM cambia el estado o la fecha (PATCH por la API
+  // con service_role), la ficha relee sola. El callback va por ref
+  // para que la suscripcion dependa solo del id del contacto y no se
+  // rearme con cada render (mismo patron que use-realtime.ts). La
+  // relectura tambien avisa a la lista (onTagsChange), asi el chip de
+  // estado del item se refresca por el mismo camino.
+  const fetchContactDataRef = useRef(fetchContactData);
+  useEffect(() => {
+    fetchContactDataRef.current = fetchContactData;
+  });
+  const contactId = contact?.id ?? null;
+  useEffect(() => {
+    if (!contactId) return;
+    return subscribeToContactChanges(createClient(), contactId, () => {
+      void fetchContactDataRef.current();
+    });
+  }, [contactId]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
