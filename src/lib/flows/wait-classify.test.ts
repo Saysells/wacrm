@@ -98,7 +98,11 @@ vi.mock("./meta-send", () => ({
   })),
 }));
 
-import { dispatchInboundToFlows, resumeFlowRun } from "./engine";
+import {
+  dispatchInboundToFlows,
+  entryTriggerTexts,
+  resumeFlowRun,
+} from "./engine";
 import type { ParsedInbound } from "./types";
 
 const FLOW = {
@@ -438,5 +442,54 @@ describe("variables del contacto en el motor", () => {
     expect(sentText()).toBe(
       "Hola, te escribe Kosmo por tema venta mayorista para tu negocio.",
     );
+  });
+});
+
+// ============================================================
+// Archivos en medio del guion.
+// ============================================================
+
+describe("mensaje con archivo durante una corrida", () => {
+  beforeEach(() => {
+    h.state.activeRuns = [parkedRun("paso1")];
+    h.state.flows = [FLOW];
+  });
+
+  it("traspasa con la nota 'Mandó un archivo'", async () => {
+    const result = await dispatch({
+      kind: "media",
+      media_kind: "image",
+      meta_message_id: "m1",
+    });
+
+    expect(result.outcome).toBe("handed_off");
+    const handoff = insertedInto("flow_run_events").find(
+      (e) => e.event_type === "handoff",
+    );
+    expect(handoff?.payload).toMatchObject({
+      reason: "media_received",
+      media_kind: "image",
+      note: "Mandó un archivo",
+    });
+    expect(updatesTo("conversations")[0]).toMatchObject({ status: "pending" });
+  });
+
+  it("no repregunta ni intenta clasificar el archivo", async () => {
+    await dispatch({
+      kind: "media",
+      media_kind: "audio",
+      meta_message_id: "m1",
+    });
+    expect(engineSendText).not.toHaveBeenCalled();
+  });
+
+  it("un archivo no dispara un flujo por palabra clave", () => {
+    expect(
+      entryTriggerTexts({
+        kind: "media",
+        media_kind: "document",
+        meta_message_id: "m1",
+      }),
+    ).toEqual([]);
   });
 });

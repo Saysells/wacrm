@@ -9,6 +9,8 @@ import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import type { ParsedInbound } from '@/lib/flows/types'
+import { aplicarReentrada } from '@/lib/inbox/reentrada'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
@@ -769,6 +771,18 @@ async function processMessage(
   // SQL — see the helper for why that matters.
   await reopenClosedConversation(supabaseAdmin(), conversation)
 
+  // Un contacto marcado "No responde" que vuelve a escribir vuelve a
+  // "En gestión" y a manos de una persona. Va acá, antes del motor de
+  // Flujos, por la misma razón que la línea de arriba: el cliente
+  // volvió, y el estado tiene que dejar de mentir antes de que
+  // cualquier otra cosa reaccione al mensaje. El bot no se reinicia —
+  // su disparador es el primer mensaje entrante y este no lo es.
+  await aplicarReentrada(supabaseAdmin(), {
+    accountId,
+    contactId: contactRecord.id,
+    conversationId: conversation.id,
+  })
+
   // If this contact was a recent broadcast recipient, flag the reply
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
@@ -798,19 +812,12 @@ async function processMessage(
     userId: configOwnerUserId,
     contactId: contactRecord.id,
     conversationId: conversation.id,
-    message:
-      interactiveReplyId
-        ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
-            meta_message_id: message.id,
-          }
-        : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
+    message: parsedInboundForFlows(
+      message.id,
+      contentType,
+      interactiveReplyId,
+      contentText ?? message.text?.body ?? ''
+    ),
     isFirstInboundMessage,
   })
   const flowConsumed = flowResult.consumed
@@ -1246,4 +1253,44 @@ async function findOrCreateConversation(
   }
 
   return { conversation: newConv, created: true }
+}
+
+/**
+ * El mensaje entrante como lo quiere el motor de Flujos.
+ *
+ * Tres formas, y la que faltaba era la del medio: una foto, un audio o
+ * un documento llegaban como `{ kind: 'text', text: '' }`, así que el
+ * bot los trataba como "no entendí" y repreguntaba. Ahora viajan como
+ * `media` y el motor traspasa la conversación a una persona, que es lo
+ * único sensato que se puede hacer con un archivo.
+ *
+ * `location` y `template` no son archivos y siguen entrando como texto.
+ */
+function parsedInboundForFlows(
+  metaMessageId: string,
+  contentType: string,
+  interactiveReplyId: string | null,
+  text: string
+): ParsedInbound {
+  if (interactiveReplyId) {
+    return {
+      kind: 'interactive_reply',
+      reply_id: interactiveReplyId,
+      reply_title: text,
+      meta_message_id: metaMessageId,
+    }
+  }
+  if (
+    contentType === 'image' ||
+    contentType === 'audio' ||
+    contentType === 'video' ||
+    contentType === 'document'
+  ) {
+    return {
+      kind: 'media',
+      media_kind: contentType,
+      meta_message_id: metaMessageId,
+    }
+  }
+  return { kind: 'text', text, meta_message_id: metaMessageId }
 }

@@ -432,6 +432,16 @@ export type ParsedInbound =
       /** The visible title of the tapped option (for logging). */
       reply_title: string;
       meta_message_id: string;
+    }
+  | {
+      /**
+       * Una foto, un audio, un video o un documento. El motor no
+       * intenta interpretarlos: una corrida activa que recibe un
+       * archivo se traspasa a una persona.
+       */
+      kind: "media";
+      media_kind: "image" | "audio" | "video" | "document";
+      meta_message_id: string;
     };
 
 export interface DispatchInboundInput {

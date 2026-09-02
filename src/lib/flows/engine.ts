@@ -134,9 +134,27 @@ export function matchesKeywordTrigger(
  */
 export function entryTriggerTexts(message: ParsedInbound): string[] {
   if (message.kind === "text") return [message.text];
+  // Un archivo no ofrece texto: nunca dispara un trigger por palabra
+  // clave. `first_inbound_message` sí puede arrancar con una foto —
+  // ahí lo que importa es que sea el primer mensaje, no qué dice.
+  if (message.kind === "media") return [];
   return [...new Set([message.reply_title, message.reply_id])].filter(
     (v): v is string => Boolean(v && v.trim()),
   );
+}
+
+/**
+ * El texto que este mensaje ofrece para clasificar.
+ *
+ * Un tap ofrece el rótulo visible del botón — lo que la persona habría
+ * escrito si el botón no estuviera. Un archivo no ofrece nada:
+ * `undefined`, que es distinto de la cadena vacía (eso sería "contestó
+ * en blanco").
+ */
+export function inboundTextOf(message: ParsedInbound): string | undefined {
+  if (message.kind === "text") return message.text;
+  if (message.kind === "interactive_reply") return message.reply_title;
+  return undefined;
 }
 
 /** Nodes that advance to a next_node_key without waiting for input. */
@@ -476,6 +494,38 @@ async function sendListAndSuspend(
     })
     .eq("id", run.id);
   return { outcome: "advanced", node_key: node.node_key };
+}
+
+/** Nota del traspaso cuando el cliente manda un archivo. */
+export const NOTA_ARCHIVO = "Mandó un archivo";
+
+/**
+ * Deja la conversación pendiente y cierra la corrida como traspasada.
+ *
+ * Es el cuerpo compartido de los tres traspasos que NO salen de un
+ * nodo `handoff`: el fallback agotado, el archivo en medio del guion y
+ * el timeout. Antes cada uno escribía lo suyo por su lado y el del
+ * fallback se olvidaba de la nota.
+ */
+async function handoffRun(
+  db: AdminClient,
+  run: FlowRunRow,
+  nodeKey: string | null,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (run.conversation_id) {
+    await db
+      .from("conversations")
+      .update({ status: "pending", updated_at: new Date().toISOString() })
+      .eq("id", run.conversation_id);
+  }
+  await logEvent(db, run.id, "handoff", nodeKey, payload);
+  await endRun(
+    db,
+    run.id,
+    "handed_off",
+    typeof payload.reason === "string" ? payload.reason : "handoff",
+  );
 }
 
 async function executeHandoff(
@@ -1155,6 +1205,7 @@ async function handleReplyForActiveRun(
     meta_message_id: message.meta_message_id,
     reply_kind: message.kind,
     reply_id: message.kind === "interactive_reply" ? message.reply_id : null,
+    media_kind: message.kind === "media" ? message.media_kind : null,
     text_length: message.kind === "text" ? message.text.length : null,
   });
 
@@ -1187,6 +1238,18 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Una foto, un audio o un documento en medio del guion: el bot no
+  // tiene nada que hacer con eso y fingir que no llegó es peor —
+  // quien mandó una foto espera que alguien la mire. Traspaso.
+  if (message.kind === "media") {
+    await handoffRun(db, run, currentNode.node_key, {
+      reason: "media_received",
+      media_kind: message.media_kind,
+      note: NOTA_ARCHIVO,
+    });
+    return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
+  }
+
   // Two ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
@@ -1206,7 +1269,7 @@ async function handleReplyForActiveRun(
       db,
       run,
       currentNode,
-      message.kind === "text" ? message.text : message.reply_title,
+      inboundTextOf(message) ?? "",
     );
   } else if (
     message.kind === "text" &&
@@ -1255,8 +1318,7 @@ async function handleReplyForActiveRun(
       if (!error) run.reprompt_count = 0;
     }
     const outcome = await advanceFromNodeKey(db, run, matched, nodes, {
-      lastInboundText:
-        message.kind === "text" ? message.text : message.reply_title,
+      lastInboundText: inboundTextOf(message),
       getContact,
     });
     return {
@@ -1322,16 +1384,9 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "fallback_fired" };
   }
   if (action.type === "handoff") {
-    if (run.conversation_id) {
-      await db
-        .from("conversations")
-        .update({ status: "pending", updated_at: new Date().toISOString() })
-        .eq("id", run.conversation_id);
-    }
-    await logEvent(db, run.id, "handoff", run.current_node_key, {
+    await handoffRun(db, run, run.current_node_key, {
       reason: "fallback_exhausted",
     });
-    await endRun(db, run.id, "handed_off", "fallback_exhausted");
     return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
   }
   // action.type === 'end'
@@ -1402,10 +1457,7 @@ async function startNewRun(
   // El mensaje que disparó el flujo es "el último mensaje del cliente"
   // para un classify_reply sin prompt que aparezca al principio.
   const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes, {
-    lastInboundText:
-      input.message.kind === "text"
-        ? input.message.text
-        : input.message.reply_title,
+    lastInboundText: inboundTextOf(input.message),
   });
   return {
     consumed: true,
