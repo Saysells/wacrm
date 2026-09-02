@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media'
+import { nameToFillIn } from '@/lib/whatsapp/contact-name'
 import { normalizeArgentinePhone } from '@/lib/phone/normalize-ar'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
@@ -1143,11 +1144,21 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
+    // El nombre de perfil COMPLETA, no CORRIGE. Antes esto pisaba
+    // `contacts.name` en cada mensaje entrante, así que el nombre que
+    // el lead había puesto en el formulario duraba hasta que escribía
+    // por WhatsApp — y muchos mayoristas tienen el nombre del negocio
+    // como perfil. Ver `contact-name.ts`.
+    const fill = nameToFillIn({
+      existingName: existingContact.name,
+      existingPhone: existingContact.phone,
+      incomingPhone: phone,
+      incomingName: name,
+    })
+    if (fill) {
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update({ name: fill, updated_at: new Date().toISOString() })
         .eq('id', existingContact.id)
     }
     return { contact: existingContact, wasCreated: false }
