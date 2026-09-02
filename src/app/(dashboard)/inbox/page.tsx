@@ -8,7 +8,7 @@ import {
   CONVERSATION_SELECT,
   normalizeConversation,
 } from "@/lib/inbox/conversations";
-import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
+import type { Conversation, Message, Contact, ConversationStatus, Tag } from "@/types";
 import { canSeeConversation } from "@/lib/auth/visibility";
 import type { AccountRole } from "@/lib/auth/roles";
 import { useAuth } from "@/hooks/use-auth";
@@ -452,6 +452,30 @@ function InboxPageInner() {
     setResyncToken((n) => n + 1);
   }, []);
 
+  /**
+   * La ficha releyo las etiquetas del contacto (al abrirlo o despues
+   * de cambiarle el estado). Se copian al contacto embebido en la
+   * lista, que las trajo con su propio fetch y si no quedaria mostrando
+   * el estado viejo. Solo `conversations`: tocar `activeContact` le
+   * cambiaria la identidad a la prop de la ficha y la haria releer.
+   */
+  const handleContactTagsChange = useCallback(
+    (contactId: string, tags: Tag[]) => {
+      setConversations((prev) => {
+        let changed = false;
+        const next = prev.map((c) => {
+          if (!c.contact || c.contact.id !== contactId) return c;
+          const current = (c.contact.tags ?? []).map((t) => t.id).join(",");
+          if (current === tags.map((t) => t.id).join(",")) return c;
+          changed = true;
+          return { ...c, contact: { ...c.contact, tags } };
+        });
+        return changed ? next : prev;
+      });
+    },
+    [],
+  );
+
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
@@ -721,7 +745,10 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden h-full lg:block">
-            <ContactSidebar contact={activeContact} />
+            <ContactSidebar
+              contact={activeContact}
+              onTagsChange={handleContactTagsChange}
+            />
           </div>
         )}
       </div>

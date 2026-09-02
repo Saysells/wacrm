@@ -121,11 +121,20 @@ export interface Contact {
   tags?: Tag[];
 }
 
+/**
+ * Grupo de una etiqueta (`tags.grupo`, migracion 046). `estado` son las
+ * 13 etapas del proceso comercial (una sola por contacto, regla que
+ * vive en la base); `origen` y `senal` las pone el bot de Kosmo. Null
+ * para las etiquetas libres.
+ */
+export type TagGrupo = 'estado' | 'origen' | 'senal';
+
 export interface Tag {
   id: string;
   user_id: string;
   name: string;
   color: string;
+  grupo: TagGrupo | null;
   created_at: string;
 }
 

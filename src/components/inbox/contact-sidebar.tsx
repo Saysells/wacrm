@@ -5,15 +5,17 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings, canSendMessages } from '@/lib/auth/roles';
 import { DEFAULT_TAG_COLOR, PRESET_COLORS } from '@/lib/contacts/tag-colors';
+import { isEstadoTag } from '@/lib/contacts/tag-groups';
 import {
   loadContactFormValues,
   type ContactFieldValue,
 } from '@/lib/inbox/contact-form-values';
 import {
-  assignableTags,
   attachTag,
   createAndAttachTag,
   detachTag,
+  groupAssignableTags,
+  orderAttachedTags,
   TagCreateError,
 } from '@/lib/inbox/contact-tags';
 import { cn } from '@/lib/utils';
@@ -45,9 +47,17 @@ import { useTranslations } from 'next-intl';
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /**
+   * Se llama cada vez que la ficha relee las etiquetas del contacto
+   * desde la base (al abrirlo y despues de agregar, sacar o crear).
+   * La lista de conversaciones pinta el estado del contacto con lo
+   * que trajo su propio fetch; sin este aviso el chip quedaria viejo
+   * hasta la proxima recarga. Debe ser estable (useCallback).
+   */
+  onTagsChange?: (contactId: string, tags: Tag[]) => void;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, onTagsChange }: ContactSidebarProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   const tThread = useTranslations('Inbox.messageThread');
   // Los nombres de los colores ya viven en Configuracion → Campos y
@@ -122,10 +132,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         .filter((ct: Record<string, unknown>) => ct.tags)
         .map((ct: Record<string, unknown>) => ct.tags as Tag);
       setTags(mapped);
+      onTagsChange?.(contact.id, mapped);
     }
     if (accountTagsRes.data) setAccountTags(accountTagsRes.data as Tag[]);
     setFormValues(formValuesRows);
-  }, [contact]);
+  }, [contact, onTagsChange]);
 
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
@@ -143,12 +154,18 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
 
-  // Etiquetas de la cuenta que este contacto todavia no tiene: lo que
-  // ofrece el popover. Si no queda ninguna, el popover lo dice.
+  // Etiquetas de la cuenta que este contacto todavia no tiene, en los
+  // dos grupos del popover: estado (orden de embudo) y otras
+  // (alfabetico). Si no queda ninguna, el popover lo dice.
   const availableTags = useMemo(
-    () => assignableTags(accountTags, tags),
+    () => groupAssignableTags(accountTags, tags),
     [accountTags, tags]
   );
+  const noTagsAvailable =
+    availableTags.estado.length === 0 && availableTags.otras.length === 0;
+  // La de estado primera: es lo que el setter mira de un vistazo.
+  const orderedTags = useMemo(() => orderAttachedTags(tags), [tags]);
+  const hasEstado = tags.some(isEstadoTag);
 
   const handleAttachTag = useCallback(
     async (tag: Tag) => {
@@ -159,9 +176,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         // lista nueva: si el POST falla, la pastilla no aparece.
         setTags(await attachTag(contact.id, tag, tags));
         setTagPickerOpen(false);
-        // La lista local NO alcanza: el trigger trg_single_etapa_tag
-        // borra en la base la etapa_* anterior al poner una nueva, y
-        // la pantalla la seguia mostrando hasta recargar. Se relee.
+        // withTagAttached ya saco de la lista local el estado anterior
+        // (espejo del trigger trg_single_etapa_tag, que lo borra en la
+        // base). La base sigue siendo la fuente de verdad: se relee.
         await fetchContactData();
       } catch (err) {
         const reason = err instanceof Error ? err.message : '';
@@ -229,7 +246,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setNewTagColor(DEFAULT_TAG_COLOR);
       setTagPickerOpen(false);
       toast.success(tSidebar('tagCreated'));
-      // Aplicar sale por attachTag: si la nueva es una etapa_*, el
+      // Aplicar sale por attachTag: si la nueva es de estado, el
       // trigger ya saco la anterior en la base. Se relee igual que
       // en handleAttachTag.
       await fetchContactData();
@@ -303,6 +320,23 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  // Una fila del popover; la misma para los dos grupos.
+  const renderTagOption = (tag: Tag) => (
+    <button
+      key={tag.id}
+      type="button"
+      disabled={tagBusyId === tag.id}
+      onClick={() => handleAttachTag(tag)}
+      className="text-popover-foreground hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors disabled:opacity-50"
+    >
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: tag.color }}
+      />
+      <span className="truncate">{tag.name}</span>
+    </button>
+  );
 
   if (!contact) {
     return (
@@ -381,35 +415,57 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               {tSidebar('tags')}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1">
-              {tags.length === 0 && (
-                <p className="text-muted-foreground px-1 text-xs">
-                  {tSidebar('noTags')}
-                </p>
-              )}
-              {tags.map((tag) => (
-                <span
-                  key={tag.id}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  style={{
-                    backgroundColor: `${tag.color}20`,
-                    color: tag.color,
-                  }}
-                >
-                  {tag.name}
-                  {canEditTags && (
-                    <button
-                      type="button"
-                      aria-label={tSidebar('removeTag')}
-                      title={tSidebar('removeTag')}
-                      disabled={tagBusyId === tag.id}
-                      onClick={() => handleDetachTag(tag.id)}
-                      className="rounded-full opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  )}
+              {/* Sin estado: el hueco se ve, asi el setter sabe que
+                  todavia no lo marco. */}
+              {!hasEstado && (
+                <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed py-1 pr-2.5 pl-1 text-xs">
+                  <span className="bg-muted rounded-full px-1.5 py-px text-[9px] font-medium tracking-wider uppercase">
+                    {tSidebar('estado')}
+                  </span>
+                  {tSidebar('noEstado')}
                 </span>
-              ))}
+              )}
+              {orderedTags.map((tag) =>
+                isEstadoTag(tag) ? (
+                  // Estado: pastilla llena, mas grande y con rotulo. Sin X
+                  // a proposito — el estado se cambia eligiendo otro en el
+                  // popover (la base saca el anterior); dejar a un
+                  // contacto sin estado se hace desde Contactos.
+                  <span
+                    key={tag.id}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1 text-xs font-semibold text-white"
+                    style={{ backgroundColor: tag.color }}
+                  >
+                    <span className="rounded-full bg-white/25 px-1.5 py-px text-[9px] font-medium tracking-wider uppercase">
+                      {tSidebar('estado')}
+                    </span>
+                    <span className="truncate">{tag.name}</span>
+                  </span>
+                ) : (
+                  <span
+                    key={tag.id}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    style={{
+                      backgroundColor: `${tag.color}20`,
+                      color: tag.color,
+                    }}
+                  >
+                    {tag.name}
+                    {canEditTags && (
+                      <button
+                        type="button"
+                        aria-label={tSidebar('removeTag')}
+                        title={tSidebar('removeTag')}
+                        disabled={tagBusyId === tag.id}
+                        onClick={() => handleDetachTag(tag.id)}
+                        className="rounded-full opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </span>
+                )
+              )}
 
               {canEditTags && (
                 <Popover open={tagPickerOpen} onOpenChange={setTagPickerOpen}>
@@ -418,27 +474,37 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     {tSidebar('addTag')}
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-64 p-0">
-                    {availableTags.length === 0 ? (
+                    {noTagsAvailable ? (
                       <p className="text-muted-foreground px-3 py-4 text-center text-xs">
                         {tSidebar('noTagsAvailable')}
                       </p>
                     ) : (
-                      <div className="max-h-56 overflow-y-auto py-1">
-                        {availableTags.map((tag) => (
-                          <button
-                            key={tag.id}
-                            type="button"
-                            disabled={tagBusyId === tag.id}
-                            onClick={() => handleAttachTag(tag)}
-                            className="text-popover-foreground hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors disabled:opacity-50"
-                          >
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: tag.color }}
-                            />
-                            <span className="truncate">{tag.name}</span>
-                          </button>
-                        ))}
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {/* Estado primero, en orden de embudo: es lo que el
+                            setter toca todo el dia. Elegir uno reemplaza
+                            al anterior (trigger en la base). */}
+                        {availableTags.estado.length > 0 && (
+                          <>
+                            <p className="text-muted-foreground px-3 pt-1.5 pb-1 text-[10px] font-medium tracking-wider uppercase">
+                              {tSidebar('estado')}
+                            </p>
+                            {availableTags.estado.map(renderTagOption)}
+                          </>
+                        )}
+                        {availableTags.otras.length > 0 && (
+                          <>
+                            <p
+                              className={cn(
+                                'text-muted-foreground px-3 pt-1.5 pb-1 text-[10px] font-medium tracking-wider uppercase',
+                                availableTags.estado.length > 0 &&
+                                  'border-border mt-1 border-t pt-2'
+                              )}
+                            >
+                              {tSidebar('otherTags')}
+                            </p>
+                            {availableTags.otras.map(renderTagOption)}
+                          </>
+                        )}
                       </div>
                     )}
 

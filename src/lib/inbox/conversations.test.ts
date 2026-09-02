@@ -35,6 +35,7 @@ const tag = (id: string, name = id) => ({
   user_id: "u1",
   name,
   color: "#fff",
+  grupo: null,
   created_at: "",
 });
 

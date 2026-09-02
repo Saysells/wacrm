@@ -8,6 +8,8 @@ import {
   attachTag,
   createAndAttachTag,
   detachTag,
+  groupAssignableTags,
+  orderAttachedTags,
   TagCreateError,
   withTagAttached,
   withTagDetached,
@@ -19,8 +21,14 @@ function tag(id: string, name = id): Tag {
     user_id: "user-1",
     name,
     color: "#22c55e",
+    grupo: null,
     created_at: "2026-01-01T00:00:00.000Z",
   };
+}
+
+/** Etiqueta de grupo 'estado' (las 13 del embudo del setter). */
+function estado(id: string, name: string): Tag {
+  return { ...tag(id, name), grupo: "estado" };
 }
 
 describe("assignableTags", () => {
@@ -40,7 +48,97 @@ describe("assignableTags", () => {
   });
 });
 
+describe("groupAssignableTags", () => {
+  it("separa estado de otras: estado en orden de embudo, otras alfabeticas", () => {
+    // Catalogo desordenado a proposito (la base lo trae por nombre).
+    const all = [
+      tag("o2", "VIP"),
+      estado("e-perdido", "Perdido"),
+      estado("e-nuevo", "Nuevo"),
+      tag("o1", "Frio"),
+      estado("e-gestion", "En gestión"),
+      estado("e-paola", "Agendado a Paola"),
+      tag("origen", "origen_form"),
+    ];
+
+    const groups = groupAssignableTags(all, [estado("e-gestion", "En gestión")]);
+
+    // La que ya tiene no se ofrece; el resto sigue el embudo, no el abc
+    // ("Agendado a Paola" iria primera alfabeticamente).
+    expect(groups.estado.map((t) => t.name)).toEqual([
+      "Nuevo",
+      "Agendado a Paola",
+      "Perdido",
+    ]);
+    expect(groups.otras.map((t) => t.name)).toEqual([
+      "Frio",
+      "origen_form",
+      "VIP",
+    ]);
+  });
+
+  it("una de estado con nombre fuera del embudo va al final", () => {
+    const all = [
+      estado("e-x", "Zzz inventada"),
+      estado("e-ganada", "Ganada"),
+      estado("e-aaa", "Aaa inventada"),
+    ];
+
+    expect(groupAssignableTags(all, []).estado.map((t) => t.name)).toEqual([
+      "Ganada",
+      "Aaa inventada",
+      "Zzz inventada",
+    ]);
+  });
+
+  it("los dos grupos vacios cuando el contacto ya tiene todo", () => {
+    const all = [estado("e1", "Nuevo"), tag("o1", "VIP")];
+
+    expect(groupAssignableTags(all, all)).toEqual({ estado: [], otras: [] });
+  });
+});
+
+describe("orderAttachedTags", () => {
+  it("pone la etiqueta de estado primera y deja las demas como vienen", () => {
+    const attached = [
+      tag("o2", "VIP"),
+      tag("o1", "Frio"),
+      estado("e1", "Propuesta"),
+    ];
+
+    expect(orderAttachedTags(attached).map((t) => t.id)).toEqual([
+      "e1",
+      "o2",
+      "o1",
+    ]);
+  });
+
+  it("sin etiqueta de estado devuelve la lista tal cual", () => {
+    const attached = [tag("o2", "VIP"), tag("o1", "Frio")];
+
+    expect(orderAttachedTags(attached)).toEqual(attached);
+  });
+});
+
 describe("withTagAttached / withTagDetached", () => {
+  it("al poner una etiqueta de estado saca la de estado anterior al instante", () => {
+    // Espejo de lo que hace el trigger en la base, para que la ficha no
+    // muestre dos estados hasta que vuelva la relectura.
+    const attached = [estado("e1", "Nuevo"), tag("o1", "VIP")];
+
+    expect(
+      withTagAttached(attached, estado("e2", "En gestión")).map((t) => t.id),
+    ).toEqual(["o1", "e2"]);
+  });
+
+  it("una etiqueta comun no toca la de estado", () => {
+    const attached = [estado("e1", "Nuevo")];
+
+    expect(withTagAttached(attached, tag("o1", "VIP")).map((t) => t.id)).toEqual(
+      ["e1", "o1"],
+    );
+  });
+
   it("agrega la pastilla al final y nunca duplica", () => {
     const attached = [tag("t1")];
 

@@ -17,6 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
+import { isEstadoTag, sortByFunnel } from "@/lib/contacts/tag-groups";
 import type { Tag } from "@/types";
 
 /**
@@ -28,15 +29,58 @@ export function assignableTags(all: Tag[], attached: Tag[]): Tag[] {
   return all.filter((t) => !taken.has(t.id));
 }
 
+export interface AssignableTagGroups {
+  /** Grupo 'estado' que el contacto no tiene, en orden de embudo. */
+  estado: Tag[];
+  /** El resto, alfabetico. */
+  otras: Tag[];
+}
+
+/**
+ * Lo mismo que `assignableTags`, partido en los dos grupos que muestra
+ * el popover: el setter elige un estado (en el orden en que un lead
+ * los recorre, no alfabetico) o una etiqueta comun.
+ */
+export function groupAssignableTags(
+  all: Tag[],
+  attached: Tag[],
+): AssignableTagGroups {
+  const available = assignableTags(all, attached);
+  return {
+    estado: sortByFunnel(available.filter(isEstadoTag)),
+    otras: available
+      .filter((t) => !isEstadoTag(t))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+/**
+ * Pastillas de la ficha: la de estado primera (es lo que el setter
+ * mira de un vistazo), las demas en el orden en que vinieron.
+ */
+export function orderAttachedTags(attached: Tag[]): Tag[] {
+  const estado = attached.filter(isEstadoTag);
+  if (estado.length === 0) return attached;
+  return [...estado, ...attached.filter((t) => !isEstadoTag(t))];
+}
+
 /**
  * La pastilla se identifica por `tag.id`, no por el id de la fila de
  * contact_tags: la unique (contact_id, tag_id) garantiza como maximo
  * una fila por par, asi que el tag id ya es unico dentro del contacto
  * — y lo tenemos en mano sin releer la tabla despues de escribir.
+ *
+ * Si la etiqueta nueva es de estado, la de estado anterior sale de la
+ * lista en el mismo paso. No es la regla (esa vive en la base, trigger
+ * trg_single_etapa_tag): es su espejo para que la ficha no muestre dos
+ * estados durante el instante que tarda la relectura.
  */
 export function withTagAttached(attached: Tag[], tag: Tag): Tag[] {
   if (attached.some((t) => t.id === tag.id)) return attached;
-  return [...attached, tag];
+  const kept = isEstadoTag(tag)
+    ? attached.filter((t) => !isEstadoTag(t))
+    : attached;
+  return [...kept, tag];
 }
 
 export function withTagDetached(attached: Tag[], tagId: string): Tag[] {
