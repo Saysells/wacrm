@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
   serializeContact,
   findOrCreateContact,
+  setContactTags,
   ContactError,
 } from './contacts';
 
@@ -61,5 +62,130 @@ describe('findOrCreateContact', () => {
     await expect(
       findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
     ).rejects.toBeInstanceOf(ContactError);
+  });
+});
+
+// ------------------------------------------------------------
+// Supabase falso en memoria para setContactTags. Soporta lo que usan
+// setContactTags, resolveImportTagIds y addContactTagAndDispatch:
+// select / eq / in / maybeSingle / insert / delete, builder awaitable.
+// ------------------------------------------------------------
+type Row = Record<string, unknown>;
+
+const h = vi.hoisted(() => ({
+  runAutomationsForTrigger: vi.fn(),
+}));
+
+vi.mock('@/lib/automations/engine', () => ({
+  runAutomationsForTrigger: h.runAutomationsForTrigger,
+}));
+
+function fakeDb(store: Record<string, Row[]>) {
+  let idCounter = 0;
+  return {
+    from(table: string) {
+      store[table] ??= [];
+      const filters: [string, string, unknown][] = [];
+      let op: 'select' | 'insert' | 'delete' = 'select';
+      let payload: Row[] = [];
+
+      function matches(row: Row): boolean {
+        return filters.every(([kind, col, value]) => {
+          if (kind === 'eq') return row[col] === value;
+          if (kind === 'in') return (value as unknown[]).includes(row[col]);
+          return true;
+        });
+      }
+
+      function resolve(): Promise<{ data: Row[]; error: null }> {
+        const rows = store[table];
+        if (op === 'insert') {
+          const inserted = payload.map((r) => ({
+            id: `${table}-${++idCounter}`,
+            ...r,
+          }));
+          rows.push(...inserted);
+          return Promise.resolve({ data: inserted, error: null });
+        }
+        if (op === 'delete') {
+          const removed = rows.filter(matches);
+          store[table] = rows.filter((r) => !matches(r));
+          return Promise.resolve({ data: removed, error: null });
+        }
+        return Promise.resolve({ data: rows.filter(matches), error: null });
+      }
+
+      const builder = {
+        select: () => builder,
+        insert: (rows: Row | Row[]) => {
+          op = 'insert';
+          payload = Array.isArray(rows) ? rows : [rows];
+          return builder;
+        },
+        delete: () => {
+          op = 'delete';
+          return builder;
+        },
+        eq: (col: string, value: unknown) => {
+          filters.push(['eq', col, value]);
+          return builder;
+        },
+        in: (col: string, values: unknown[]) => {
+          filters.push(['in', col, values]);
+          return builder;
+        },
+        maybeSingle: async () => {
+          const { data } = await resolve();
+          return { data: data.length > 0 ? data[0] : null, error: null };
+        },
+        then: (
+          onFulfilled: (v: { data: Row[]; error: null }) => unknown,
+          onRejected?: (e: unknown) => unknown
+        ) => resolve().then(onFulfilled, onRejected),
+      };
+      return builder;
+    },
+  } as unknown as SupabaseClient;
+}
+
+describe('setContactTags', () => {
+  it('solo aplica las etiquetas pedidas, no el catalogo entero de la cuenta', async () => {
+    // Cuenta con a, b y c; el contacto arranca sin etiquetas.
+    const store: Record<string, Row[]> = {
+      tags: [
+        { id: 'tag-a', account_id: 'acc', name: 'a' },
+        { id: 'tag-b', account_id: 'acc', name: 'b' },
+        { id: 'tag-c', account_id: 'acc', name: 'c' },
+      ],
+      contacts: [{ id: 'c1', account_id: 'acc' }],
+      contact_tags: [],
+    };
+    const db = fakeDb(store);
+
+    // Lo que hace PATCH /api/v1/contacts/{id} con tags: ["a"].
+    await setContactTags(db, 'acc', 'user', 'c1', ['a']);
+
+    expect(store.contact_tags.map((r) => r.tag_id)).toEqual(['tag-a']);
+    // b y c existen en el catalogo pero nadie las pidio: no se insertan.
+    expect(store.contact_tags.some((r) => r.tag_id === 'tag-b')).toBe(false);
+    expect(store.contact_tags.some((r) => r.tag_id === 'tag-c')).toBe(false);
+    expect(h.runAutomationsForTrigger).toHaveBeenCalledTimes(1);
+  });
+
+  it('normaliza los nombres con trim y minusculas, igual que resolveImportTagIds', async () => {
+    const store: Record<string, Row[]> = {
+      tags: [
+        { id: 'tag-a', account_id: 'acc', name: 'A' },
+        { id: 'tag-b', account_id: 'acc', name: 'b' },
+      ],
+      contacts: [{ id: 'c1', account_id: 'acc' }],
+      contact_tags: [{ id: 'ct-1', contact_id: 'c1', tag_id: 'tag-b' }],
+    };
+    const db = fakeDb(store);
+
+    await setContactTags(db, 'acc', 'user', 'c1', ['  a  ']);
+
+    // Reemplaza el set completo: b sale, a entra (matcheada sin mayusculas).
+    expect(store.contact_tags.map((r) => r.tag_id)).toEqual(['tag-a']);
   });
 });

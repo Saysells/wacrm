@@ -170,7 +170,16 @@ export async function setContactTags(
     tagNames,
     canCreateTags: true,
   });
-  const desired = new Set(tagIdByKey.values());
+  // `tagIdByKey` trae TODAS las etiquetas de la cuenta (resolveImportTagIds
+  // carga el catalogo entero para matchear), no solo las pedidas. Tomar
+  // `.values()` de ese mapa aplicaba al contacto el catalogo completo.
+  // `desired` se arma unicamente con los nombres recibidos, normalizados
+  // con la misma regla (trim + minusculas) que usa el resolvedor.
+  const desired = new Set<string>();
+  for (const raw of tagNames) {
+    const id = tagIdByKey.get(raw.trim().toLowerCase());
+    if (id) desired.add(id);
+  }
 
   // Diff against the current joins rather than delete-all-then-insert:
   // a diff only touches tags that actually change, so a mid-operation
