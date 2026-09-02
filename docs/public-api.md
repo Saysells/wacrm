@@ -179,6 +179,7 @@ free-form tags.
     {
       "id": "…", "phone": "+14155550123", "name": "Jane Doe",
       "email": null, "company": "Acme", "avatar_url": null,
+      "fecha_llamada": "2026-09-04T13:00:00+00:00",
       "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6", "grupo": null }],
       "created_at": "…", "updated_at": "…"
     }
@@ -199,9 +200,12 @@ list rows above).
 ### `GET` / `PATCH /api/v1/contacts/{id}`
 
 Read or update one contact. Scopes: `contacts:read` / `contacts:write`.
-`PATCH` updates only the fields you send (`name`, `email`, `company`);
-pass `tags` (an array of tag names) to replace the contact's tags. A
-contact in another account returns `404`.
+`PATCH` updates only the fields you send (`name`, `email`, `company`,
+`fecha_llamada`); pass `tags` (an array of tag names) to replace the
+contact's tags. `fecha_llamada` is the scheduled call date and time:
+send an ISO 8601 string (any offset; stored as UTC) or `null` to clear
+it — anything else is a `400`. A contact in another account returns
+`404`.
 
 ### `GET /api/v1/conversations`
 

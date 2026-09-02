@@ -25,6 +25,8 @@ export interface ApiContact {
   email: string | null;
   company: string | null;
   avatar_url: string | null;
+  /** Fecha y hora de la llamada agendada (ISO 8601) o null. */
+  fecha_llamada: string | null;
   tags: ApiTag[];
   created_at: string;
   updated_at: string;
@@ -75,6 +77,7 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
     email: (row.email as string | null) ?? null,
     company: (row.company as string | null) ?? null,
     avatar_url: (row.avatar_url as string | null) ?? null,
+    fecha_llamada: (row.fecha_llamada as string | null) ?? null,
     tags: joins
       .map((j) => j.tags)
       .filter((t): t is NonNullable<RawTagJoin['tags']> => t != null)
@@ -82,6 +85,50 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
+}
+
+/**
+ * Validate the scalar fields of a `PATCH /api/v1/contacts/{id}` body.
+ * A field is updated only when its key is PRESENT (omitted fields are
+ * untouched); `null` clears it, a valid value sets it, and any other
+ * type is a 400 rather than a silently-ignored no-op.
+ *
+ * `fecha_llamada` (migración 047) es lo que el CRM manda de vuelta
+ * cuando reagenda: string ISO 8601 válida (se normaliza a UTC) o null.
+ */
+export type ContactUpdatesResult =
+  | { ok: true; updates: Record<string, unknown> }
+  | { ok: false; error: string };
+
+export function parseContactUpdates(
+  body: Record<string, unknown>
+): ContactUpdatesResult {
+  const updates: Record<string, unknown> = {};
+  for (const field of ['name', 'email', 'company'] as const) {
+    if (!(field in body)) continue;
+    const value = body[field];
+    if (value === null || typeof value === 'string') {
+      updates[field] = value;
+    } else {
+      return { ok: false, error: `'${field}' must be a string or null` };
+    }
+  }
+
+  if ('fecha_llamada' in body) {
+    const value = body.fecha_llamada;
+    if (value === null) {
+      updates.fecha_llamada = null;
+    } else if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Date.parse(value))) {
+      updates.fecha_llamada = new Date(value).toISOString();
+    } else {
+      return {
+        ok: false,
+        error: "'fecha_llamada' must be an ISO 8601 date string or null",
+      };
+    }
+  }
+
+  return { ok: true, updates };
 }
 
 /**

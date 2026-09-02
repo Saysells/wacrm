@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   serializeContact,
   findOrCreateContact,
+  parseContactUpdates,
   setContactTags,
   ContactError,
 } from './contacts';
@@ -31,10 +32,22 @@ describe('serializeContact', () => {
       email: null,
       company: 'Acme',
       avatar_url: null,
+      fecha_llamada: null,
       tags: [{ id: 't1', name: 'vip', color: '#fff', grupo: null }],
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
     });
+  });
+
+  it('expone fecha_llamada tal cual viene de la base', () => {
+    const row = {
+      id: 'c1',
+      phone: '+1',
+      fecha_llamada: '2026-09-04T13:00:00+00:00',
+      created_at: 'a',
+      updated_at: 'b',
+    };
+    expect(serializeContact(row).fecha_llamada).toBe('2026-09-04T13:00:00+00:00');
   });
 
   it('expone el grupo de cada etiqueta (estado / origen / senal / null)', () => {
@@ -69,6 +82,45 @@ describe('serializeContact', () => {
       updated_at: 'b',
     };
     expect(serializeContact(row).tags).toEqual([]);
+  });
+});
+
+describe('parseContactUpdates', () => {
+  it('solo toma los campos presentes; null limpia', () => {
+    expect(parseContactUpdates({ name: 'Ana', email: null })).toEqual({
+      ok: true,
+      updates: { name: 'Ana', email: null },
+    });
+    expect(parseContactUpdates({ tags: ['a'] })).toEqual({
+      ok: true,
+      updates: {},
+    });
+  });
+
+  it('un tipo que no es string ni null es 400', () => {
+    expect(parseContactUpdates({ company: 3 })).toEqual({
+      ok: false,
+      error: "'company' must be a string or null",
+    });
+  });
+
+  it('fecha_llamada: ISO valida se normaliza a UTC, null limpia', () => {
+    expect(
+      parseContactUpdates({ fecha_llamada: '2026-09-04T10:00:00-03:00' })
+    ).toEqual({ ok: true, updates: { fecha_llamada: '2026-09-04T13:00:00.000Z' } });
+    expect(parseContactUpdates({ fecha_llamada: null })).toEqual({
+      ok: true,
+      updates: { fecha_llamada: null },
+    });
+  });
+
+  it('fecha_llamada que no es fecha (o no es string) es 400', () => {
+    for (const bad of ['manana', '', 123, true, {}]) {
+      expect(parseContactUpdates({ fecha_llamada: bad })).toEqual({
+        ok: false,
+        error: "'fecha_llamada' must be an ISO 8601 date string or null",
+      });
+    }
   });
 });
 
