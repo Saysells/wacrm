@@ -16,17 +16,34 @@
 export interface InterpolationContext {
   /** `flow_runs.vars` — lo que capturaron collect_input / classify_reply. */
   vars: Record<string, unknown>;
+  /**
+   * Lo que ya sabíamos del contacto antes de la conversación: nombre,
+   * rubro, campos del formulario. Lo arma `contact-vars.ts`. Cuando no
+   * está (una corrida sin contacto), `{{contact.x}}` queda vacío.
+   */
+  contact?: Record<string, string>;
 }
 
-const VAR_PATTERN = /\{\{vars\.([a-zA-Z0-9_]+)\}\}/g;
+const PATTERN = /\{\{(vars|contact)\.([a-zA-Z0-9_]+)\}\}/g;
 
 export function interpolate(
   template: string | undefined | null,
   ctx: InterpolationContext,
 ): string {
   if (!template) return "";
-  return template.replace(VAR_PATTERN, (_, key: string) => {
-    const v = ctx.vars[key];
+  return template.replace(PATTERN, (_, scope: string, key: string) => {
+    const v = scope === "contact" ? ctx.contact?.[key] : ctx.vars[key];
     return v === undefined || v === null ? "" : String(v);
   });
+}
+
+/**
+ * ¿Este texto necesita los datos del contacto?
+ *
+ * Sirve para no pagar las consultas de `loadContactVars` en un flujo
+ * que no usa ninguna: la mayoría de los nodos interpolan solo
+ * `{{vars.x}}`, que ya está en memoria.
+ */
+export function hasContactVars(template: string | undefined | null): boolean {
+  return typeof template === "string" && template.includes("{{contact.");
 }

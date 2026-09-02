@@ -18,6 +18,9 @@ const h = vi.hoisted(() => ({
     inserted: [] as { table: string; row: Record<string, unknown> }[],
     updated: [] as { table: string; row: Record<string, unknown> }[],
     insertedRun: null as Record<string, unknown> | null,
+    contacts: [] as unknown[],
+    customFields: [] as unknown[],
+    customValues: [] as unknown[],
   },
 }));
 
@@ -26,6 +29,9 @@ vi.mock("./admin-client", () => {
     if (table === "flow_runs") return h.state.activeRuns;
     if (table === "flows") return h.state.flows;
     if (table === "flow_nodes") return h.state.nodes;
+    if (table === "contacts") return h.state.contacts;
+    if (table === "custom_fields") return h.state.customFields;
+    if (table === "contact_custom_values") return h.state.customValues;
     return [];
   }
 
@@ -203,6 +209,9 @@ beforeEach(() => {
   h.state.inserted = [];
   h.state.updated = [];
   h.state.insertedRun = null;
+  h.state.contacts = [];
+  h.state.customFields = [];
+  h.state.customValues = [];
   engineSendText.mockClear();
 });
 
@@ -372,6 +381,62 @@ describe("interpolación", () => {
     );
     expect((handoff?.payload as Record<string, unknown>).note).toBe(
       "Dijo: no fui yo",
+    );
+  });
+});
+
+// ============================================================
+// Variables del contacto en un mensaje real del motor.
+// ============================================================
+
+const SALUDO_NODES = [
+  node("inicio", "start", { next_node_key: "saludo" }),
+  node("saludo", "send_message", {
+    text:
+      "Hola{{contact.nombre_coma}} te escribe Kosmo por tema venta " +
+      "mayorista para {{contact.tipo_negocio}}.",
+    next_node_key: "fin",
+  }),
+  node("fin", "end", {}),
+];
+
+function sentText(): string {
+  const call = engineSendText.mock.calls[0] as unknown as [
+    { text: string },
+  ];
+  return call[0].text;
+}
+
+describe("variables del contacto en el motor", () => {
+  beforeEach(() => {
+    h.state.flows = [{ ...FLOW, entry_node_id: "inicio" }];
+    h.state.nodes = SALUDO_NODES;
+  });
+
+  it("usa el nombre y el rubro que dejó el formulario", async () => {
+    h.state.contacts = [{ name: "Juan Pérez" }];
+    h.state.customFields = [{ id: "cf-1", field_name: "tipo_negocio" }];
+    h.state.customValues = [
+      { custom_field_id: "cf-1", value: "Local de celular" },
+    ];
+
+    await dispatch(text("Hola"), true);
+
+    expect(sentText()).toBe(
+      "Hola Juan, te escribe Kosmo por tema venta mayorista para " +
+        "local de celular.",
+    );
+  });
+
+  it("sin nombre ni rubro el mensaje sigue leyéndose bien", async () => {
+    // Contacto creado por el webhook: se llama como su teléfono y no
+    // pasó por el formulario.
+    h.state.contacts = [{ name: "5491122334455" }];
+
+    await dispatch(text("Hola"), true);
+
+    expect(sentText()).toBe(
+      "Hola, te escribe Kosmo por tema venta mayorista para tu negocio.",
     );
   });
 });

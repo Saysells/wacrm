@@ -41,7 +41,8 @@ import {
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { classifyReply } from "./classify";
-import { interpolate } from "./interpolate";
+import { hasContactVars, interpolate } from "./interpolate";
+import { loadContactVars, type ContactVars } from "./contact-vars";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -480,6 +481,7 @@ async function executeHandoff(
   db: AdminClient,
   run: FlowRunRow,
   node: FlowNodeRow,
+  getContact: ContactVarsGetter,
 ): Promise<void> {
   const cfg = node.config as { assign_to?: string; note?: string };
   const convUpdate: Record<string, unknown> = {
@@ -496,7 +498,7 @@ async function executeHandoff(
   // La nota se interpola con las mismas variables que un send_message.
   // Sin esto, "Quiere la llamada. Rango: {{vars.rango_horario}}" le
   // llega al agente con las llaves puestas y sin el rango.
-  const note = cfg.note ? interpolate(cfg.note, { vars: run.vars }) : null;
+  const note = cfg.note ? await render(cfg.note, run, getContact) : null;
   await logEvent(db, run.id, "handoff", node.node_key, {
     note,
     assigned_to: cfg.assign_to ?? null,
@@ -554,6 +556,44 @@ async function evaluateConditionNode(
     operator: cfg.operator,
     subjectValue,
     configValue: cfg.value,
+  });
+}
+
+/**
+ * Lector perezoso y memorizado de las variables del contacto.
+ *
+ * Perezoso porque la mayoría de los textos solo usan `{{vars.x}}`, que
+ * ya está en la fila de la corrida; memorizado porque un avance puede
+ * atravesar varios nodos que sí las usan y sería una lectura por nodo.
+ */
+type ContactVarsGetter = () => Promise<ContactVars>;
+
+function makeContactVarsGetter(
+  db: AdminClient,
+  run: FlowRunRow,
+): ContactVarsGetter {
+  let cache: ContactVars | null = null;
+  return async () => {
+    if (!cache) {
+      cache = run.contact_id ? await loadContactVars(db, run.contact_id) : {};
+    }
+    return cache;
+  };
+}
+
+/** Un texto del flujo, ya con las variables reemplazadas. */
+async function render(
+  template: string | undefined | null,
+  run: FlowRunRow,
+  getContact: ContactVarsGetter,
+): Promise<string> {
+  if (!template) return "";
+  if (!hasContactVars(template)) {
+    return interpolate(template, { vars: run.vars });
+  }
+  return interpolate(template, {
+    vars: run.vars,
+    contact: await getContact(),
   });
 }
 
@@ -756,6 +796,8 @@ async function endRun(
  */
 interface AdvanceContext {
   lastInboundText?: string;
+  /** Compartido con el llamador para no releer el contacto dos veces. */
+  getContact?: ContactVarsGetter;
 }
 
 async function advanceFromNodeKey(
@@ -765,6 +807,7 @@ async function advanceFromNodeKey(
   nodes: Map<string, FlowNodeRow>,
   ctx: AdvanceContext = {},
 ): Promise<{ outcome: "advanced" | "completed" | "handed_off" }> {
+  const getContact = ctx.getContact ?? makeContactVarsGetter(db, run);
   let currentKey: string | null = startNodeKey;
   // Defensive cap — if a flow has a cycle (which the validator
   // SHOULD catch but doesn't yet in v1), we bail rather than loop.
@@ -800,7 +843,7 @@ async function advanceFromNodeKey(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolate(cfg.text, { vars: run.vars }),
+          text: await render(cfg.text, run, getContact),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_message",
@@ -828,7 +871,7 @@ async function advanceFromNodeKey(
           kind: cfg.media_type,
           link: cfg.media_url,
           caption: cfg.caption
-            ? interpolate(cfg.caption, { vars: run.vars })
+            ? await render(cfg.caption, run, getContact)
             : undefined,
           filename: cfg.filename,
         });
@@ -856,7 +899,7 @@ async function advanceFromNodeKey(
         db,
         run,
         node,
-        interpolate(cfg.prompt_text, { vars: run.vars }),
+        await render(cfg.prompt_text, run, getContact),
         "collect_input_prompt_failed",
       );
       if (!sent) return { outcome: "completed" };
@@ -881,7 +924,7 @@ async function advanceFromNodeKey(
           db,
           run,
           node,
-          interpolate(cfg.prompt_text, { vars: run.vars }),
+          await render(cfg.prompt_text, run, getContact),
           "classify_prompt_failed",
         );
         if (!sent) return { outcome: "completed" };
@@ -977,7 +1020,7 @@ async function advanceFromNodeKey(
       return { outcome: "advanced" };
     }
     if (node.node_type === "handoff") {
-      await executeHandoff(db, run, node);
+      await executeHandoff(db, run, node, getContact);
       return { outcome: "handed_off" };
     }
     if (node.node_type === "end") {
@@ -1131,6 +1174,10 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Uno solo para todo el manejo de esta respuesta: el avance y, si no
+  // hubo match, la repregunta.
+  const getContact = makeContactVarsGetter(db, run);
+
   // Estacionada en un `wait`: el bot todavía no habló. El mensaje no
   // contesta nada, así que no se cuenta como fallback (repreguntar
   // sería absurdo — no hubo pregunta) y tampoco se le pasa a las
@@ -1209,6 +1256,7 @@ async function handleReplyForActiveRun(
     const outcome = await advanceFromNodeKey(db, run, matched, nodes, {
       lastInboundText:
         message.kind === "text" ? message.text : message.reply_title,
+      getContact,
     });
     return {
       consumed: true,
@@ -1260,7 +1308,7 @@ async function handleReplyForActiveRun(
             userId: run.user_id,
             conversationId: run.conversation_id!,
             contactId: run.contact_id!,
-            text: interpolate(cfg.prompt_text, { vars: run.vars }),
+            text: await render(cfg.prompt_text, run, getContact),
           });
         } catch (err) {
           await logEvent(db, run.id, "error", currentNode.node_key, {
