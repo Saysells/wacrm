@@ -76,11 +76,11 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
     id: "saysells",
     name: "Saysells",
     tagline: "The default — brand navy and celeste.",
-    // Celeste: the accent's `--primary` in dark mode, which is
-    // DEFAULT_MODE. In light mode the same theme flips to navy —
-    // saysells is the one theme whose primary depends on the mode,
-    // so a single static chip can only mirror one of the two.
-    swatch: "oklch(0.746 0.06 246.3)",
+    // The elevated navy: the accent's `--primary` in dark mode, which
+    // is DEFAULT_MODE. In light mode the same theme drops to the flat
+    // brand navy — saysells is the one theme whose primary depends on
+    // the mode, so a single static chip can only mirror one of the two.
+    swatch: "oklch(0.55 0.15 263)",
   },
   {
     id: "violet",

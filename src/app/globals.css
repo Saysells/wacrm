@@ -222,13 +222,23 @@ html[data-theme="rose"] {
 /* Saysells — the only accent that changes with the mode.
  *
  * The brand navy #1C2B48 is oklch(0.291 …): as a button fill on the
- * dark surfaces it disappears, so the two brand colors swap roles
- * between modes. Dark (the default mode, and therefore the base
- * block that also seeds `:root`): celeste #8EB1D1 carries the
- * primary, navy is the text on top of it — 6.3:1, the same
- * light-fill/dark-ink deal emerald and amber make. Light: navy is
- * the primary with near-white ink at 13.5:1, celeste steps down to
- * the companion chart series.
+ * dark surfaces it disappears, so the theme is stated twice.
+ *
+ * Dark (the default mode, and therefore the base block that also
+ * seeds `:root`): an ELEVATED navy, oklch(0.55 0.15 263) — the navy's
+ * own hue at the lightness and chroma that make cobalt legible. It
+ * takes white ink at 4.75:1. The obvious move, handing the primary to
+ * the celeste #8EB1D1, is the one thing that does NOT work here:
+ * oklch(0.746 …) is nearly white, so `bg-primary` surfaces — the sent
+ * message bubbles in the Inbox above all — come out pastel with dark
+ * ink and stop reading as sent.
+ *
+ * The celeste keeps the jobs a pastel is good at: the two
+ * `--primary-soft` tints and the focus ring, where it sits ON a dark
+ * surface instead of under dark ink (8.4:1 over card).
+ *
+ * Light: the brand navy itself is the primary, near-white ink,
+ * 13.5:1.
  *
  * `--chart-2` is the brand orange #E84419 — the palette's punctual
  * accent, which is exactly what a second data series is. Every other
@@ -241,16 +251,16 @@ html[data-theme="rose"] {
 
 :root,
 html[data-theme="saysells"] {
-  --primary: oklch(0.746 0.06 246.3);
-  --primary-foreground: oklch(0.291 0.057 262.6);
-  --primary-hover: oklch(0.8 0.055 246.3);
+  --primary: oklch(0.55 0.15 263);
+  --primary-foreground: oklch(0.985 0 0);
+  --primary-hover: oklch(0.62 0.14 263);
   --primary-soft: oklch(0.746 0.06 246.3 / 0.12);
   --primary-soft-2: oklch(0.746 0.06 246.3 / 0.22);
   --ring: oklch(0.746 0.06 246.3);
-  --chart-1: oklch(0.746 0.06 246.3);
+  --chart-1: oklch(0.55 0.15 263);
   --chart-2: oklch(0.621 0.207 34.6);
-  --sidebar-primary: oklch(0.746 0.06 246.3);
-  --sidebar-primary-foreground: oklch(0.291 0.057 262.6);
+  --sidebar-primary: oklch(0.55 0.15 263);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-ring: oklch(0.746 0.06 246.3);
 }
 
