@@ -25,7 +25,10 @@
   `src/components/settings/tag-manager.tsx`, del que se extrajo
   `PRESET_COLORS`, y `src/app/layout.tsx` +
   `src/components/layout/sidebar.tsx`, de los que salió el nombre de
-  la app a `NEXT_PUBLIC_APP_NAME` (ver abajo).
+  la app a `NEXT_PUBLIC_APP_NAME` (ver abajo). La sesión 2026-09-03
+  sumó `src/lib/themes.ts`, `src/app/globals.css`, `src/app/icon.tsx`,
+  `src/components/brand/whatsapp-glyph.tsx` (nuevo) y las tres
+  pantallas de `src/app/(auth)/` (ver "Marca" abajo).
 - **Matías tiene dos identidades y no se mezclan**: en la Bandeja
   (esta base) es `saysellsmatias@gmail.com`, y en el CRM Saysells, que
   es **otra** base, es `matias@saysells.com`. Las migraciones de este
@@ -824,3 +827,120 @@ paso3_no (senal_prefiere_chat) → paso3_lista_msg
   viva ~48 horas (24 del cierre + 24 del seguimiento) ocupando el
   índice único de una-corrida-por-contacto. En ese lapso no se le puede
   disparar otro flujo.
+
+# Marca · acento Saysells e íconos
+
+Sesión 2026-09-03 (pedida por Eze). La Bandeja se servía con la marca
+del template original: violeta Hostinger y un bocadillo de chat
+genérico. Entraron los colores de marca y el glifo de WhatsApp, y
+nada más — ni un layout, ni un espaciado, ni un componente. Sin SQL.
+
+## El acento `saysells`
+
+Sexto acento del catálogo de `src/lib/themes.ts`, y **el nuevo
+`DEFAULT_THEME`**. Los otros cinco siguen en el selector: el boot
+script de `layout.tsx` filtra por `THEME_IDS`, así que quien ya eligió
+uno lo conserva y el default solo aplica a cuentas nuevas y a quien
+nunca eligió. `:root` pasó de sembrar violet a sembrar saysells, para
+que el fallback previo a JS sea el default real.
+
+**Es el único acento que cambia con el modo**, y por eso es el único
+que agrega un `html[data-mode="light"][data-theme="saysells"]` encima
+de su bloque base. El resto de los acentos son ciegos al modo: el
+encabezado de `globals.css` dice que ACCENT y MODE escriben variables
+disjuntas, y eso se mantiene — el bloque extra toca tokens de acento
+nada más.
+
+| Token | Oscuro (default) | Claro |
+| --- | --- | --- |
+| `--primary` | `oklch(0.55 0.15 263)` navy elevado | `oklch(0.291 0.057 262.6)` navy `#1C2B48` |
+| `--primary-foreground` | blanco, **4.75:1** | casi blanco, **13.5:1** |
+| `--primary-hover` | `oklch(0.62 0.14 263)` | `oklch(0.36 0.062 262.6)` |
+| `--primary-soft` / `-2` | celeste `/0.12` y `/0.22` | navy `/0.1` y `/0.18` |
+| `--ring`, `--sidebar-ring` | celeste `#8EB1D1` | navy |
+| `--chart-2` | naranja `#E84419` | naranja `#E84419` |
+
+- **El navy `#1C2B48` no puede ser el relleno de los botones en
+  oscuro**: es `oklch(0.291 …)` y desaparece sobre las superficies
+  negras. En oscuro va un navy **elevado**, que es el tono del navy de
+  marca con la luminosidad y el croma que hacen legible a cobalt.
+- **El celeste tampoco puede ser el primario en oscuro**, aunque sea
+  la tentación obvia: `oklch(0.746 …)` es casi blanco, y como
+  `bg-primary` deja las **burbujas de mensaje enviado de la Bandeja**
+  en pastel con tinta oscura, que no se leen como enviadas. Se probó y
+  se revirtió en la misma sesión. El celeste se queda con lo que un
+  pastel hace bien: los dos `--primary-soft` y el anillo de foco,
+  donde va **sobre** una superficie oscura en vez de debajo de tinta
+  oscura (8.4:1 sobre `card`).
+- **El naranja `#E84419` es `--chart-2`**, el único lugar donde
+  aterriza. Los otros cinco temas eligen ahí un tono vecino; este
+  tenía un color de marca esperando el puesto, y una segunda serie de
+  gráfico es exactamente el "acento puntual" que el naranja es en la
+  paleta.
+- **El fondo claro `#F4F6F8` no se usa**: `--background` es un token
+  de MODO, compartido por los seis acentos. Escribirlo desde el bloque
+  de un acento rompería esa separación.
+- `text-primary` sobre `card` en oscuro da **3.80:1**. No es un
+  defecto del tema: violet da 3.08:1 y cobalt 4.45:1 en la misma
+  medición. Subir eso es una decisión que afecta a los seis.
+
+## `WhatsAppGlyph` — una sola definición del glifo
+
+`src/components/brand/whatsapp-glyph.tsx`. Antes el bocadillo aparecía
+en cinco lugares con **dos dibujos distintos**: el favicon tenía path
+propio y el sidebar más las tres pantallas de auth usaban el
+`MessageSquare` de lucide. Es la marca real de WhatsApp (bocadillo con
+cola y el tubo adentro), no un bocadillo genérico.
+
+- **Un solo color, a propósito**: el bocadillo se pinta con
+  `currentColor` y el tubo se cala con `fill-rule: evenodd`, así que
+  el tubo es un **agujero** que deja ver lo que hay detrás. Con eso el
+  mismo marcado sirve sobre el `bg-primary` del sidebar, sobre el
+  `bg-primary/10` de las pantallas de auth y sobre el navy plano del
+  favicon **sin nombrar un color en el componente**: lo decide el
+  tema. No hay un color de marca suelto en ningún componente.
+- **`icon.tsx` importa el path (`WHATSAPP_GLYPH_PATH`), no el
+  componente**: `ImageResponse` renderiza por satori, que no entiende
+  clases de Tailwind y quiere `width`/`height` explícitos.
+- **El cuadrado del sidebar sigue siendo `bg-primary` con tinta
+  `text-primary-foreground`**, no un navy fijo. Hardcodearlo le pondría
+  el cuadrado navy también a quien elige emerald o rose. Consecuencia
+  a tener presente: con saysells da navy + blanco en claro, pero
+  **celeste + navy en oscuro**, que es el modo por defecto.
+- `MessageSquare` sigue importado en `sidebar.tsx`: es el ícono de la
+  entrada "Bandeja" del nav, que no es la marca.
+- El `UsersRound` de las invitaciones (login, signup, `join/[token]`)
+  no se tocó: ese no es el glifo de marca.
+
+## Favicon
+
+`src/app/icon.tsx` lo genera con `ImageResponse` en runtime **edge** —
+no es un `.ico` en disco, y no puede traer assets ni imágenes: por eso
+el glifo es path inline. Cuadrado navy `#1C2B48` con el bocadillo
+blanco y el tubo calado, o sea la marca real invertida.
+
+- **El navy queda hardcodeado a propósito**: es un PNG de build, no ve
+  las variables CSS, y un favicon no puede seguir el acento de cada
+  usuario. Espeja el navy que hay detrás del `--primary` del tema.
+- **La versión de contorno no sirve a 32×32**: el aro queda por debajo
+  del píxel y el tubo se hace papilla. Se comprobó renderizando el
+  ícono a tamaño real y mirándolo, no por deducción.
+
+## Pendientes de esta sesión
+
+- **Nada se vio en un navegador.** Lo verificado es: el favicon
+  renderizado de verdad a 32×32 y mirado, la cascada CSS resuelta para
+  los 6 temas × 2 modos (sin variables faltantes, y los otros cinco
+  resolviendo igual que antes), los contrastes calculados, la lógica
+  del boot script ejercitada y `npm run build` completo con las
+  variables dummy del CI.
+- **El chip del selector de temas es un solo string** (`ThemeMeta.swatch`)
+  y muestra el primario de oscuro. En modo claro el tema aplica el navy
+  plano, así que ahí el chip no coincide. Arreglarlo pide un campo más
+  y tocar el panel de Apariencia.
+- El glifo del sidebar quedó en `h-4 w-4`, el tamaño que ya tenía. Al
+  ser relleno y no trazo ocupa un poco menos que la proporción del
+  favicon (22/32); subirlo a `h-5` lo emparejaría, pero es un cambio
+  de tamaño que esta sesión no tenía permitido hacer.
+- Ningún test cubre el catálogo de temas ni el CSS: no había pruebas
+  de eso antes y no se agregaron.
