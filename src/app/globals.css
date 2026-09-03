@@ -70,11 +70,14 @@
  * neutral charts / radius) live in the MODE blocks below; accent
  * tokens (--primary*, --ring, --chart-1, --sidebar-primary*,
  * --sidebar-ring) live in the ACCENT blocks. They set disjoint
- * variables, so cascade order between them doesn't matter.
+ * variables, so cascade order between them doesn't matter. The one
+ * accent that reads the mode — saysells, whose two brand colors
+ * swap roles — still writes accent tokens only.
  *
- * `:root` carries the dark-mode + violet defaults so a visitor
- * renders correctly before JS runs; the boot script in
- * layout.tsx replays the saved mode + accent before first paint.
+ * `:root` carries the dark-mode + saysells defaults (the app's
+ * DEFAULT_MODE / DEFAULT_THEME) so a visitor renders correctly
+ * before JS runs; the boot script in layout.tsx replays the saved
+ * mode + accent before first paint.
  *
  * The three `--primary-*` extras (hover / soft / soft-2) feed
  * hovered primary buttons and tinted-primary surfaces (sidebar
@@ -147,7 +150,6 @@ html[data-mode="light"] {
 
 /* ---- ACCENT: primary color ---- */
 
-:root,
 html[data-theme="violet"] {
   --primary: oklch(0.526 0.247 293);
   --primary-foreground: oklch(0.985 0 0);
@@ -215,6 +217,55 @@ html[data-theme="rose"] {
   --sidebar-primary: oklch(0.645 0.22 16);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-ring: oklch(0.645 0.22 16);
+}
+
+/* Saysells — the only accent that changes with the mode.
+ *
+ * The brand navy #1C2B48 is oklch(0.291 …): as a button fill on the
+ * dark surfaces it disappears, so the two brand colors swap roles
+ * between modes. Dark (the default mode, and therefore the base
+ * block that also seeds `:root`): celeste #8EB1D1 carries the
+ * primary, navy is the text on top of it — 6.3:1, the same
+ * light-fill/dark-ink deal emerald and amber make. Light: navy is
+ * the primary with near-white ink at 13.5:1, celeste steps down to
+ * the companion chart series.
+ *
+ * `--chart-2` is the brand orange #E84419 — the palette's punctual
+ * accent, which is exactly what a second data series is. Every other
+ * accent picks a neighbouring hue for it; this one had a brand color
+ * already waiting for the job.
+ *
+ * This is the one place where an ACCENT block reads `data-mode`. The
+ * override below still touches accent tokens only, so the disjoint-
+ * variables rule the header describes holds. */
+
+:root,
+html[data-theme="saysells"] {
+  --primary: oklch(0.746 0.06 246.3);
+  --primary-foreground: oklch(0.291 0.057 262.6);
+  --primary-hover: oklch(0.8 0.055 246.3);
+  --primary-soft: oklch(0.746 0.06 246.3 / 0.12);
+  --primary-soft-2: oklch(0.746 0.06 246.3 / 0.22);
+  --ring: oklch(0.746 0.06 246.3);
+  --chart-1: oklch(0.746 0.06 246.3);
+  --chart-2: oklch(0.621 0.207 34.6);
+  --sidebar-primary: oklch(0.746 0.06 246.3);
+  --sidebar-primary-foreground: oklch(0.291 0.057 262.6);
+  --sidebar-ring: oklch(0.746 0.06 246.3);
+}
+
+html[data-mode="light"][data-theme="saysells"] {
+  --primary: oklch(0.291 0.057 262.6);
+  --primary-foreground: oklch(0.985 0 0);
+  --primary-hover: oklch(0.36 0.062 262.6);
+  --primary-soft: oklch(0.291 0.057 262.6 / 0.1);
+  --primary-soft-2: oklch(0.291 0.057 262.6 / 0.18);
+  --ring: oklch(0.291 0.057 262.6);
+  --chart-1: oklch(0.291 0.057 262.6);
+  --chart-2: oklch(0.621 0.207 34.6);
+  --sidebar-primary: oklch(0.291 0.057 262.6);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.291 0.057 262.6);
 }
 
 @layer base {

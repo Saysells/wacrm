@@ -11,9 +11,14 @@
  *      with every token from an existing theme (use violet as the
  *      shape reference).
  *   2. Add an entry below. The order here drives the picker grid.
+ *
+ * An accent normally reads the same in both modes. `saysells` is the
+ * exception: it adds a second `html[data-mode="light"][data-theme=...]`
+ * block because its two brand colors swap roles between modes.
  */
 
 export const THEME_IDS = [
+  "saysells",
   "violet",
   "emerald",
   "cobalt",
@@ -23,7 +28,7 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "saysells";
 
 export const STORAGE_KEY = "wacrm.theme";
 
@@ -68,9 +73,19 @@ export interface ThemeMeta {
 
 export const THEMES: ReadonlyArray<ThemeMeta> = [
   {
+    id: "saysells",
+    name: "Saysells",
+    tagline: "The default — brand navy and celeste.",
+    // Celeste: the accent's `--primary` in dark mode, which is
+    // DEFAULT_MODE. In light mode the same theme flips to navy —
+    // saysells is the one theme whose primary depends on the mode,
+    // so a single static chip can only mirror one of the two.
+    swatch: "oklch(0.746 0.06 246.3)",
+  },
+  {
     id: "violet",
     name: "Violet",
-    tagline: "The default — confident, slightly playful.",
+    tagline: "Confident, slightly playful — the original accent.",
     swatch: "oklch(0.526 0.247 293)",
   },
   {
