@@ -38,6 +38,14 @@
   cuenta sola (flujos, crons, datos suyos) y la aplica `npm run migrar` según
   `CUENTA` en `credenciales.env`. Nada específico de una cuenta —un email, una
   URL, un flujo— vuelve nunca a `migrations/`: ahí revienta la instancia nueva.
+- **Numeración**: producto y cuentas comparten el espacio de versiones, porque
+  las aplicadas se registran por número (`schema_migrations.version`), no por
+  ruta. Entonces: `migrations/` sigue **desde 055** y los números **050 a 054 no
+  se reutilizan nunca**; las carpetas `cuentas/<cuenta>/` de instancias nuevas se
+  numeran **desde 900**. Kosmo conserva 050–054 porque esas versiones ya están en
+  su `schema_migrations` y renumerarlas obligaría a reaplicar la 050, que es
+  destructiva. Si dos archivos comparten número, `npm run migrar` avisa: el
+  segundo no va a correr nunca.
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
