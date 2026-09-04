@@ -33,6 +33,11 @@
   (esta base) es `saysellsmatias@gmail.com`, y en el CRM Saysells, que
   es **otra** base, es `matias@saysells.com`. Las migraciones de este
   repo resuelven la cuenta y los traspasos por el **primero**.
+- **Las migraciones están partidas en dos**: `supabase/migrations/` es el
+  producto y va en toda instancia; `supabase/cuentas/<cuenta>/` es de una
+  cuenta sola (flujos, crons, datos suyos) y la aplica `npm run migrar` según
+  `CUENTA` en `credenciales.env`. Nada específico de una cuenta —un email, una
+  URL, un flujo— vuelve nunca a `migrations/`: ahí revienta la instancia nueva.
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
   instalador de la carpeta padre (`crm-whatsapp-instalador`).
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
