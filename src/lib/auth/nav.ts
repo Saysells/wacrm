@@ -49,6 +49,12 @@ export const NAV_PERMISSION_BY_PREFIX: Readonly<
  */
 export const DASHBOARD_PREFIXES = [
   "/dashboard",
+  // La app movil (`/m`). Entra solo para que el middleware la mande a
+  // /login sin sesion, igual que a cualquier pantalla autenticada.
+  // NO tiene clave nav_*: `navPermissionKeyFor("/m")` devuelve null y
+  // `canAccessPath` la deja pasar siempre, como a /inbox — es la misma
+  // Bandeja, en el telefono.
+  "/m",
   "/inbox",
   "/notifications",
   "/contacts",

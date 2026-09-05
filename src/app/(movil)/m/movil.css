@@ -1,0 +1,968 @@
+/* ============================================================
+ * Sistema visual de la app movil, portado de
+ * docs/maquetas/bandeja-app.html (aprobada, no se rediseña).
+ *
+ * Este archivo lo importa SOLO src/app/(movil)/m/layout.tsx, asi que
+ * su CSS no se carga en ninguna ruta de escritorio. Aun asi, las dos
+ * unicas reglas que tocan un elemento global (`body`) van bajo la
+ * clase `.m-root`, que el shell pone y saca al montar/desmontar: si
+ * algun dia el bundler decidiera juntar todo el CSS, el escritorio
+ * seguiria intacto.
+ *
+ * Los tokens de color son los de la maqueta y cuelgan de
+ * html[data-mode], que ya escribe el boot script de src/app/layout.tsx.
+ * Por eso el modo claro/oscuro de la app movil sigue al de la de
+ * escritorio sin ningun selector propio.
+ * ============================================================ */
+
+.m-app {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --topbar: 52px;
+  --tabbar: 58px;
+  --radius: 14px;
+
+  --bg: #0f1520;
+  --surface: #18202e;
+  --surface-2: #202a3a;
+  --line: #2a3547;
+  --text: #f4f6f8;
+  --text-2: #9aa6b8;
+  --text-3: #6b7889;
+  --bubble-in: #202a3a;
+  --bubble-out: #416dc8;
+  --bubble-out-text: #ffffff;
+  --primary: #416dc8;
+  --primary-text: #ffffff;
+  --soft: rgba(142, 177, 209, 0.16);
+  --celeste: #8eb1d1;
+  --ok: #3fa463;
+  --warn: #d9a33a;
+  --bad: #d95151;
+  --navy: #1c2b48;
+}
+
+html[data-mode="light"] .m-app {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --line: #dce3ea;
+  --text: #1c2b48;
+  --text-2: #5c6b80;
+  --text-3: #8a96a8;
+  --bubble-in: #ffffff;
+  --bubble-out: #1c2b48;
+  --bubble-out-text: #ffffff;
+  --primary: #1c2b48;
+  --primary-text: #ffffff;
+  --soft: rgba(28, 43, 72, 0.1);
+  --celeste: #5e86b0;
+  --ok: #2d8c4e;
+  --warn: #c98a00;
+  --bad: #c62828;
+  --navy: #1c2b48;
+}
+
+/* Las dos unicas reglas globales, y solo mientras el shell esta montado.
+ * `position:fixed` + `overflow:hidden` es lo que impide que Safari
+ * desplace la pagina entera; sin esto, al enfocar el composer la barra
+ * de direcciones empuja la app hacia arriba y no vuelve. */
+body.m-root {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* --vh lo escribe el shell desde window.visualViewport. El fallback es
+ * 100dvh y NUNCA 100vh: en Safari el 100vh vale la altura con la barra
+ * de direcciones retraida, asi que la app queda mas alta que la pantalla
+ * y el composer se va abajo del borde. */
+.m-app {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--m-vh, 100dvh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  /* Outfit, la tipografia de la maqueta. La carga el layout movil con
+   * next/font, asi que no hay <link> a Google Fonts ni cambio en el
+   * layout raiz, que sigue con Inter para el escritorio. */
+  font-family: var(--m-font), system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.35;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.m-app *,
+.m-app *::before,
+.m-app *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.m-app button,
+.m-app input,
+.m-app textarea,
+.m-app select {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  outline: 0;
+}
+.m-app button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+/* 16px o Safari hace zoom al enfocar, y de ese zoom no se vuelve. */
+.m-app input,
+.m-app textarea {
+  font-size: 16px;
+}
+.m-app svg {
+  display: block;
+}
+.m-app ul {
+  list-style: none;
+}
+
+/* ── pantalla ─────────────────────────────────────────────── */
+.m-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.m-topbar {
+  flex: none;
+  padding-top: var(--sat);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.m-topbar-in {
+  height: var(--topbar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+.m-topbar h1 {
+  font-size: 19px;
+  font-weight: 600;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-ibtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  flex: none;
+}
+.m-ibtn:active {
+  background: var(--soft);
+}
+.m-ibtn svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.m-content.pad-tab {
+  padding-bottom: calc(var(--tabbar) + var(--sab) + 12px);
+}
+
+/* ── tabbar ───────────────────────────────────────────────── */
+.m-tabbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--sab);
+  display: flex;
+  z-index: 20;
+}
+.m-tab {
+  flex: 1;
+  height: var(--tabbar);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 500;
+  position: relative;
+  text-decoration: none;
+}
+.m-tab svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-tab.on {
+  color: var(--celeste);
+}
+html[data-mode="light"] .m-tab.on {
+  color: var(--primary);
+}
+.m-tab .dot {
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 20px);
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── buscador, segmentado, filtros ────────────────────────── */
+.m-search {
+  margin: 10px 12px 8px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  flex: none;
+}
+.m-search svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--text-3);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.m-search input {
+  flex: 1;
+  color: var(--text);
+  min-width: 0;
+}
+.m-search input::placeholder {
+  color: var(--text-3);
+}
+.m-seg {
+  margin: 0 12px 6px;
+  display: flex;
+  background: var(--surface-2);
+  border-radius: 11px;
+  padding: 3px;
+  flex: none;
+}
+.m-seg button {
+  flex: 1;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.m-seg button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+html[data-mode="light"] .m-seg button.on {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.m-filterrow {
+  display: flex;
+  gap: 8px;
+  padding: 2px 12px 8px;
+  align-items: center;
+  flex: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.m-filterrow::-webkit-scrollbar {
+  display: none;
+}
+.m-fbtn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  flex: none;
+}
+.m-fbtn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-fbtn.active {
+  background: var(--soft);
+  color: var(--celeste);
+}
+html[data-mode="light"] .m-fbtn.active {
+  color: var(--primary);
+}
+/* Canal con fila pero enabled=false: se ve, no se elige. */
+.m-fbtn.off {
+  opacity: 0.45;
+}
+
+/* ── lista de conversaciones ──────────────────────────────── */
+.m-row {
+  display: flex;
+  gap: 12px;
+  padding: 11px 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  text-decoration: none;
+}
+.m-row:active {
+  background: var(--surface);
+}
+.m-av {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  flex: none;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+}
+html[data-mode="light"] .m-av {
+  background: #2e4370;
+}
+.m-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.m-av.sm {
+  width: 34px;
+  height: 34px;
+  font-size: 13px;
+}
+.m-rowmain {
+  flex: 1;
+  min-width: 0;
+}
+.m-rowtop {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.m-rowname {
+  font-weight: 600;
+  font-size: 15.5px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-rowtime {
+  font-size: 12px;
+  color: var(--text-3);
+  flex: none;
+}
+.m-rowtime.unread {
+  color: var(--celeste);
+  font-weight: 600;
+}
+.m-rowbot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.m-rowprev {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-rowprev.unread {
+  color: var(--text);
+  font-weight: 500;
+}
+.m-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--celeste);
+  color: var(--navy);
+  font-size: 11.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+html[data-mode="light"] .m-badge {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.m-chips {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.m-chip {
+  height: 21px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.m-chip.estado {
+  background: rgba(142, 177, 209, 0.18);
+  color: var(--celeste);
+}
+html[data-mode="light"] .m-chip.estado {
+  background: rgba(28, 43, 72, 0.1);
+  color: var(--navy);
+}
+.m-chip.ok {
+  background: rgba(63, 164, 99, 0.16);
+  color: var(--ok);
+}
+.m-chip.warn {
+  background: rgba(217, 163, 58, 0.16);
+  color: var(--warn);
+}
+.m-chip.bad {
+  background: rgba(217, 81, 81, 0.16);
+  color: var(--bad);
+}
+
+/* ── vacio / cargando ─────────────────────────────────────── */
+.m-empty {
+  padding: 60px 30px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+.m-empty b {
+  display: block;
+  color: var(--text-2);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* ── chat ─────────────────────────────────────────────────── */
+.m-chathead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.m-chathead .nm {
+  font-weight: 600;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-chathead .st {
+  font-size: 12px;
+  color: var(--text-2);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 1px;
+}
+.m-msgs {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 12px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg);
+}
+.m-day {
+  align-self: center;
+  font-size: 11.5px;
+  color: var(--text-3);
+  background: var(--surface);
+  padding: 4px 10px;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+.m-sys {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--soft);
+  padding: 6px 12px;
+  border-radius: 10px;
+  text-align: center;
+  max-width: 86%;
+  margin: 2px 0;
+}
+.m-m {
+  max-width: 82%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.m-m.in {
+  align-self: flex-start;
+}
+.m-m.out {
+  align-self: flex-end;
+}
+.m-b {
+  padding: 9px 12px 7px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.38;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  position: relative;
+}
+.m-m.in .m-b {
+  background: var(--bubble-in);
+  border-bottom-left-radius: 5px;
+}
+/* El bot va igual que el agente — a la derecha y en azul — y solo se
+ * distingue por el rotulo "Bot". Pedido expreso de Emi. */
+.m-m.out .m-b {
+  background: var(--bubble-out);
+  color: var(--bubble-out-text);
+  border-bottom-right-radius: 5px;
+}
+.m-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  opacity: 0.7;
+  margin-top: 3px;
+}
+.m-m.out .m-meta {
+  color: #fff;
+}
+.m-meta svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-meta .failed {
+  color: #ffd9d9;
+  font-weight: 600;
+}
+.m-who {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--celeste);
+  margin-bottom: 3px;
+}
+.m-m.out .m-who {
+  color: rgba(255, 255, 255, 0.85);
+}
+.m-quote {
+  border-left: 3px solid var(--celeste);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.9;
+}
+.m-quote small {
+  display: block;
+  font-weight: 600;
+  font-size: 11px;
+  margin-bottom: 2px;
+  color: var(--celeste);
+}
+.m-m.out .m-quote {
+  background: rgba(0, 0, 0, 0.2);
+}
+.m-m.out .m-quote small {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ── composer ─────────────────────────────────────────────── */
+.m-composer {
+  flex: none;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: 8px 8px calc(8px + var(--sab));
+}
+.m-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin: 0 4px 8px;
+  font-size: 13px;
+  border-left: 3px solid var(--celeste);
+}
+.m-reply-bar b {
+  display: block;
+  font-size: 11.5px;
+  color: var(--celeste);
+}
+.m-reply-bar span {
+  flex: 1;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-crow {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.m-cinput {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 9px 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.m-cinput textarea {
+  flex: 1;
+  resize: none;
+  max-height: 100px;
+  line-height: 1.35;
+  color: var(--text);
+  background: none;
+}
+.m-cinput textarea::placeholder {
+  color: var(--text-3);
+}
+.m-cinput .m-ibtn {
+  width: 30px;
+  height: 30px;
+  color: var(--text-2);
+}
+.m-sendbtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.m-sendbtn svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-sendbtn.mic {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.m-sendbtn:disabled {
+  opacity: 0.5;
+}
+.m-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  padding-top: 6px;
+  min-height: 18px;
+}
+
+/* ── sheets ───────────────────────────────────────────────── */
+/* Todo lo que se esconde va con visibility:hidden ademas de fuera de
+ * cuadro: con solo el transform, el borde del sheet asoma abajo. */
+.m-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 40;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease, visibility 0s 0.2s;
+}
+.m-backdrop.on {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.2s ease, visibility 0s;
+}
+.m-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  z-index: 41;
+  transform: translateY(105%);
+  transition: transform 0.22s ease, visibility 0s 0.22s;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--sab);
+  visibility: hidden;
+  pointer-events: none;
+}
+.m-sheet.on {
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform 0.22s ease, visibility 0s;
+}
+.m-sheet-h {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px 10px;
+  gap: 10px;
+}
+.m-sheet-h h2 {
+  font-size: 17px;
+  font-weight: 600;
+  flex: 1;
+}
+.m-sheet-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 16px;
+}
+.m-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+.m-opt:last-child {
+  border-bottom: 0;
+}
+.m-opt .ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--celeste);
+}
+html[data-mode="light"] .m-opt .ico {
+  color: var(--navy);
+}
+.m-opt .ico svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.m-opt .t {
+  flex: 1;
+  min-width: 0;
+}
+.m-opt .t small {
+  display: block;
+  color: var(--text-2);
+  font-size: 12.5px;
+  margin-top: 1px;
+}
+.m-opt.sel {
+  color: var(--celeste);
+}
+html[data-mode="light"] .m-opt.sel {
+  color: var(--navy);
+}
+.m-opt .chk {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  flex: none;
+}
+.m-opt.sel .chk {
+  opacity: 1;
+}
+.m-sec {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 16px 0 6px;
+}
+.m-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.m-kv:last-child {
+  border-bottom: 0;
+}
+.m-kv span:first-child {
+  color: var(--text-2);
+}
+.m-kv span:last-child {
+  text-align: right;
+  font-weight: 500;
+}
+
+/* ── toast ────────────────────────────────────────────────── */
+.m-toast {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--tabbar) + var(--sab) + 14px);
+  visibility: hidden;
+  background: var(--navy);
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 60;
+  transform: translateY(20px);
+  opacity: 0;
+  transition: transform 0.2s, opacity 0.2s, visibility 0s 0.2s;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.m-toast.on {
+  transform: translateY(0);
+  opacity: 1;
+  visibility: visible;
+  transition: transform 0.2s, opacity 0.2s, visibility 0s;
+}
+
+/* ── FAB ──────────────────────────────────────────────────── */
+.m-fab {
+  position: absolute;
+  right: 16px;
+  bottom: calc(var(--tabbar) + var(--sab) + 16px);
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: var(--primary);
+  color: var(--primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  z-index: 15;
+}
+.m-fab svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-app *,
+  .m-sheet,
+  .m-backdrop,
+  .m-toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}
