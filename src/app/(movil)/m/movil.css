@@ -627,6 +627,16 @@ html[data-mode="light"] .m-chip.estado {
   color: #ffd9d9;
   font-weight: 600;
 }
+/* Leido: el mismo doble tilde, en celeste. La maqueta dibujaba siempre
+ * el mismo icono; el color es lo que distingue entregado de leido sin
+ * agregar un trazo nuevo al juego de iconos. */
+.m-meta.leido svg {
+  color: var(--celeste);
+  opacity: 1;
+}
+.m-m.out .m-meta.leido svg {
+  color: #bfe0ff;
+}
 .m-who {
   font-size: 11px;
   font-weight: 600;
