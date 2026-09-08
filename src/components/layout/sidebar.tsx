@@ -217,21 +217,52 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         >
           <Link
             href={homePathFor(accountRole, permissionOverrides)}
-            className="flex items-center gap-2"
-            title={collapsed ? APP_NAME : undefined}
+            className={cn(
+              "flex items-center gap-2",
+              // Plegada, la fila de 4.5rem no da para el logo Y el boton,
+              // y de los dos el que tiene que estar es el boton: sin el
+              // no hay forma de volver a abrir la barra. La marca vuelve
+              // al expandir; el cajon de mobile la conserva siempre.
+              collapsed && "lg:hidden",
+            )}
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <WhatsAppGlyph className="h-4 w-4" />
             </div>
-            <span
-              className={cn(
-                "text-sm font-semibold text-foreground",
-                collapsed && "lg:hidden",
-              )}
-            >
+            <span className="text-sm font-semibold text-foreground">
               {APP_NAME}
             </span>
           </Link>
+
+          {/* Contraer / expandir, al lado del nombre de la app. Solo el
+              icono: el rotulo va en `aria-label` y en `title`. Solo
+              escritorio (`lg:inline-flex`) — en mobile la barra es un
+              cajon con su propio boton de cerrar, plegarla ahi no
+              querria decir nada. */}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-expanded={!collapsed}
+            title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="h-4 w-4"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+              {/* La flecha apunta a donde va a ir la barra al tocar. */}
+              <path d={collapsed ? "M13 15l3-3-3-3" : "M16 15l-3-3 3-3"} />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -354,40 +385,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               );
             })}
           </ul>
-
-          {/* Contraer / expandir. Solo escritorio (`lg:flex`): en mobile
-              la barra es un cajon con su propio boton de cerrar, plegarla
-              ahi no querria decir nada. Va al pie del nav y no en la fila
-              del logo porque plegada esa fila no tiene lugar para dos
-              cosas, y asi el boton queda siempre en el mismo lado. */}
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
-            aria-expanded={!collapsed}
-            title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
-            className={cn(
-              "mt-1 hidden w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex",
-              collapsed && "lg:justify-center lg:px-2",
-            )}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              className="h-4 w-4 shrink-0"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 3v18" />
-              {/* La flecha apunta a donde va a ir la barra al tocar. */}
-              <path d={collapsed ? "M13 15l3-3-3-3" : "M16 15l-3-3 3-3"} />
-            </svg>
-            {!collapsed && <span>{t("collapseSidebar")}</span>}
-          </button>
         </nav>
 
         {/* User section */}

@@ -857,12 +857,17 @@ Sin SQL: `contact_tags(tags(*))` ya viene joineado en
 ## La barra lateral se pliega
 
 `src/hooks/use-sidebar-collapsed.ts` — `useSidebarCollapsed()`. El botón
-está al pie del nav de `sidebar.tsx` (SVG inline, la flecha apunta a
-dónde va a ir la barra), y es **solo de escritorio** (`lg:flex`): en
-mobile la barra es un cajón que ya tiene su botón de cerrar, plegarla
-ahí no querría decir nada. Por eso *todo* lo que responde a `collapsed`
-va detrás de `lg:`: el mismo DOM sirve para el cajón y para la barra
-fija.
+va **arriba, al lado del nombre de la app**, solo el ícono (SVG inline;
+la flecha apunta a dónde va a ir la barra) y el rótulo en `aria-label` y
+`title`. Es **solo de escritorio** (`lg:inline-flex`): en mobile la barra
+es un cajón que ya tiene su botón de cerrar, plegarla ahí no querría
+decir nada. Por eso *todo* lo que responde a `collapsed` va detrás de
+`lg:`: el mismo DOM sirve para el cajón y para la barra fija.
+
+- **Plegada, la fila de 4.5rem no da para el logo Y el botón**, y de los
+  dos el que tiene que estar es el botón: sin él no hay forma de volver
+  a abrir la barra. El logo se oculta (`lg:hidden`) y vuelve al
+  expandir; el cajón de mobile lo conserva siempre.
 
 - **El estado no vive en la barra** porque tiene un segundo consumidor:
   la lista de la Bandeja decide chips o puntitos según el ancho que le
@@ -894,6 +899,13 @@ fija.
   contacto: lo garantiza `trg_single_etapa_tag`). **Un contacto sin
   estado no se queda sin pastilla**: sube la primera secundaria y el
   resto son puntitos.
+- **Secundaria es solo `grupo IS NULL`**, o sea las que alguien puso a
+  mano. Las de `origen` y `senal` las escribe el bot —el receptor de
+  Tally y los nodos del flujo— y son trazabilidad, no algo que el setter
+  mire en la lista: si entraran, cada fila tendría puntitos que nadie
+  puso y el "WhatsApp Mati" se perdería entre ellos. Siguen visibles en
+  la ficha del contacto. Un contacto con **solo** etiquetas del bot se ve
+  en la lista como uno sin etiquetas, que es lo correcto.
 - El orden de `secundarias` es el de entrada a propósito: es el que
   llega joineado y el mismo que ve la ficha del contacto, así que los
   puntitos de la lista y las pastillas de la ficha se corresponden.
@@ -929,6 +941,9 @@ hace que entren los nombres.
   base) y los tests de la lógica pura. Los 3 rojos de `vitest` siguen
   siendo los mismos tres de antes (`flujo-kosmo`,
   `seguimiento-catalogo`, `date-utils`).
+- **La marca desaparece con la barra plegada** (el botón se queda con
+  la fila). Volver al inicio desde ahí se hace por la entrada del nav,
+  no por el logo.
 - El chip usa el color de la etiqueta como texto sobre ese mismo color
   al 15 %. Con una etiqueta de color muy oscuro sobre el modo oscuro el
   contraste queda flojo; la paleta de `PRESET_COLORS` no tiene ninguno

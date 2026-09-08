@@ -10,6 +10,14 @@
 // pinta (chips o puntitos) lo decide la lista segun el ancho que le
 // deja la barra lateral. Parte pura, testeable sin DOM, igual que
 // contact-tags.ts.
+//
+// Se muestran DOS cosas y nada mas: la etiqueta de estado y las
+// etiquetas sin grupo (`grupo IS NULL`), que son las que alguien pone
+// a mano. Las de grupo 'origen' y 'senal' las escribe el bot de Kosmo
+// —el receptor de Tally y los nodos del flujo— y son trazabilidad, no
+// algo que el setter mire en la lista: si entraran, cada fila tendria
+// puntitos que nadie puso y el "WhatsApp Mati" se perderia entre
+// ellos. Siguen visibles en la ficha del contacto.
 // ============================================================
 
 import { isEstadoTag } from '@/lib/contacts/tag-groups';
@@ -26,12 +34,16 @@ export interface ConversationTagSplit {
    * pastilla: sube la primera secundaria.
    */
   principal: Tag | null;
-  /** El resto, en el orden en que vinieron. Puede estar vacio. */
+  /**
+   * Las etiquetas sin grupo, en el orden en que vinieron. Puede estar
+   * vacio: las de 'origen' y 'senal' no cuentan.
+   */
   secundarias: Tag[];
 }
 
 /**
- * Parte las etiquetas del contacto en la principal y las demas.
+ * Parte las etiquetas del contacto en la principal y las demas,
+ * descartando las del bot ('origen' y 'senal').
  *
  * El orden de `secundarias` es el de entrada a proposito: es el que
  * llega joineado en CONVERSATION_SELECT y el mismo que ve la ficha del
@@ -44,15 +56,18 @@ export function splitConversationTags(
   if (!tags || tags.length === 0) return { principal: null, secundarias: [] };
 
   const estado = tags.find(isEstadoTag) ?? null;
-  const resto = tags.filter((t) => !isEstadoTag(t));
+  // Solo las puestas a mano. Un contacto que solo tiene etiquetas del
+  // bot se ve en la lista como uno sin etiquetas, que es lo correcto:
+  // no hay nada que alguien haya querido marcar ahi.
+  const libres = tags.filter((t) => t.grupo === null);
 
-  // Sin etiqueta de estado la fila no puede quedar muda: la primera
-  // secundaria ocupa el lugar de la principal y el resto son puntitos.
+  // Sin etiqueta de estado la fila no queda muda si hay alguna a mano:
+  // la primera ocupa el lugar de la principal y el resto son puntitos.
   if (!estado) {
-    return { principal: resto[0] ?? null, secundarias: resto.slice(1) };
+    return { principal: libres[0] ?? null, secundarias: libres.slice(1) };
   }
 
-  return { principal: estado, secundarias: resto };
+  return { principal: estado, secundarias: libres };
 }
 
 export interface VisibleChips {

@@ -523,9 +523,11 @@ function ConversationItem({
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
   // Etiquetas del contacto: la principal (la de estado, o la primera
-  // que tenga si no tiene estado) se ve siempre entera; las demas son
-  // chips o puntitos segun el ancho. `contact.tags` viene hidratado
-  // por CONVERSATION_SELECT, asi que esto no cuesta una consulta.
+  // sin grupo si no tiene estado) se ve siempre entera; las que alguien
+  // puso a mano son chips o puntitos segun el ancho. Las del bot
+  // ('origen', 'senal') no entran en la lista — eso lo decide
+  // splitConversationTags. `contact.tags` viene hidratado por
+  // CONVERSATION_SELECT, asi que esto no cuesta una consulta.
   const { principal, secundarias } = splitConversationTags(contact?.tags);
   const { chips, extra } = visibleChips(secundarias);
 
@@ -580,7 +582,7 @@ function ConversationItem({
             )}
             {!showTagChips && secundarias.length > 0 && (
               // Barra abierta: no hay ancho para los nombres, asi que
-              // cada etiqueta secundaria es un punto de 8px de su color.
+              // cada etiqueta sin grupo es un punto de 8px de su color.
               // Sin tope, pero acotados en ancho: del sexto en adelante
               // bajan a un segundo renglon en vez de comerse el nombre
               // del contacto, que es lo que se busca al mirar la lista.

@@ -34,27 +34,53 @@ describe('splitConversationTags', () => {
 
   it('la de estado es la principal aunque venga ultima', () => {
     const mati = tag('WhatsApp Mati');
+    const estado = tag('En gestión', 'estado');
+
+    const { principal, secundarias } = splitConversationTags([mati, estado]);
+
+    expect(principal).toBe(estado);
+    expect(secundarias).toEqual([mati]);
+  });
+
+  it('descarta las del bot: solo estado y las que no tienen grupo', () => {
+    const mati = tag('WhatsApp Mati');
     const form = tag('origen_form', 'origen');
+    const senal = tag('senal_prefiere_chat', 'senal');
     const estado = tag('En gestión', 'estado');
 
     const { principal, secundarias } = splitConversationTags([
-      mati,
       form,
+      mati,
+      senal,
       estado,
     ]);
 
     expect(principal).toBe(estado);
-    expect(secundarias).toEqual([mati, form]);
+    expect(secundarias).toEqual([mati]);
   });
 
-  it('sin estado sube la primera secundaria y el resto quedan como puntitos', () => {
+  it('sin estado sube la primera sin grupo y el resto quedan como puntitos', () => {
     const mati = tag('WhatsApp Mati');
+    const vip = tag('VIP');
     const senal = tag('senal_prefiere_chat', 'senal');
 
-    const { principal, secundarias } = splitConversationTags([mati, senal]);
+    const { principal, secundarias } = splitConversationTags([
+      senal,
+      mati,
+      vip,
+    ]);
 
     expect(principal).toBe(mati);
-    expect(secundarias).toEqual([senal]);
+    expect(secundarias).toEqual([vip]);
+  });
+
+  it('un contacto con solo etiquetas del bot se ve como uno sin etiquetas', () => {
+    expect(
+      splitConversationTags([
+        tag('origen_form', 'origen'),
+        tag('senal_lead_grande', 'senal'),
+      ]),
+    ).toEqual({ principal: null, secundarias: [] });
   });
 
   it('conserva el orden de entrada en las secundarias', () => {
