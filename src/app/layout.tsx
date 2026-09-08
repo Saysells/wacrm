@@ -35,6 +35,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: "/icon" }],
+    // Hay que declararlo a mano: en cuanto `metadata.icons` existe,
+    // Next deja de inyectar solo el <link> del archivo
+    // `src/app/apple-icon.png`, y el icono de pantalla de inicio se
+    // pierde sin avisar. Verificado leyendo el <head> renderizado.
+    apple: [{ url: "/apple-icon.png", sizes: "180x180" }],
   },
   formatDetection: {
     email: false,

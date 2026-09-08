@@ -1,31 +1,31 @@
 import { ImageResponse } from "next/og";
-import {
-  WHATSAPP_GLYPH_PATH,
-  WHATSAPP_GLYPH_VIEW_BOX,
-} from "@/components/brand/whatsapp-glyph";
 
-// Replaces the default Next.js favicon with the brand mark — Saysells
-// navy rounded square + the WhatsApp glyph — matching the sidebar logo
-// in `src/components/layout/sidebar.tsx`. Next.js renders this at build
-// time and auto-injects <link rel="icon"> into <head>.
+// Replaces the default Next.js favicon with la marca de la Bandeja
+// KOSMO — cuadrado navy redondeado + dos bocadillos superpuestos.
+// Next.js renderiza esto en build time e inyecta solo el
+// <link rel="icon"> en el <head>.
 //
-// The navy is hard-coded on purpose: this is a build-time PNG, it has
-// no access to the CSS custom properties, and a favicon can't follow
-// the user's accent anyway. It mirrors the brand navy behind
-// `--primary` of the `saysells` theme in globals.css.
+// El navy está hard-codeado a propósito: esto es un PNG de build time,
+// no ve las CSS custom properties, y un favicon no puede seguir el
+// acento elegido por el usuario. Espeja el navy de marca detrás de
+// `--primary` del tema `saysells` en globals.css.
 //
-// The glyph comes from `@/components/brand/whatsapp-glyph`, the one
-// definition the sidebar and the auth screens also draw from — as raw
-// path data, not as the component: ImageResponse renders through
-// satori, which has no Tailwind classes and wants explicit width and
-// height. It's the real WhatsApp mark, white bubble with the handset
-// knocked out so the navy behind shows through. The outline version of
-// the same mark falls apart at 32x32 — its ring lands under a pixel
-// wide and the handset turns to mush. Verified by rendering at 32 and
-// looking at it.
+// El glifo son dos bocadillos: el de atrás (celeste, arriba a la
+// derecha) y el de adelante (celeste, abajo a la izquierda, con su
+// cola). Entre los dos van dos rellenos navy — un rect y la cola —
+// que abren el hueco que los separa. Ese navy TIENE que ser
+// exactamente el mismo que el del fondo: es lo que hace que el hueco
+// se lea como aire y no como un tercer color. Por eso los dos
+// bocadillos no se empastan a 32x32. Verificado renderizando a 32 y
+// mirándolo.
 //
-// This route takes precedence over src/app/favicon.ico, which is the
-// Next.js default and can stay on disk harmlessly (or be removed).
+// El dibujo va inline y no sale de `@/components/brand/whatsapp-glyph`:
+// ese sigue siendo el mark de WhatsApp que usan el sidebar y las
+// pantallas de auth, y este ícono ya no lo usa.
+//
+// Esta ruta tiene precedencia sobre src/app/favicon.ico, que es el
+// default de Next.js y puede quedarse en disco sin molestar (o
+// borrarse).
 
 export const runtime = "edge";
 export const size = { width: 32, height: 32 };
@@ -47,15 +47,12 @@ export default function Icon() {
           borderRadius: 6,
         }}
       >
-        <svg
-          width="22"
-          height="22"
-          viewBox={WHATSAPP_GLYPH_VIEW_BOX}
-          fill="#ffffff"
-          fillRule="evenodd"
-          clipRule="evenodd"
-        >
-          <path d={WHATSAPP_GLYPH_PATH} />
+        <svg width="22" height="22" viewBox="0 0 100 100">
+          <rect x="36" y="4" width="60" height="42" rx="11" fill="#8EB1D1" />
+          <rect x="-3" y="23" width="82" height="62" rx="18" fill="#1C2B48" />
+          <path d="M11 71 L11 106 L51 71 Z" fill="#1C2B48" />
+          <rect x="4" y="30" width="68" height="48" rx="12" fill="#8EB1D1" />
+          <path d="M18 74 L18 98 L44 74 Z" fill="#8EB1D1" />
         </svg>
       </div>
     ),

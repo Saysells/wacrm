@@ -44,21 +44,18 @@ export function GET() {
     theme_color: "#0F1520",
     icons: [
       {
-        // El PNG incrustado en la maqueta, extraido tal cual. iOS ignora
-        // los SVG del manifest, asi que tiene que ser PNG si o si.
-        src: "/movil/icono.png",
-        sizes: "180x180",
+        // iOS ignora los SVG del manifest, asi que tienen que ser PNG
+        // si o si. Los dos son el icono propio de esta cuenta.
+        src: "/icono-192.png",
+        sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        // El mismo archivo declarado como maskable: es un cuadrado navy
-        // a sangre, asi que recortarlo en circulo no come nada del
-        // bocadillo. No es un icono nuevo, es otra declaracion del mismo.
-        src: "/movil/icono.png",
-        sizes: "180x180",
+        src: "/icono-512.png",
+        sizes: "512x512",
         type: "image/png",
-        purpose: "maskable",
+        purpose: "any",
       },
     ],
   };

@@ -28,8 +28,10 @@ export const metadata: Metadata = {
     // El favicon de la pestaña sigue siendo el de siempre.
     icon: [{ url: "/icon" }],
     // iOS usa ESTE para el icono de la pantalla de inicio, y solo
-    // entiende PNG. Es el que venia incrustado en la maqueta.
-    apple: [{ url: "/movil/icono.png", sizes: "180x180" }],
+    // entiende PNG. Es el mismo `src/app/apple-icon.png` que declara el
+    // layout raiz: una sola marca en la pestana, en la pantalla de
+    // inicio de iOS y en los iconos del manifest.
+    apple: [{ url: "/apple-icon.png", sizes: "180x180" }],
   },
   appleWebApp: {
     // black-translucent deja el contenido pasar POR DEBAJO de la barra
