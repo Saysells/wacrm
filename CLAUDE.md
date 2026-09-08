@@ -28,7 +28,12 @@
   la app a `NEXT_PUBLIC_APP_NAME` (ver abajo). La sesión 2026-09-03
   sumó `src/lib/themes.ts`, `src/app/globals.css`, `src/app/icon.tsx`,
   `src/components/brand/whatsapp-glyph.tsx` (nuevo) y las tres
-  pantallas de `src/app/(auth)/` (ver "Marca" abajo).
+  pantallas de `src/app/(auth)/` (ver "Marca" abajo). La sesión
+  2026-09-08 sumó `src/hooks/use-sidebar-collapsed.ts` y
+  `src/lib/inbox/conversation-tags.ts` (nuevos) más
+  `src/components/layout/sidebar.tsx` y
+  `src/components/inbox/conversation-list.tsx` (ver "Bandeja de
+  escritorio · más de una etiqueta por fila").
 - **Matías tiene dos identidades y no se mezclan**: en la Bandeja
   (esta base) es `saysellsmatias@gmail.com`, y en el CRM Saysells, que
   es **otra** base, es `matias@saysells.com`. Las migraciones de este
@@ -840,6 +845,99 @@ paso3_no (senal_prefiere_chat) → paso3_lista_msg
   viva ~48 horas (24 del cierre + 24 del seguimiento) ocupando el
   índice único de una-corrida-por-contacto. En ese lapso no se le puede
   disparar otro flujo.
+
+# Bandeja de escritorio · más de una etiqueta por fila
+
+Sesión 2026-09-08 (pedida por Eze). La lista de conversaciones mostraba
+**una** etiqueta, la de estado. Matías necesita distinguir de un vistazo
+los hilos que además tienen "WhatsApp Mati" sin abrirlos uno por uno.
+Sin SQL: `contact_tags(tags(*))` ya viene joineado en
+`CONVERSATION_SELECT`, el dato estaba y se pintaba una sola.
+
+## La barra lateral se pliega
+
+`src/hooks/use-sidebar-collapsed.ts` — `useSidebarCollapsed()`. El botón
+está al pie del nav de `sidebar.tsx` (SVG inline, la flecha apunta a
+dónde va a ir la barra), y es **solo de escritorio** (`lg:flex`): en
+mobile la barra es un cajón que ya tiene su botón de cerrar, plegarla
+ahí no querría decir nada. Por eso *todo* lo que responde a `collapsed`
+va detrás de `lg:`: el mismo DOM sirve para el cajón y para la barra
+fija.
+
+- **El estado no vive en la barra** porque tiene un segundo consumidor:
+  la lista de la Bandeja decide chips o puntitos según el ancho que le
+  quede. Y no es un contexto porque no hace falta: es un store externo
+  (`localStorage`, clave `wacrm:layout:sidebar-collapsed`) leído con
+  **`useSyncExternalStore`**, no un `useState` sembrado desde un efecto.
+  Con eso no hay render en cascada al montar (el lint del compilador de
+  React rechaza el `setState` dentro del efecto), el snapshot de
+  servidor es "expandida" —el comportamiento de siempre— así que no hay
+  desajuste de hidratación, y de regalo el evento `storage` sincroniza
+  las pestañas.
+- Device-scoped, igual que el panel de contacto de la Bandeja
+  (`wacrm:inbox:contact-panel-open`).
+- Plegada, cada fila del nav pierde el rótulo (`lg:hidden`), así que la
+  etiqueta accesible la repone `aria-label` y `title` la muestra al
+  pasar el mouse. Los badges (punto de no leídos, contador de
+  notificaciones) pasan a `lg:absolute` sobre la esquina del ícono: sin
+  rótulo no hay renglón donde apoyarlos.
+- La franja de cuenta y el nombre del usuario se ocultan; el avatar
+  queda centrado y sigue abriendo el mismo menú.
+
+## Principal y secundarias
+
+`src/lib/inbox/conversation-tags.ts` — parte pura, con tests
+(`conversation-tags.test.ts`), igual que `contact-tags.ts`.
+
+- `splitConversationTags` devuelve `{ principal, secundarias }`. La
+  principal es la de estado (`grupo = 'estado'`, como máximo una por
+  contacto: lo garantiza `trg_single_etapa_tag`). **Un contacto sin
+  estado no se queda sin pastilla**: sube la primera secundaria y el
+  resto son puntitos.
+- El orden de `secundarias` es el de entrada a propósito: es el que
+  llega joineado y el mismo que ve la ficha del contacto, así que los
+  puntitos de la lista y las pastillas de la ficha se corresponden.
+- `visibleChips` recorta a `MAX_TAG_CHIPS` (4) y cuenta el `+N`; el
+  `title` del `+N` lista los nombres que quedaron afuera.
+- `tagTint` arma el fondo del chip con **`color-mix` al 15 %** y no con
+  un alfa pegado en hexa, porque `tags.color` es un string libre de la
+  base: los ocho `PRESET_COLORS` son `#rrggbb`, pero una etiqueta creada
+  por API puede traer cualquier color CSS.
+
+## Cómo se ve
+
+La lista pasa de `lg:w-80` a `lg:w-96` cuando la barra está plegada —
+ahí es donde aterriza parte del ancho que libera la barra, y es lo que
+hace que entren los nombres.
+
+- **Barra abierta**: la principal como hoy (pastilla llena, color pleno)
+  y al lado un punto de 8 px por cada secundaria, con el nombre en el
+  `title`. Sin tope, pero el contenedor está acotado (`max-w-24`): del
+  sexto en adelante bajan a un segundo renglón en vez de comerse el
+  nombre del contacto, que es justamente lo que uno mira.
+- **Barra plegada**: las secundarias van enteras, como chips, en su
+  **propio renglón** debajo del preview — al lado del nombre se comerían
+  el nombre. El renglón solo existe si hay etiquetas, así que las filas
+  sin etiqueta miden lo mismo que siempre.
+- Nada de esto toca la app móvil de `/m`: `ConversationList` es del
+  escritorio y `(movil)` tiene su propia lista.
+
+## Pendientes de esta sesión
+
+- **No se vio en un navegador.** Lo verificado es `npm run build`,
+  `npx tsc --noEmit`, `npm run lint` (0 errores, los 35 warnings de
+  base) y los tests de la lógica pura. Los 3 rojos de `vitest` siguen
+  siendo los mismos tres de antes (`flujo-kosmo`,
+  `seguimiento-catalogo`, `date-utils`).
+- El chip usa el color de la etiqueta como texto sobre ese mismo color
+  al 15 %. Con una etiqueta de color muy oscuro sobre el modo oscuro el
+  contraste queda flojo; la paleta de `PRESET_COLORS` no tiene ninguno
+  así, pero una creada por API sí podría.
+- El ancho plegado (`lg:w-[4.5rem]`) y el de la lista (`lg:w-96`) son
+  números fijos, no una medición: si alguien agrega un ícono más ancho
+  al nav hay que revisarlos.
+- La preferencia es por dispositivo, no por usuario: no viaja entre
+  máquinas.
 
 # Marca · acento Saysells e íconos
 

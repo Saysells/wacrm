@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 import { homePathFor, showsInNav } from "@/lib/auth/nav";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -123,6 +124,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
+  // Plegada a solo iconos. Es una preferencia de ESCRITORIO: en mobile
+  // la barra es un cajon que se abre y se cierra entero, asi que todo
+  // lo que responde a `collapsed` va detras del breakpoint `lg:`.
+  const { collapsed, toggle } = useSidebarCollapsed();
 
   // Navegación por permisos: cada entrada mapea a una clave nav_* y
   // se resuelve por rol + overrides (el middleware bloquea además la
@@ -197,21 +202,33 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
-          "lg:static lg:z-0 lg:w-60 lg:translate-x-0 lg:transition-none",
+          "lg:static lg:z-0 lg:translate-x-0 lg:transition-none",
+          collapsed ? "lg:w-[4.5rem]" : "lg:w-60",
         )}
         aria-label="Primary"
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+        <div
+          className={cn(
+            "flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4",
+            collapsed && "lg:justify-center lg:px-2",
+          )}
+        >
           <Link
             href={homePathFor(accountRole, permissionOverrides)}
             className="flex items-center gap-2"
+            title={collapsed ? APP_NAME : undefined}
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <WhatsAppGlyph className="h-4 w-4" />
             </div>
-            <span className="text-sm font-semibold text-foreground">
+            <span
+              className={cn(
+                "text-sm font-semibold text-foreground",
+                collapsed && "lg:hidden",
+              )}
+            >
               {APP_NAME}
             </span>
           </Link>
@@ -243,24 +260,37 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               const showNotificationBadge =
                 item.href === "/notifications" && unreadNotifications > 0;
 
+              const label = t(item.labelKey as string);
+
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    // Plegada, el rotulo desaparece en lg y con el la
+                    // unica etiqueta accesible de la fila: la repone
+                    // `aria-label`, y `title` la muestra al pasar el mouse.
+                    aria-label={collapsed ? label : undefined}
+                    title={collapsed ? label : undefined}
                     className={cn(
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      collapsed && "lg:justify-center lg:px-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{t(item.labelKey as string)}</span>
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className={cn("flex-1", collapsed && "lg:hidden")}>
+                      {label}
+                    </span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
-                        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
+                        className={cn(
+                          "rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300",
+                          collapsed && "lg:hidden",
+                        )}
                       >
                         {t("beta")}
                       </span>
@@ -268,7 +298,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     {showUnreadDot && (
                       <span
                         aria-label={t("unreadConversations", { count: totalUnread })}
-                        className="relative flex h-2 w-2"
+                        // Plegada no hay renglon donde apoyar el punto:
+                        // se clava en la esquina del icono.
+                        className={cn(
+                          "relative flex h-2 w-2 shrink-0",
+                          collapsed && "lg:absolute lg:right-2 lg:top-1.5",
+                        )}
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -277,7 +312,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     {showNotificationBadge && (
                       <span
                         aria-label={t("unreadNotifications", { count: unreadNotifications })}
-                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                        className={cn(
+                          "flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground",
+                          collapsed &&
+                            "lg:absolute lg:right-1 lg:top-0.5 lg:h-4 lg:min-w-4 lg:text-[9px]",
+                        )}
                       >
                         {unreadNotifications > 9 ? "9+" : unreadNotifications}
                       </span>
@@ -293,24 +332,62 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <ul className="flex flex-col gap-1">
             {visibleBottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
+              const label = t(item.labelKey as string);
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    aria-label={collapsed ? label : undefined}
+                    title={collapsed ? label : undefined}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      collapsed && "lg:justify-center lg:px-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    {t(item.labelKey as string)}
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className={cn(collapsed && "lg:hidden")}>{label}</span>
                   </Link>
                 </li>
               );
             })}
           </ul>
+
+          {/* Contraer / expandir. Solo escritorio (`lg:flex`): en mobile
+              la barra es un cajon con su propio boton de cerrar, plegarla
+              ahi no querria decir nada. Va al pie del nav y no en la fila
+              del logo porque plegada esa fila no tiene lugar para dos
+              cosas, y asi el boton queda siempre en el mismo lado. */}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-expanded={!collapsed}
+            title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            className={cn(
+              "mt-1 hidden w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex",
+              collapsed && "lg:justify-center lg:px-2",
+            )}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+              {/* La flecha apunta a donde va a ir la barra al tocar. */}
+              <path d={collapsed ? "M13 15l3-3-3-3" : "M16 15l-3-3 3-3"} />
+            </svg>
+            {!collapsed && <span>{t("collapseSidebar")}</span>}
+          </button>
         </nav>
 
         {/* User section */}
@@ -322,7 +399,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               below; for renamed or shared accounts it tells the user
               which account they're acting in. */}
           {showAccountStrip && account?.name ? (
-            <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
+            <div
+              className={cn(
+                "mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground",
+                // Plegada no entra ni el nombre ni el chip de rol; el
+                // rol sigue visible en Configuracion.
+                collapsed && "lg:hidden",
+              )}
+            >
               <UsersRound className="size-3.5 shrink-0" />
               {/* `title=` exposes the full name on hover when it
                   gets truncated (long account names + narrow
@@ -351,7 +435,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </div>
           ) : null}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60">
+            <DropdownMenuTrigger
+              title={collapsed ? (profile?.full_name ?? t("defaultUser")) : undefined}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60",
+                collapsed && "lg:justify-center lg:px-2",
+              )}
+            >
               <Avatar className="size-8 shrink-0">
                 {profile?.avatar_url ? (
                   <AvatarImage
@@ -365,7 +455,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     "U"}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
                 <p className="truncate text-sm font-medium text-foreground">
                   {profile?.full_name ?? t("defaultUser")}
                 </p>

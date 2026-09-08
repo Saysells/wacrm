@@ -8,7 +8,12 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { conversationVisibilityFilter } from "@/lib/auth/visibility";
-import { findEstadoTag } from "@/lib/contacts/tag-groups";
+import {
+  splitConversationTags,
+  tagTint,
+  visibleChips,
+} from "@/lib/inbox/conversation-tags";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
@@ -72,6 +77,10 @@ export function ConversationList({
   // mientras el rol resuelve.
   const { user, accountRole, permissionOverrides, profileLoading } = useAuth();
   const userId = user?.id ?? null;
+  // Con la barra lateral plegada sobran ~180px en la fila: la lista se
+  // queda con una parte y con eso entran las etiquetas enteras. Abierta
+  // no hay ancho y las secundarias se resumen en puntitos.
+  const { collapsed: sidebarCollapsed } = useSidebarCollapsed();
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -261,8 +270,14 @@ export function ConversationList({
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
-    // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+    // row with the thread + contact sidebar — 384px con la barra lateral
+    // plegada, que es el ancho que necesitan los chips de etiqueta.
+    <div
+      className={cn(
+        "flex h-full w-full flex-col border-r border-border bg-card",
+        sidebarCollapsed ? "lg:w-96" : "lg:w-80",
+      )}
+    >
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center gap-2">
@@ -465,6 +480,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                showTagChips={sidebarCollapsed}
                 t={t}
               />
             ))}
@@ -487,6 +503,12 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  /**
+   * Con la barra lateral plegada la fila tiene ancho para pintar las
+   * etiquetas secundarias como chips con su nombre; sin plegar, apenas
+   * para un puntito por etiqueta.
+   */
+  showTagChips: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -494,14 +516,18 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  showTagChips,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
-  // Estado del contacto (grupo 'estado' de tags): el setter lo ve sin
-  // abrir el hilo. `contact.tags` viene hidratado por CONVERSATION_SELECT.
-  const estado = findEstadoTag(contact?.tags);
+  // Etiquetas del contacto: la principal (la de estado, o la primera
+  // que tenga si no tiene estado) se ve siempre entera; las demas son
+  // chips o puntitos segun el ancho. `contact.tags` viene hidratado
+  // por CONVERSATION_SELECT, asi que esto no cuesta una consulta.
+  const { principal, secundarias } = splitConversationTags(contact?.tags);
+  const { chips, extra } = visibleChips(secundarias);
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -541,15 +567,33 @@ function ConversationItem({
             <span className="truncate text-sm font-medium text-foreground">
               {displayName}
             </span>
-            {estado && (
+            {principal && (
               // Chip chico y acotado (max-w) para que el nombre no
               // desaparezca en pantallas angostas.
               <span
                 className="max-w-24 shrink-0 truncate rounded-full px-1.5 py-px text-[9px] font-semibold leading-4 text-white"
-                style={{ backgroundColor: estado.color }}
-                title={estado.name}
+                style={{ backgroundColor: principal.color }}
+                title={principal.name}
               >
-                {estado.name}
+                {principal.name}
+              </span>
+            )}
+            {!showTagChips && secundarias.length > 0 && (
+              // Barra abierta: no hay ancho para los nombres, asi que
+              // cada etiqueta secundaria es un punto de 8px de su color.
+              // Sin tope, pero acotados en ancho: del sexto en adelante
+              // bajan a un segundo renglon en vez de comerse el nombre
+              // del contacto, que es lo que se busca al mirar la lista.
+              <span className="flex max-w-24 shrink-0 flex-wrap items-center gap-1">
+                {secundarias.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                    title={tag.name}
+                    aria-label={tag.name}
+                  />
+                ))}
               </span>
             )}
           </div>
@@ -574,6 +618,40 @@ function ConversationItem({
             />
           </div>
         </div>
+
+        {/* Barra plegada: las secundarias van enteras, en su propio
+            renglon. Abajo del preview y no al lado del nombre para no
+            comerse el nombre cuando el contacto tiene varias. El
+            renglon solo existe si hay etiquetas, asi que las filas sin
+            etiqueta miden lo mismo que siempre. */}
+        {showTagChips && secundarias.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {chips.map((tag) => (
+              <span
+                key={tag.id}
+                className="max-w-32 truncate rounded-full px-1.5 py-px text-[9px] font-medium leading-4"
+                style={{
+                  backgroundColor: tagTint(tag.color),
+                  color: tag.color,
+                }}
+                title={tag.name}
+              >
+                {tag.name}
+              </span>
+            ))}
+            {extra > 0 && (
+              <span
+                className="rounded-full bg-muted px-1.5 py-px text-[9px] font-medium leading-4 text-muted-foreground"
+                title={secundarias
+                  .slice(chips.length)
+                  .map((tag) => tag.name)
+                  .join(", ")}
+              >
+                +{extra}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );
