@@ -20,10 +20,13 @@ import { reachableFromEntry, validateFlowForActivation } from "./validate";
 // es justo el día en que el test tendría que avisar.
 // ============================================================
 
+// El flujo es de una cuenta, no del producto, así que vive en
+// `supabase/cuentas/kosmo/` y no en `supabase/migrations/` (ver la
+// sección "Las migraciones están partidas en dos" del CLAUDE.md).
 const SQL = readFileSync(
   join(
     process.cwd(),
-    "supabase/migrations/050_flujo_kosmo_primer_contacto.sql",
+    "supabase/cuentas/kosmo/050_flujo_kosmo_primer_contacto.sql",
   ),
   "utf8",
 );

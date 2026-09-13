@@ -20,9 +20,12 @@ import { reachableFromEntry, validateFlowForActivation } from "./validate";
 // el seguimiento. Es el estado que va a tener la base.
 // ============================================================
 
+// Las tres son migraciones de cuenta, no de producto: viven en
+// `supabase/cuentas/kosmo/` (ver la sección "Las migraciones están
+// partidas en dos" del CLAUDE.md).
 function sql(archivo: string): string {
   return readFileSync(
-    join(process.cwd(), "supabase/migrations", archivo),
+    join(process.cwd(), "supabase/cuentas/kosmo", archivo),
     "utf8",
   );
 }
