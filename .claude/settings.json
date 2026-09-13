@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "static-analysis@trailofbits": true,
+    "fp-check@trailofbits": true,
+    "differential-review@trailofbits": true,
+    "supply-chain-risk-auditor@trailofbits": true,
+    "insecure-defaults@trailofbits": true
+  }
+}
