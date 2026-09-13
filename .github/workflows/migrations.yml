@@ -40,10 +40,10 @@ jobs:
     name: Apply to a clean database
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install the Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
         with:
           # Pinned rather than `latest`: this check is infrastructure,
           # and a CLI release changing behaviour should be a deliberate
