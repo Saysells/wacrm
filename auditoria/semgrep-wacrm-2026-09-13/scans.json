@@ -1,0 +1,155 @@
+{
+  "outputDir": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13",
+  "rawDir": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw",
+  "reposPath": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/repos",
+  "mode": "important-only",
+  "pro": false,
+  "excludePattern": "auditoria/semgrep-wacrm-2026-09-13",
+  "scans": [
+    {
+      "lang": "all",
+      "ruleset": "p/secrets",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-secrets.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-secrets.sarif",
+      "findings": 0,
+      "filesScanned": 598,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "all",
+      "ruleset": "p/security-audit",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-security-audit.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-security-audit.sarif",
+      "findings": 0,
+      "filesScanned": 500,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "all",
+      "ruleset": "https://github.com/trailofbits/semgrep-rules",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-trailofbits-semgrep-rules.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-trailofbits-semgrep-rules.sarif",
+      "findings": 1,
+      "filesScanned": 598,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "all",
+      "ruleset": "https://github.com/elttam/semgrep-rules",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-elttam-semgrep-rules.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-elttam-semgrep-rules.sarif",
+      "findings": 0,
+      "filesScanned": 598,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "all",
+      "ruleset": "https://github.com/apiiro/malicious-code-ruleset",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-apiiro-malicious-code-ruleset.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-apiiro-malicious-code-ruleset.sarif",
+      "findings": 4,
+      "filesScanned": 485,
+      "partial": true,
+      "exitCode": 2
+    },
+    {
+      "lang": "all",
+      "ruleset": "https://github.com/kondukto-io/semgrep-rules",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-kondukto-io-semgrep-rules.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/all-kondukto-io-semgrep-rules.sarif",
+      "findings": 2,
+      "filesScanned": 1,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "docker",
+      "ruleset": "p/dockerfile",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/docker-dockerfile.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/docker-dockerfile.sarif",
+      "findings": 0,
+      "filesScanned": 1,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "github-actions",
+      "ruleset": "p/github-actions",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/github-actions-github-actions.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/github-actions-github-actions.sarif",
+      "findings": 4,
+      "filesScanned": 7,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "javascript",
+      "ruleset": "p/javascript",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-javascript.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-javascript.sarif",
+      "findings": 1,
+      "filesScanned": 485,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "javascript",
+      "ruleset": "p/nextjs",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-nextjs.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-nextjs.sarif",
+      "findings": 0,
+      "filesScanned": 0,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "javascript",
+      "ruleset": "p/nodejs",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-nodejs.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-nodejs.sarif",
+      "findings": 0,
+      "filesScanned": 485,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "javascript",
+      "ruleset": "p/react",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-react.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-react.sarif",
+      "findings": 0,
+      "filesScanned": 485,
+      "partial": false,
+      "exitCode": 0
+    },
+    {
+      "lang": "javascript",
+      "ruleset": "p/typescript",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-typescript.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/javascript-typescript.sarif",
+      "findings": 1,
+      "filesScanned": 485,
+      "partial": false,
+      "exitCode": 0
+    }
+  ],
+  "failed": [
+    {
+      "lang": "yaml",
+      "ruleset": "p/yaml",
+      "json": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/yaml-yaml.json",
+      "sarif": "/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/raw/yaml-yaml.sarif",
+      "error": "Paths that match both --include and --exclude will be skipped by Semgrep."
+    }
+  ],
+  "skipped": [],
+  "alsoShared": [],
+  "unscoped": [],
+  "coveredNothing": [
+    "javascript/p/nextjs"
+  ]
+}

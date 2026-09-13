@@ -1,0 +1,10 @@
+# Exclusiones para los escaneos de semgrep (auditoria/).
+# Semgrep ya lee el .gitignore del proyecto; esto lo hace explicito y cubre
+# dist/, que no esta en el .gitignore.
+node_modules/
+.next/
+dist/
+build/
+coverage/
+out/
+.vercel/

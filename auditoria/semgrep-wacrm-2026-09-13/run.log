@@ -1,0 +1,9 @@
+note: output directory is inside the target; excluding 'auditoria/semgrep-wacrm-2026-09-13' from every scan.
+      semgrep matches that pattern anywhere in the tree.
+trailofbits-semgrep-rules: pruned 27 non-rule YAML file(s) and 0 join-mode rule file(s)
+elttam-semgrep-rules: pruned 14 non-rule YAML file(s) and 1 join-mode rule file(s)
+apiiro-malicious-code-ruleset: pruned 0 non-rule YAML file(s) and 0 join-mode rule file(s)
+kondukto-io-semgrep-rules: pruned 0 non-rule YAML file(s) and 0 join-mode rule file(s)
+running 14 scan(s), 4 at a time
+13 scan(s) succeeded, 1 failed, 0 skipped
+/Users/emilianoacosta/Desktop/crm-whatsapp-instalador/crm/auditoria/semgrep-wacrm-2026-09-13/scans.json

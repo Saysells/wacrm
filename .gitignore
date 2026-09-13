@@ -45,3 +45,8 @@ next-env.d.ts
 
 # claude code (config local de la maquina)
 .claude/settings.local.json
+
+# auditoria: se trackea el SARIF final, no la salida cruda por scan
+auditoria/**/raw/
+# results/results.sarif es copia byte-identica del SARIF de arriba
+auditoria/**/results/
