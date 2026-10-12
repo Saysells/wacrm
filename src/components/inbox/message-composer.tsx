@@ -764,10 +764,17 @@ export function MessageComposer({
 
   return (
     // `@container`: la barra, las pestañas y el indicador se adaptan al
-    // ancho del HILO (no de la ventana): con el panel de contacto abierto a
-    // 1180 px el hilo mide ~450 px y la barra entera no entra. Los textos
-    // se ocultan por tramos del contenedor; los íconos y enviar quedan
-    // siempre adentro del cuadro.
+    // ancho del HILO (no de la ventana). Con la barra lateral desplegada
+    // (248) y el panel de contacto abierto (280), el hilo mide 290 px a
+    // 1180, 390 a 1280, 476 a 1366, 550 a 1440 y 790 a 1680; las
+    // consultas `@[…]` miden el CONTENIDO del contenedor, sin los 24 px
+    // de padding de cada lado (242 px a 1180). Cortes, medidos con
+    // margen: texto de "Sugerir respuesta" desde 410, indicador largo de
+    // la ventana desde 420, panel de plantillas a dos columnas desde 440,
+    // ayuda "Enter envía…" desde 620. Lo que no entra en un renglón pasa
+    // a dos (`flex-wrap`): el indicador baja a su propio renglón a la
+    // derecha y la barra deja enviar abajo a la derecha. Nada se sale
+    // del cuadro a ningún ancho.
     <div className="@container relative min-w-0 shrink-0 px-4 pb-4 pt-1.5 sm:px-6">
       {/* Panel de respuestas rápidas (prototipo `.qr`): se apoya sobre el
           cuadro mientras el texto empiece con "/". */}
@@ -819,7 +826,7 @@ export function MessageComposer({
       )}
 
       {/* Pestañas + ventana (prototipo `.cbar`). */}
-      <div className="flex min-w-0 items-center gap-3.5 px-1.5 pb-2 text-[13px] @[520px]:gap-[18px]">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-[18px] gap-y-1 px-1.5 pb-2 text-[13px]">
         <button
           type="button"
           onClick={() => setTab("reply")}
@@ -961,7 +968,9 @@ export function MessageComposer({
               {/* Barra (prototipo `.ctb`). En la nota interna solo quedan
                   la ayuda y guardar: un adjunto o una plantilla saldrían
                   por WhatsApp, y la nota nunca sale. */}
-              <div className="mt-1 flex min-w-0 items-center gap-1 text-secondary-foreground">
+              {/* `flex-wrap`: si no entra en un renglón pasa a dos y enviar
+                  (`ml-auto`) queda abajo a la derecha. */}
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-secondary-foreground">
                 {!isNote && (
                   <>
                     <DropdownMenu>
@@ -1045,13 +1054,13 @@ export function MessageComposer({
                     >
                       {drafting ? <Loader2 className="animate-spin" /> : <Sparkles />}
                       {/* El texto solo cuando entra; si no, el ícono solo con title y aria-label. */}
-                      <span className="hidden @[560px]:inline">{t("suggestReply")}</span>
+                      <span className="hidden @[410px]:inline">{t("suggestReply")}</span>
                     </button>
                   </>
                 )}
 
                 {/* La ayuda se oculta cuando no entra (ancho del hilo, no de la ventana). */}
-                <span className="ml-auto mr-2.5 hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground @[740px]:inline">
+                <span className="ml-auto mr-2.5 hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground @[620px]:inline">
                   {t("sendHint")}
                 </span>
                 <button
@@ -1060,7 +1069,7 @@ export function MessageComposer({
                   onClick={() => (isNote ? void handleSaveNote() : void handleSend())}
                   title={readOnly ? t("readOnlyTitle") : isNote ? t("saveNote") : t("send")}
                   aria-label={isNote ? t("saveNote") : t("send")}
-                  className="ml-auto grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 @[740px]:ml-0 [&_svg]:size-[18px]"
+                  className="ml-auto grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 @[620px]:ml-0 [&_svg]:size-[18px]"
                 >
                   {savingNote ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
                 </button>
@@ -1182,12 +1191,13 @@ function WindowIndicator({ state, t }: { state: WindowState; t: Translator }) {
       short = t("windowNoneShort");
   }
   // Con el hilo angosto va la versión corta entera, nunca la larga con
-  // puntos suspensivos.
+  // puntos suspensivos; si tampoco entra al lado de las pestañas, la
+  // fila (`flex-wrap`) la baja a su propio renglón, a la derecha.
   return (
     <span className={cn("ml-auto flex shrink-0 items-center gap-[7px] whitespace-nowrap text-[12.5px] font-medium", tone)}>
       <span className={cn("size-2 shrink-0 rounded-full", dot)} />
-      <span className="hidden @[520px]:inline">{label}</span>
-      <span className="@[520px]:hidden">{short}</span>
+      <span className="hidden @[420px]:inline">{label}</span>
+      <span className="@[420px]:hidden">{short}</span>
     </span>
   );
 }
@@ -1252,8 +1262,8 @@ function TemplatePanel({
           <p className="mt-1 text-[13px] text-muted-foreground">{tPicker("noApprovedTemplatesHint")}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 @[560px]:grid-cols-2">
-          <div className="max-h-72 overflow-y-auto border-b border-border @[560px]:border-b-0">
+        <div className="grid grid-cols-1 @[440px]:grid-cols-2">
+          <div className="max-h-72 overflow-y-auto border-b border-border @[440px]:border-b-0">
             {templates.map((tpl) => (
               <button
                 key={tpl.id}
@@ -1325,7 +1335,7 @@ function TemplatePane({
   };
 
   return (
-    <div className="flex flex-col gap-2.5 px-4 py-3 text-[13.5px] @[560px]:border-l @[560px]:border-border">
+    <div className="flex flex-col gap-2.5 px-4 py-3 text-[13.5px] @[440px]:border-l @[440px]:border-border">
       <span className="text-[12.5px] font-semibold text-muted-foreground">{tPicker("preview")}</span>
       <div className="whitespace-pre-wrap break-words rounded-[20px] rounded-br-md bg-primary px-3.5 py-2 text-[13.5px] leading-[1.42] text-primary-foreground">
         {renderBodyPreview(template.body_text, params)}

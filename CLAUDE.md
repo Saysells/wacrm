@@ -1421,15 +1421,24 @@ no; sin SQL, sin dependencias. Prototipo: `thread()`, `composer()`,
   sistema (antes `window.prompt`); la nueva entra al catálogo en
   memoria.
 - **Arreglo 2026-10-12 (antes de publicar)**: con el panel de contacto
-  abierto a 1180–1440 px la barra se salía del cuadro. El cuadro es un
-  `@container` (Tailwind v4) y todo lo que es texto se adapta al ancho
-  del HILO, no de la ventana: el indicador largo de la ventana desde
-  520 px (abajo, la versión corta "Quedan 23 h 33 min" / "Vence en 58
-  min" / "Ventana cerrada", nunca puntos suspensivos), el texto de
-  "Sugerir respuesta" desde 560 (abajo, ícono solo con `title` y
-  `aria-label`), la ayuda "Enter envía…" desde 740; las pestañas y los
-  botones llevan `shrink-0` y `whitespace-nowrap`. El panel de
-  plantillas pasa a dos columnas desde 560 px de contenedor.
+  abierto la barra se salía del cuadro. Medido con navegador: barra
+  lateral 248, lista 350, panel 280 ⇒ el hilo mide 290 px a 1180, 390 a
+  1280, 476 a 1366, 550 a 1440, 646 a 1536 y 790 a 1680. El cuadro es un
+  `@container` (Tailwind v4) y las consultas `@[…]` miden el CONTENIDO
+  del contenedor, sin los 24 px de padding de cada lado (242 px a 1180).
+  Cortes, con margen sobre lo medido: texto de "Sugerir respuesta" desde
+  410 px (abajo, ícono solo con `title` y `aria-label`), indicador
+  largo de la ventana desde 420 (abajo, la versión corta "Quedan 23 h
+  33 min" / "Vence en 58 min" / "Ventana cerrada", nunca puntos
+  suspensivos), panel de plantillas a dos columnas desde 440, ayuda
+  "Enter envía…" desde 620 (enviar pasa a `ml-0` en el mismo corte). La
+  fila de pestañas y la barra llevan `flex-wrap`: si el indicador no
+  entra baja a su propio renglón a la derecha, y si la barra no entra
+  pasa a dos renglones con enviar abajo a la derecha. Esperado: a 1180
+  indicador en su renglón y barra en dos; a 1280 todo en un renglón con
+  ventana corta y Sugerir solo ícono; de 1366 a 1536 ventana larga y
+  Sugerir con texto; a 1680 también la ayuda. Cerrar el panel por
+  defecto abajo de 1380 px, como el prototipo, es de la sesión D.
 - Viewer: textarea deshabilitado con el placeholder de solo lectura,
   toda la barra deshabilitada, "Enviar plantilla" deshabilitado.
 - `GatedButton` dejó de usarse en el cuadro (siguen usándolo otras
