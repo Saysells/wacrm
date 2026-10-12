@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { InboxStoreProvider } from "@/hooks/use-inbox-store";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -55,7 +56,11 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <PresenceHeartbeat />
       <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
       <div className="flex min-h-0 overflow-hidden">
-        <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+        {/* La barra lee `?vista=` / `?embudo=` con useSearchParams, que
+            pide un Suspense para que el build no caiga a CSR entero. */}
+        <Suspense fallback={null}>
+          <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+        </Suspense>
         {/* La tarjeta de contenido. `min-w-0` para que una tabla ancha
             no la ensanche; `min-h-0` para que el scroll quede adentro. */}
         <div className="mx-3 mb-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] bg-card shadow-card lg:ml-0">
@@ -75,7 +80,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShellInner>{children}</DashboardShellInner>
+      {/* Una lista de conversaciones para toda la app (rediseño, sesión
+          B): los contadores de la barra lateral y la lista de la Bandeja
+          leen de acá, así cuentan siempre lo mismo. */}
+      <InboxStoreProvider>
+        <DashboardShellInner>{children}</DashboardShellInner>
+      </InboxStoreProvider>
     </AuthProvider>
   );
 }

@@ -16,6 +16,12 @@ interface UseRealtimeOptions {
   onMessageEvent?: (event: RealtimeEvent<Message>) => void;
   onConversationEvent?: (event: RealtimeEvent<Conversation>) => void;
   enabled?: boolean;
+  /**
+   * Called when the channel re-subscribes AFTER its first successful
+   * connect (laptop sleep, network blip). Events sent meanwhile were
+   * lost, so callers refetch here. Not called on the initial connect.
+   */
+  onReconnect?: () => void;
 }
 
 export function useRealtime({
@@ -23,9 +29,13 @@ export function useRealtime({
   onMessageEvent,
   onConversationEvent,
   enabled = true,
+  onReconnect,
 }: UseRealtimeOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Tracked via a ref rather than a count so strict-mode's dev-only
+  // effect double-fire doesn't read as a reconnect.
+  const connectedOnceRef = useRef(false);
 
   // Store latest callbacks in refs to avoid re-subscribing when the
   // parent re-renders with fresh closures. Assigned inside an effect
@@ -34,9 +44,11 @@ export function useRealtime({
   // callbacks, which always run after the render that updates it.
   const onMessageRef = useRef(onMessageEvent);
   const onConversationRef = useRef(onConversationEvent);
+  const onReconnectRef = useRef(onReconnect);
   useEffect(() => {
     onMessageRef.current = onMessageEvent;
     onConversationRef.current = onConversationEvent;
+    onReconnectRef.current = onReconnect;
   });
 
   useEffect(() => {
@@ -70,6 +82,10 @@ export function useRealtime({
       )
       .subscribe((status) => {
         setIsConnected(status === "SUBSCRIBED");
+        if (status === "SUBSCRIBED") {
+          if (connectedOnceRef.current) onReconnectRef.current?.();
+          connectedOnceRef.current = true;
+        }
       });
 
     channelRef.current = channel;

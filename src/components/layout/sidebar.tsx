@@ -1,33 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import { useInboxStore } from "@/hooks/use-inbox-store";
+import { useInboxSearch } from "@/hooks/use-inbox-search";
+import { useNow } from "@/hooks/use-now";
 import {
+  Archive,
   Bell,
   Bot,
   Crown,
   GitBranch,
+  Hourglass,
+  Inbox,
   LayoutDashboard,
-  MessageSquare,
+  MessagesSquare,
   Radio,
   Settings,
   Shield,
+  SquarePen,
   User,
   UserCog,
+  UserRoundPlus,
   Users,
   UsersRound,
   Workflow,
   X,
   Zap,
+  CalendarClock,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
+import { canSendMessages } from "@/lib/auth/roles";
 import { homePathFor, showsInNav } from "@/lib/auth/nav";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import {
+  VISTAS,
+  countFunnel,
+  countVistas,
+  defaultVista,
+  funnelCount,
+  funnelGroups,
+  hasScheduling,
+  parseVista,
+  type Vista,
+} from "@/lib/inbox/vistas";
+import { NewMessageDialog } from "@/components/inbox/new-message-dialog";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -74,9 +95,11 @@ interface NavItem {
   beta?: boolean;
 }
 
+// Herramientas (rediseño, sesión B): todas las entradas de siempre
+// menos "Bandeja", que la reemplazan las vistas de arriba. Los
+// permisos son los mismos: `showsInNav` (nav.ts no se toca).
 const navItems: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
-  { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
@@ -90,6 +113,16 @@ const bottomNavItems = [
   { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
+/** Vistas de la Bandeja (prototipo `VIEWS`): ícono y rótulo por clave. */
+const VISTA_META: Record<Vista, { icon: typeof Inbox; labelKey: string }> = {
+  "para-mi": { icon: Inbox, labelKey: "vistaParaMi" },
+  "sin-tomar": { icon: UserRoundPlus, labelKey: "vistaSinTomar" },
+  agendadas: { icon: CalendarClock, labelKey: "vistaAgendadas" },
+  "por-vencer": { icon: Hourglass, labelKey: "vistaPorVencer" },
+  todas: { icon: MessagesSquare, labelKey: "vistaTodas" },
+  cerradas: { icon: Archive, labelKey: "vistaCerradas" },
+};
+
 interface SidebarProps {
   /** Controlled on mobile by the Header's hamburger button. Ignored on lg+. */
   open?: boolean;
@@ -100,18 +133,56 @@ import { useTranslations } from "next-intl";
 import { APP_NAME } from "@/lib/app-name";
 import { WhatsAppGlyph } from "@/components/brand/whatsapp-glyph";
 
+/** Fila del nav (prototipo `.ni`): 36 px, radio 10 px, activo celeste. */
+const NAV_ROW =
+  "relative flex h-11 w-full items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-left text-sm transition-colors lg:h-9";
+const NAV_ROW_IDLE = "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground";
+const NAV_ROW_ACTIVE = "bg-sidebar-accent font-semibold text-sidebar-accent-foreground";
+/** Contador a la derecha (prototipo `.ni .c`): número, sin pastilla. */
+const NAV_COUNT = "ml-auto shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground";
+const NAV_COUNT_COLLAPSED =
+  "lg:absolute lg:right-1.5 lg:top-0.5 lg:rounded-[5px] lg:bg-sidebar-accent lg:px-1 lg:text-[10px] lg:leading-4";
+
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, permissionOverrides } =
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, profile, profileLoading, account, accountRole, permissionOverrides } =
     useAuth();
-  const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Plegada a solo iconos. Es una preferencia de ESCRITORIO: en mobile
   // la barra es un cajon que se abre y se cierra entero, asi que todo
   // lo que responde a `collapsed` va detras del breakpoint `lg:`. El
   // boton que la pliega esta en la barra superior.
   const { collapsed } = useSidebarCollapsed();
+
+  // Vistas y embudo (rediseño, sesión B): se cuentan sobre la MISMA
+  // lista que pinta la Bandeja (store compartido), con el reloj por
+  // minuto para "Por vencer".
+  const store = useInboxStore();
+  const inboxSearch = useInboxSearch();
+  const now = useNow();
+  const vistaCounts = useMemo(
+    () => countVistas(store.conversations, { userId: user?.id ?? null, now }),
+    [store.conversations, user?.id, now],
+  );
+  const funnelCounts = useMemo(() => countFunnel(store.conversations), [store.conversations]);
+  const groups = useMemo(() => funnelGroups(store.tags), [store.tags]);
+  const showAgendadas = useMemo(() => hasScheduling(store.tags), [store.tags]);
+
+  const onInbox = pathname === "/inbox";
+  const activeEmbudo = onInbox ? searchParams.get("embudo") : null;
+  const activeVista: Vista | null =
+    onInbox && !activeEmbudo
+      ? (parseVista(searchParams.get("vista")) ?? defaultVista(accountRole))
+      : null;
+  const searching = onInbox && inboxSearch.trim().length > 0;
+
+  // "Nuevo mensaje": mismo permiso que enviar. Al resolver, abre el
+  // hilo por `?c=` (la Bandeja lo toma como deep link).
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const canStartConversation = !!accountRole && canSendMessages(accountRole);
 
   // Navegación por permisos: cada entrada mapea a una clave nav_* y
   // se resuelve por rol + overrides (el middleware bloquea además la
@@ -161,6 +232,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
+
+  const vistasToShow = VISTAS.filter((v) => v !== "agendadas" || showAgendadas);
 
   return (
     <>
@@ -220,18 +293,146 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </button>
         </div>
 
-        {/* Main navigation */}
         {/* Prototipo `.nav`: 4 px arriba, 12 px a la derecha, 8 px a la
             izquierda; cada fila `.ni` mide 36 px con radio 10 px. */}
         <nav className="flex-1 overflow-x-hidden overflow-y-auto py-1 pr-3 pl-2">
+          {/* "Nuevo mensaje" (prototipo `.compose`): 56 px, celeste. */}
+          {canStartConversation && (
+            <button
+              type="button"
+              onClick={() => setNewMessageOpen(true)}
+              aria-label={t("newMessage")}
+              title={t("newMessage")}
+              className={cn(
+                "mt-1 mb-3.5 ml-1 inline-flex h-14 items-center gap-3 rounded-2xl bg-selected-strong pr-5.5 pl-4.5 text-[15px] font-semibold whitespace-nowrap text-primary transition-shadow hover:shadow-[0_1px_4px_rgba(16,24,40,0.18)]",
+                collapsed && "lg:w-14 lg:justify-center lg:px-0",
+              )}
+            >
+              <SquarePen className="size-5 shrink-0" strokeWidth={1.8} />
+              <span className={cn(collapsed && "lg:hidden")}>{t("newMessage")}</span>
+            </button>
+          )}
+
+          {/* Vistas */}
+          <ul className="flex flex-col gap-1">
+            {vistasToShow.map((vista) => {
+              const meta = VISTA_META[vista];
+              const label = t(meta.labelKey);
+              const isActive = !searching && activeVista === vista;
+              const count = vista === "cerradas" ? 0 : vistaCounts[vista];
+              // Naranja solo para lo que espera respuesta: Sin tomar.
+              const hot = vista === "sin-tomar" && count > 0;
+              return (
+                <li key={vista}>
+                  <Link
+                    href={`/inbox?vista=${vista}`}
+                    aria-label={collapsed ? label : undefined}
+                    title={collapsed ? label : undefined}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      NAV_ROW,
+                      collapsed && "lg:justify-center lg:px-0",
+                      isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
+                    )}
+                  >
+                    <meta.icon className="size-[19px] shrink-0" strokeWidth={1.8} />
+                    <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>
+                      {label}
+                    </span>
+                    {count > 0 && (
+                      <span
+                        aria-label={t("vistaCount", { count })}
+                        className={cn(
+                          NAV_COUNT,
+                          isActive && "text-sidebar-accent-foreground",
+                          hot && "text-unread",
+                          collapsed && NAV_COUNT_COLLAPSED,
+                        )}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Embudo: un renglón por grupo con su cuadrado de color. */}
+          {groups.length > 0 && (
+            <>
+              <div
+                className={cn(
+                  "px-4 pt-4 pb-1.5 text-[13px] font-semibold whitespace-nowrap text-muted-foreground",
+                  collapsed && "lg:hidden",
+                )}
+              >
+                {t("funnel")}
+              </div>
+              <div className={cn("hidden", collapsed && "lg:my-3 lg:block lg:border-t lg:border-border")} />
+              <ul className="flex flex-col gap-1">
+                {groups.map((group) => {
+                  const isActive =
+                    !searching &&
+                    !!activeEmbudo &&
+                    activeEmbudo.trim().toLocaleLowerCase() === group.name.toLocaleLowerCase();
+                  const count = funnelCount(funnelCounts, group.name);
+                  return (
+                    <li key={group.name}>
+                      <Link
+                        href={`/inbox?embudo=${encodeURIComponent(group.name)}`}
+                        aria-label={collapsed ? group.name : undefined}
+                        title={collapsed ? group.name : undefined}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          NAV_ROW,
+                          collapsed && "lg:justify-center lg:px-0",
+                          isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="mx-1 size-[11px] shrink-0 rounded-[3px]"
+                          style={{ background: group.color }}
+                        />
+                        <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>
+                          {group.name}
+                        </span>
+                        {count > 0 && (
+                          <span
+                            aria-label={t("vistaCount", { count })}
+                            className={cn(
+                              NAV_COUNT,
+                              isActive && "text-sidebar-accent-foreground",
+                              collapsed && NAV_COUNT_COLLAPSED,
+                            )}
+                          >
+                            {count}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+
+          {/* Herramientas */}
+          <div
+            className={cn(
+              "px-4 pt-4 pb-1.5 text-[13px] font-semibold whitespace-nowrap text-muted-foreground",
+              collapsed && "lg:hidden",
+            )}
+          >
+            {t("tools")}
+          </div>
+          <div className={cn("hidden", collapsed && "lg:my-3 lg:block lg:border-t lg:border-border")} />
           <ul className="flex flex-col gap-1">
             {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
-
-              const showUnreadDot =
-                item.href === "/inbox" && totalUnread > 0 && !isActive;
 
               // Unlike the inbox dot, the notifications count stays visible
               // even while the page is active — it reflects unread state
@@ -252,12 +453,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     aria-label={collapsed ? label : undefined}
                     title={collapsed ? label : undefined}
                     className={cn(
-                      // Taller on mobile so fingers can hit the row reliably (≥44px).
-                      "relative flex h-11 items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-sm transition-colors lg:h-9",
+                      NAV_ROW,
                       collapsed && "lg:justify-center lg:px-0",
-                      isActive
-                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground",
+                      isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
                     )}
                   >
                     <item.icon className="size-[19px] shrink-0" strokeWidth={1.8} />
@@ -275,32 +473,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         {t("beta")}
                       </span>
                     )}
-                    {showUnreadDot && (
-                      <span
-                        aria-label={t("unreadConversations", { count: totalUnread })}
-                        // Plegada no hay renglon donde apoyar el punto:
-                        // se clava en la esquina del icono.
-                        className={cn(
-                          "relative flex h-2 w-2 shrink-0",
-                          collapsed && "lg:absolute lg:right-2 lg:top-1.5",
-                        )}
-                      >
-                        {/* Naranja: es lo que espera respuesta (regla del
-                            sistema de diseno), no el color del acento. */}
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pending opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-pending" />
-                      </span>
-                    )}
                     {showNotificationBadge && (
                       <span
                         aria-label={t("unreadNotifications", { count: unreadNotifications })}
                         className={cn(
-                          // Prototipo `.ni .c`: el contador va como numero
-                          // a la derecha, sin pastilla.
-                          "ml-auto shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground",
+                          NAV_COUNT,
                           isActive && "text-sidebar-accent-foreground",
-                          collapsed &&
-                            "lg:absolute lg:right-1.5 lg:top-0.5 lg:rounded-[5px] lg:bg-sidebar-accent lg:px-1 lg:text-[10px] lg:leading-4",
+                          collapsed && NAV_COUNT_COLLAPSED,
                         )}
                       >
                         {unreadNotifications > 9 ? "9+" : unreadNotifications}
@@ -310,11 +489,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 </li>
               );
             })}
-          </ul>
-
-          <div className="my-3 border-t border-border" />
-
-          <ul className="flex flex-col gap-1">
             {visibleBottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
               const label = t(item.labelKey as string);
@@ -325,15 +499,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     aria-label={collapsed ? label : undefined}
                     title={collapsed ? label : undefined}
                     className={cn(
-                      "flex h-11 items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-sm transition-colors lg:h-9",
+                      NAV_ROW,
                       collapsed && "lg:justify-center lg:px-0",
-                      isActive
-                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground",
+                      isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
                     )}
                   >
                     <item.icon className="size-[19px] shrink-0" strokeWidth={1.8} />
-                    <span className={cn(collapsed && "lg:hidden")}>{label}</span>
+                    <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>{label}</span>
                   </Link>
                 </li>
               );
@@ -377,6 +549,17 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </div>
         ) : null}
       </aside>
+
+      {canStartConversation && (
+        <NewMessageDialog
+          open={newMessageOpen}
+          onOpenChange={setNewMessageOpen}
+          onOpenConversation={(conversationId) => {
+            setNewMessageOpen(false);
+            router.push(`/inbox?c=${encodeURIComponent(conversationId)}`);
+          }}
+        />
+      )}
     </>
   );
 }

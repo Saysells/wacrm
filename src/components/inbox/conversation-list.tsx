@@ -1,26 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
-import {
-  CONVERSATION_SELECT,
-  matchesContactFilters,
-  normalizeConversations,
-} from "@/lib/inbox/conversations";
-import { conversationVisibilityFilter } from "@/lib/auth/visibility";
+import { useState, useCallback, useMemo } from "react";
+import { matchesContactFilters } from "@/lib/inbox/conversations";
+import type { InboxConversation } from "@/lib/inbox/inbox-conversation";
+import { filterConversations, NO_LIST_FILTERS, type ListSelection } from "@/lib/inbox/vistas";
 import {
   splitConversationTags,
   tagTint,
   visibleChips,
 } from "@/lib/inbox/conversation-tags";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, MessageSquarePlus } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -29,27 +23,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { NewMessageDialog } from "./new-message-dialog";
-import { canSendMessages } from "@/lib/auth/roles";
 
+// Rediseño, sesión B (bloque 1): la lista ya no carga nada. Recibe la
+// lista entera del store compartido y la selección (vista, grupo,
+// búsqueda) que la página leyó de la URL; filtra con la misma lógica
+// pura que usan los contadores de la barra lateral.
 interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (conversation: Conversation) => void;
-  conversations: Conversation[];
-  onConversationsLoaded: (conversations: Conversation[]) => void;
-  /**
-   * Increment to force the fetch effect below to refire. The parent
-   * bumps this on realtime reconnect / tab visibility → visible so the
-   * list catches up on any events sent while the WS was disconnected
-   * or the tab was throttled. Optional so existing callers keep working.
-   */
-  resyncToken?: number;
-  /**
-   * Abre un hilo por id — lo usa "Nuevo mensaje" cuando resuelve el
-   * numero (hilo existente o recien creado). Opcional para no romper
-   * a los callers que ya existen.
-   */
-  onOpenConversationId?: (conversationId: string) => void;
+  conversations: InboxConversation[];
+  loading: boolean;
+  /** Etiquetas de la cuenta, para el filtro. */
+  tags: Tag[];
+  selection: Omit<ListSelection, "filters">;
+  now: number;
+  userId: string | null;
+  onTakeNext: () => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -65,18 +54,23 @@ type InboxFilter = ConversationStatus | "all" | "unread";
 export function ConversationList({
   activeConversationId,
   onSelect,
-  conversations,
-  onConversationsLoaded,
-  resyncToken = 0,
-  onOpenConversationId,
+  conversations: allConversations,
+  loading,
+  tags,
+  selection,
+  now,
+  userId,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  // Visibility scoping: quien no tiene view_all_data efectivo solo
-  // carga hilos sin asignar o propios (conversationVisibilityFilter).
-  // El fetch espera al perfil para no flashear la bandeja completa
-  // mientras el rol resuelve.
-  const { user, accountRole, permissionOverrides, profileLoading } = useAuth();
-  const userId = user?.id ?? null;
+  const conversations = useMemo(
+    () =>
+      filterConversations(
+        allConversations,
+        { ...selection, filters: NO_LIST_FILTERS },
+        { userId, now },
+      ),
+    [allConversations, selection, userId, now],
+  );
   // Con la barra lateral plegada sobran ~180px en la fila: la lista se
   // queda con una parte y con eso entran las etiquetas enteras. Abierta
   // no hay ancho y las secundarias se resumen en puntitos.
@@ -90,103 +84,12 @@ export function ConversationList({
     { label: t("filterClosed"), value: "closed" },
   ], [t]);
 
-  const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
-  // "Nuevo mensaje": arrancar un hilo con un numero que todavia no
-  // escribio. Mismo gate de rol que el envio (el flujo termina en un
-  // send), asi que un viewer no ve el boton.
-  const [newMessageOpen, setNewMessageOpen] = useState(false);
-  const canStartConversation =
-    !!onOpenConversationId && !!accountRole && canSendMessages(accountRole);
-  const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
-  const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-
-  // Keep the latest callback in a ref so the fetch effect below can
-  // have a stable, empty-dep identity. Previously the fetch useCallback
-  // depended on `onConversationsLoaded`, which depends on the parent's
-  // `deepLinkConvId` — so every URL change (including one the parent
-  // triggered via router.replace after a click) caused a fresh
-  // conversations fetch. That extra refetch was the trigger for the
-  // deep-link auto-select running a second time and wiping the active
-  // thread's messages.
-  // Mutation lives in an effect (not render) per React 19's refs rule;
-  // the fetch runs once on mount so it's fine to read the slightly
-  // older value — the very next render updates the ref for any
-  // subsequent async completion.
-  const onConversationsLoadedRef = useRef(onConversationsLoaded);
-  useEffect(() => {
-    onConversationsLoadedRef.current = onConversationsLoaded;
-  });
-
-  useEffect(() => {
-    // Wait for the caller's role before fetching — the agent filter
-    // below depends on it.
-    if (profileLoading) return;
-
-    const supabase = createClient();
-    let cancelled = false;
-
-    (async () => {
-      let query = supabase
-        .from("conversations")
-        .select(CONVERSATION_SELECT)
-        .order("last_message_at", { ascending: false });
-
-      const orFilter = conversationVisibilityFilter(
-        accountRole,
-        permissionOverrides,
-        userId ?? "",
-      );
-      if (orFilter) query = query.or(orFilter);
-
-      const { data, error } = await query;
-
-      if (cancelled) return;
-
-      if (error) {
-        // Supabase errors have non-enumerable properties — log fields explicitly
-        console.error("Failed to fetch conversations:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-        setLoading(false);
-        return;
-      }
-
-      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
-      setLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // `resyncToken` is included so the parent can force a refetch when
-    // the realtime channel reconnects or the tab regains focus — catches
-    // up on any events sent while the WS was disconnected or throttled.
-    // The auth deps settle exactly once (loading → resolved), firing
-    // the first real fetch.
-  }, [resyncToken, profileLoading, accountRole, permissionOverrides, userId]);
-
-  // Tag definitions for the filter picker — loaded once so labels/colours
-  // stay stable regardless of which conversations happen to be loaded.
-  useEffect(() => {
-    const supabase = createClient();
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.from("tags").select("*").order("name");
-      if (!cancelled && data) setTags(data as Tag[]);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
@@ -225,18 +128,8 @@ export function ConversationList({
       );
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
-        const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
-      });
-    }
-
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, selectedTagIds, selectedCompany]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -250,13 +143,6 @@ export function ConversationList({
   }, []);
 
   const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
-
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearch(e.target.value);
-    },
-    []
-  );
 
   const handleSelect = useCallback(
     (conv: Conversation) => {
@@ -280,29 +166,6 @@ export function ConversationList({
     >
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={handleSearchChange}
-              placeholder={t("searchPlaceholder")}
-              className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
-            />
-          </div>
-          {canStartConversation && (
-            <button
-              type="button"
-              onClick={() => setNewMessageOpen(true)}
-              aria-label={t("newMessage")}
-              title={t("newMessage")}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
         <div className="flex flex-wrap items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
@@ -488,13 +351,6 @@ export function ConversationList({
         )}
       </ScrollArea>
 
-      {canStartConversation && (
-        <NewMessageDialog
-          open={newMessageOpen}
-          onOpenChange={setNewMessageOpen}
-          onOpenConversation={onOpenConversationId}
-        />
-      )}
     </div>
   );
 }

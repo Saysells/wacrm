@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -27,6 +27,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
 import { APP_NAME } from "@/lib/app-name";
@@ -112,6 +113,12 @@ interface TopBarProps {
 export function TopBar({ onOpenSidebar }: TopBarProps) {
   const t = useTranslations("TopBar");
   const router = useRouter();
+  const pathname = usePathname();
+  // Búsqueda (rediseño, sesión B): en la Bandeja filtra mientras se
+  // escribe, a través del store compartido; desde otra pantalla Enter
+  // lleva a la Bandeja con `?q=`.
+  const inboxSearch = useInboxSearch();
+  const onInbox = pathname === "/inbox";
   const { profile, accountRole, permissionOverrides, signOut } = useAuth();
   const { mode, toggleMode } = useTheme();
   const { collapsed, toggle } = useSidebarCollapsed();
@@ -137,10 +144,17 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
     }, 450);
   }, []);
 
+  const searchValue = onInbox ? inboxSearch : query;
+  const onSearchChange = (value: string) => {
+    if (onInbox) setInboxSearch(value);
+    else setQuery(value);
+  };
   const onSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (onInbox) return; // ya está filtrando
     const q = query.trim();
-    router.push(q ? `/contacts?q=${encodeURIComponent(q)}` : "/contacts");
+    setQuery("");
+    router.push(q ? `/inbox?q=${encodeURIComponent(q)}` : "/inbox");
   };
 
   const userName = profile?.full_name ?? t("defaultUser");
@@ -264,8 +278,8 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
         <Search className="size-5 shrink-0" aria-hidden="true" />
         <input
           type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={searchValue}
+          onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t("searchPlaceholder", { name: APP_NAME })}
           aria-label={t("searchLabel")}
           autoComplete="off"
