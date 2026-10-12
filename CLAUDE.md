@@ -1420,6 +1420,16 @@ no; sin SQL, sin dependencias. Prototipo: `thread()`, `composer()`,
 - "Guardar como respuesta rápida" pide el nombre en un **Dialog** del
   sistema (antes `window.prompt`); la nueva entra al catálogo en
   memoria.
+- **Arreglo 2026-10-12 (antes de publicar)**: con el panel de contacto
+  abierto a 1180–1440 px la barra se salía del cuadro. El cuadro es un
+  `@container` (Tailwind v4) y todo lo que es texto se adapta al ancho
+  del HILO, no de la ventana: el indicador largo de la ventana desde
+  520 px (abajo, la versión corta "Quedan 23 h 33 min" / "Vence en 58
+  min" / "Ventana cerrada", nunca puntos suspensivos), el texto de
+  "Sugerir respuesta" desde 560 (abajo, ícono solo con `title` y
+  `aria-label`), la ayuda "Enter envía…" desde 740; las pestañas y los
+  botones llevan `shrink-0` y `whitespace-nowrap`. El panel de
+  plantillas pasa a dos columnas desde 560 px de contenedor.
 - Viewer: textarea deshabilitado con el placeholder de solo lectura,
   toda la barra deshabilitada, "Enviar plantilla" deshabilitado.
 - `GatedButton` dejó de usarse en el cuadro (siguen usándolo otras

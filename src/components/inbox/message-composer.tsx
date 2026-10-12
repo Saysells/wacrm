@@ -763,7 +763,12 @@ export function MessageComposer({
   const canSubmit = isNote ? !!noteText.trim() && !savingNote : !!text.trim() && !sending;
 
   return (
-    <div className="relative shrink-0 px-4 pb-4 pt-1.5 sm:px-6">
+    // `@container`: la barra, las pestañas y el indicador se adaptan al
+    // ancho del HILO (no de la ventana): con el panel de contacto abierto a
+    // 1180 px el hilo mide ~450 px y la barra entera no entra. Los textos
+    // se ocultan por tramos del contenedor; los íconos y enviar quedan
+    // siempre adentro del cuadro.
+    <div className="@container relative min-w-0 shrink-0 px-4 pb-4 pt-1.5 sm:px-6">
       {/* Panel de respuestas rápidas (prototipo `.qr`): se apoya sobre el
           cuadro mientras el texto empiece con "/". */}
       {qrOpen && (
@@ -814,12 +819,12 @@ export function MessageComposer({
       )}
 
       {/* Pestañas + ventana (prototipo `.cbar`). */}
-      <div className="flex items-center gap-[18px] px-1.5 pb-2 text-[13px]">
+      <div className="flex min-w-0 items-center gap-3.5 px-1.5 pb-2 text-[13px] @[520px]:gap-[18px]">
         <button
           type="button"
           onClick={() => setTab("reply")}
           className={cn(
-            "border-b-2 pb-1 font-medium transition-colors",
+            "shrink-0 whitespace-nowrap border-b-2 pb-1 font-medium transition-colors",
             !isNote ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -831,7 +836,7 @@ export function MessageComposer({
           disabled={readOnly}
           title={readOnly ? t("readOnlyTitle") : undefined}
           className={cn(
-            "border-b-2 pb-1 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            "shrink-0 whitespace-nowrap border-b-2 pb-1 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
             isNote ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -956,7 +961,7 @@ export function MessageComposer({
               {/* Barra (prototipo `.ctb`). En la nota interna solo quedan
                   la ayuda y guardar: un adjunto o una plantilla saldrían
                   por WhatsApp, y la nota nunca sale. */}
-              <div className="mt-1 flex items-center gap-1 text-secondary-foreground">
+              <div className="mt-1 flex min-w-0 items-center gap-1 text-secondary-foreground">
                 {!isNote && (
                   <>
                     <DropdownMenu>
@@ -1035,15 +1040,18 @@ export function MessageComposer({
                       disabled={inputsDisabled || drafting}
                       onClick={() => void handleDraft()}
                       title={readOnly ? t("readOnlyTitle") : t("suggestReply")}
-                      className="inline-flex h-[34px] items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4"
+                      aria-label={t("suggestReply")}
+                      className="inline-flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[13px] font-medium text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4"
                     >
                       {drafting ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                      <span className="hidden sm:inline">{t("suggestReply")}</span>
+                      {/* El texto solo cuando entra; si no, el ícono solo con title y aria-label. */}
+                      <span className="hidden @[560px]:inline">{t("suggestReply")}</span>
                     </button>
                   </>
                 )}
 
-                <span className="ml-auto mr-2.5 hidden whitespace-nowrap text-xs text-muted-foreground md:inline">
+                {/* La ayuda se oculta cuando no entra (ancho del hilo, no de la ventana). */}
+                <span className="ml-auto mr-2.5 hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground @[740px]:inline">
                   {t("sendHint")}
                 </span>
                 <button
@@ -1052,7 +1060,7 @@ export function MessageComposer({
                   onClick={() => (isNote ? void handleSaveNote() : void handleSend())}
                   title={readOnly ? t("readOnlyTitle") : isNote ? t("saveNote") : t("send")}
                   aria-label={isNote ? t("saveNote") : t("send")}
-                  className="ml-auto grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 md:ml-0 [&_svg]:size-[18px]"
+                  className="ml-auto grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 @[740px]:ml-0 [&_svg]:size-[18px]"
                 >
                   {savingNote ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
                 </button>
@@ -1143,31 +1151,43 @@ function WindowIndicator({ state, t }: { state: WindowState; t: Translator }) {
   let tone: string;
   let dot: string;
   let label: string;
+  let short: string;
   switch (state.kind) {
-    case "open":
+    case "open": {
+      const duration = formatDuration(durationParts(state.remainingMs), t);
       tone = "text-success";
       dot = "bg-success";
-      label = t("windowOpen", { duration: formatDuration(durationParts(state.remainingMs), t) });
+      label = t("windowOpen", { duration });
+      short = t("windowOpenShort", { duration });
       break;
-    case "expiring":
+    }
+    case "expiring": {
+      const duration = formatDuration(durationParts(state.remainingMs), t);
       tone = "text-warning";
       dot = "bg-warning";
-      label = t("windowExpiring", { duration: formatDuration(durationParts(state.remainingMs), t) });
+      label = t("windowExpiring", { duration });
+      short = t("windowExpiringShort", { duration });
       break;
+    }
     case "closed":
       tone = "text-danger";
       dot = "bg-danger";
       label = t("windowClosed", { duration: formatDuration(durationParts(state.sinceMs), t) });
+      short = t("windowClosedShort");
       break;
     default:
       tone = "text-danger";
       dot = "bg-danger";
       label = t("windowNone");
+      short = t("windowNoneShort");
   }
+  // Con el hilo angosto va la versión corta entera, nunca la larga con
+  // puntos suspensivos.
   return (
-    <span className={cn("ml-auto flex min-w-0 items-center gap-[7px] text-[12.5px] font-medium", tone)}>
+    <span className={cn("ml-auto flex shrink-0 items-center gap-[7px] whitespace-nowrap text-[12.5px] font-medium", tone)}>
       <span className={cn("size-2 shrink-0 rounded-full", dot)} />
-      <span className="truncate">{label}</span>
+      <span className="hidden @[520px]:inline">{label}</span>
+      <span className="@[520px]:hidden">{short}</span>
     </span>
   );
 }
@@ -1232,8 +1252,8 @@ function TemplatePanel({
           <p className="mt-1 text-[13px] text-muted-foreground">{tPicker("noApprovedTemplatesHint")}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2">
-          <div className="max-h-72 overflow-y-auto border-b border-border md:border-b-0">
+        <div className="grid grid-cols-1 @[560px]:grid-cols-2">
+          <div className="max-h-72 overflow-y-auto border-b border-border @[560px]:border-b-0">
             {templates.map((tpl) => (
               <button
                 key={tpl.id}
@@ -1305,7 +1325,7 @@ function TemplatePane({
   };
 
   return (
-    <div className="flex flex-col gap-2.5 px-4 py-3 text-[13.5px] md:border-l md:border-border">
+    <div className="flex flex-col gap-2.5 px-4 py-3 text-[13.5px] @[560px]:border-l @[560px]:border-border">
       <span className="text-[12.5px] font-semibold text-muted-foreground">{tPicker("preview")}</span>
       <div className="whitespace-pre-wrap break-words rounded-[20px] rounded-br-md bg-primary px-3.5 py-2 text-[13.5px] leading-[1.42] text-primary-foreground">
         {renderBodyPreview(template.body_text, params)}
