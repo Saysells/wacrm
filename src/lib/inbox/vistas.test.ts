@@ -120,7 +120,7 @@ describe("vistas", () => {
     expect(inVista(expiring, "por-vencer", ctx)).toBe(true);
     expect(inVista(mine, "por-vencer", ctx)).toBe(false);
     const counts = countVistas([mine, free, closed, sched, expiring], ctx);
-    expect(counts).toEqual({ "para-mi": 2, "sin-tomar": 1, agendadas: 1, "por-vencer": 1, todas: 4, cerradas: 0 });
+    expect(counts).toEqual({ "mis-llamadas": 0, "para-mi": 2, "sin-tomar": 1, agendadas: 1, "por-vencer": 1, todas: 4, cerradas: 0 });
   });
 });
 

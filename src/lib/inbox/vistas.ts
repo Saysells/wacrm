@@ -23,6 +23,7 @@ import type { Tag } from "@/types";
 import type { InboxConversation } from "./inbox-conversation";
 
 export const VISTAS = [
+  "mis-llamadas",
   "para-mi",
   "sin-tomar",
   "agendadas",
@@ -37,8 +38,12 @@ export function parseVista(value: string | null | undefined): Vista | null {
   return (VISTAS as readonly string[]).includes(value ?? "") ? (value as Vista) : null;
 }
 
-/** Sin parámetro: Para mí para el agent; Todas para los demás roles. */
-export function defaultVista(role: AccountRole | null): Vista {
+/**
+ * Sin parámetro en la URL: Mis llamadas para un closer (sesión E), Para
+ * mí para el agent y Todas para los demás roles.
+ */
+export function defaultVista(role: AccountRole | null, isCloser = false): Vista {
+  if (isCloser) return "mis-llamadas";
   return role === "agent" ? "para-mi" : "todas";
 }
 
@@ -147,6 +152,25 @@ export function closerFromTag(name: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+/** Clave de comparación de un nombre: sin acentos, sin mayúsculas, sin bordes. */
+export function personKey(name: string | null | undefined): string {
+  return (name ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+/**
+ * ¿La llamada es de este closer? La suya, o una que no nombra a nadie
+ * ("Agendada" / "Reagendado"): desde la decisión de Emi del 12/10 la
+ * Bandeja no sabe de quién son, así que se le muestran para que no se
+ * pierdan (en la lista llevan el chip "Sin closer").
+ */
+export function isCloserCall(call: Pick<ScheduledCall, "closer">, closer: string): boolean {
+  return call.closer === null || personKey(call.closer) === personKey(closer);
+}
+
 export interface ScheduledCall {
   /** Nombre del closer, o null si la etiqueta no nombra a nadie. */
   closer: string | null;
@@ -204,6 +228,8 @@ export function showsClosedWindow(conv: InboxConversation): boolean {
 export interface VistaContext {
   userId: string | null;
   now: number;
+  /** Nombre del closer que es la persona (null si no lo es): solo lo usa Mis llamadas. */
+  closer?: string | null;
 }
 
 export function isClosed(conv: InboxConversation): boolean {
@@ -219,6 +245,11 @@ export function inVista(conv: InboxConversation, vista: Vista, ctx: VistaContext
   if (vista === "cerradas") return isClosed(conv);
   if (isClosed(conv)) return false;
   switch (vista) {
+    case "mis-llamadas": {
+      if (!ctx.closer) return false;
+      const call = scheduledCall(conv);
+      return call !== null && isCloserCall(call, ctx.closer);
+    }
     case "para-mi":
       return !!ctx.userId && conv.assigned_agent_id === ctx.userId;
     case "sin-tomar":
@@ -237,6 +268,7 @@ export type VistaCounts = Record<Vista, number>;
 /** Contadores de la barra lateral. Cerradas no se cuenta (queda en 0). */
 export function countVistas(convs: readonly InboxConversation[], ctx: VistaContext): VistaCounts {
   const counts: VistaCounts = {
+    "mis-llamadas": 0,
     "para-mi": 0,
     "sin-tomar": 0,
     agendadas: 0,
@@ -338,6 +370,17 @@ export function sortByActivity(convs: readonly InboxConversation[]): InboxConver
   return [...convs].sort((a, b) => activityOf(b) - activityOf(a));
 }
 
+/** Mis llamadas: por hora de la llamada, la más próxima primero. No muta la entrada. */
+export function sortByCallTime(convs: readonly InboxConversation[]): InboxConversation[] {
+  const at = (c: InboxConversation) => scheduledCall(c)?.at ?? Number.MAX_SAFE_INTEGER;
+  return [...convs].sort((a, b) => at(a) - at(b) || activityOf(b) - activityOf(a));
+}
+
+/** La vista de llamadas se lista por hora y agrupada por día (prototipo `list()`). */
+export function listsCalls(sel: Pick<ListSelection, "vista" | "embudo" | "query">): boolean {
+  return sel.vista === "mis-llamadas" && !sel.embudo && !sel.query.trim();
+}
+
 /** Como `listConvs` del prototipo: búsqueda > grupo > vista, y encima los filtros. */
 export function filterConversations(
   convs: readonly InboxConversation[],
@@ -357,7 +400,7 @@ export function filterConversations(
     result = convs.filter((c) => inVista(c, sel.vista, ctx));
   }
   result = result.filter((c) => matchesListFilters(c, sel.filters));
-  return sortByActivity(result);
+  return listsCalls(sel) ? sortByCallTime(result) : sortByActivity(result);
 }
 
 /** "Sin leer" / "Leídas" solo en Para mí y Todas, sin búsqueda ni grupo. */

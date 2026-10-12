@@ -12,19 +12,24 @@ import { useInboxStore } from "@/hooks/use-inbox-store";
 import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
 import { useSidePanel } from "@/hooks/use-side-panel";
 import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
+import { useCloser } from "@/hooks/use-closer";
 import { useNow } from "@/hooks/use-now";
 import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import type { InboxConversation } from "@/lib/inbox/inbox-conversation";
 import {
+  NO_LIST_FILTERS,
   defaultVista,
   escapeLike,
+  filterConversations,
   hasScheduling,
   parseVista,
   scheduledCall,
   unassignedOldestFirst,
+  type ListFilters,
   type ListSelection,
   type Vista,
 } from "@/lib/inbox/vistas";
+import { showsProposalAction } from "@/lib/inbox/closer";
 import { requestFromAction, type ScheduleRequest } from "@/lib/inbox/agendar";
 import { effectiveSideTab, tabAfterOpeningConversation } from "@/lib/inbox/side-panel";
 import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
@@ -83,9 +88,12 @@ function InboxPageInner() {
   const canTakeNext = !!accountRole && canSendMessages(accountRole);
   const store = useInboxStore();
   const now = useNow();
+  // Closer (sesión E): arranca en Mis llamadas, ve la tarjeta de la
+  // llamada en la ficha y "Crear propuesta" como acción principal.
+  const { closer, isCloser } = useCloser();
 
   const deepLinkConvId = searchParams.get("c");
-  const vista: Vista = parseVista(searchParams.get("vista")) ?? defaultVista(accountRole);
+  const vista: Vista = parseVista(searchParams.get("vista")) ?? defaultVista(accountRole, isCloser);
   const embudo = searchParams.get("embudo");
   const qParam = searchParams.get("q");
 
@@ -163,6 +171,20 @@ function InboxPageInner() {
   const selection = useMemo<Omit<ListSelection, "filters">>(
     () => ({ vista, embudo, query, messageMatchIds }),
     [vista, embudo, query, messageMatchIds],
+  );
+
+  // Los filtros del desplegable de la lista viven acá (sesión E): la
+  // lista filtrada se calcula UNA vez y es la misma que pinta la lista
+  // y la que recorren J y K.
+  const [listFilters, setListFilters] = useState<ListFilters>(NO_LIST_FILTERS);
+  const setListFiltersWith = useCallback(
+    (updater: (prev: ListFilters) => ListFilters) => setListFilters(updater),
+    [],
+  );
+  const listCtx = useMemo(() => ({ userId, now, closer }), [userId, now, closer]);
+  const visibleConversations = useMemo(
+    () => filterConversations(store.conversations, { ...selection, filters: listFilters }, listCtx),
+    [store.conversations, selection, listFilters, listCtx],
   );
 
   // Espejo síncrono de la lista para los handlers de identidad estable.
@@ -327,6 +349,9 @@ function InboxPageInner() {
   const activeCall = useMemo(() => (activeRow ? scheduledCall(activeRow) : null), [activeRow]);
   // Agendar: la cuenta tiene etiquetas con fecha y la persona es agent+.
   const canSchedule = hasScheduling(store.tags) && canTakeNext;
+  // "Crear propuesta" (prototipo `primaryAction`): closer con la llamada
+  // abierta a su nombre, del equipo de Saysells.
+  const proposalAction = showsProposalAction(closer, activeCall, saysells.visible);
 
   // ---- modal "Agendar llamada" ----------------------------------------
   // Lo abren la acción principal del encabezado, Agendar / Cambiar de la
@@ -630,13 +655,15 @@ function InboxPageInner() {
           <ConversationList
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
-            conversations={store.conversations}
+            conversations={visibleConversations}
+            allConversations={store.conversations}
+            filters={listFilters}
+            onFiltersChange={setListFiltersWith}
             loading={store.loading}
             tags={store.tags}
             memberNames={store.memberNames}
             selection={selection}
             now={now}
-            userId={userId}
             onTakeNext={canTakeNext ? handleTakeNext : null}
           />
         </div>
@@ -675,6 +702,7 @@ function InboxPageInner() {
             call={activeCall}
             canSchedule={canSchedule}
             onSchedule={handleScheduleFromHeader}
+            proposalAction={proposalAction}
           />
         </div>
 

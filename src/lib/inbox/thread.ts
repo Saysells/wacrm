@@ -22,6 +22,7 @@ import { DAY_MS } from "./vistas";
 export type DayLabel =
   | { kind: "today" }
   | { kind: "yesterday" }
+  | { kind: "tomorrow" }
   | { kind: "date"; weekday: number; day: number; month: number; year: number; sameYear: boolean };
 
 function startOfDay(t: number): number {
@@ -30,11 +31,15 @@ function startOfDay(t: number): number {
   return d.getTime();
 }
 
-/** Como `dayLabel` del prototipo, recortado a lo que muestra el hilo. */
+/**
+ * Como `dayLabel` del prototipo: hoy, ayer, mañana (lo usa Mis llamadas,
+ * sesión E) o la fecha.
+ */
 export function dayLabel(t: number, now: number): DayLabel {
   const diff = Math.round((startOfDay(now) - startOfDay(t)) / DAY_MS);
   if (diff === 0) return { kind: "today" };
   if (diff === 1) return { kind: "yesterday" };
+  if (diff === -1) return { kind: "tomorrow" };
   const d = new Date(t);
   return {
     kind: "date",

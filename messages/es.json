@@ -42,7 +42,8 @@
     "roleAdmin": "Administrador",
     "roleAgent": "Agente",
     "roleViewer": "Observador",
-    "closeMenu": "Cerrar menú"
+    "closeMenu": "Cerrar menú",
+    "vistaMisLlamadas": "Mis llamadas"
   },
   "TopBar": {
     "openMenu": "Abrir menú",
@@ -214,7 +215,19 @@
       "emptyViewTitle": "Nada por acá",
       "emptyViewBody": "No hay conversaciones en esta vista.",
       "emptySearchTitle": "Sin resultados",
-      "emptySearchBody": "Nada coincide con “{query}”."
+      "emptySearchBody": "Nada coincide con “{query}”.",
+      "callsToDo": "{count} por hacer",
+      "callDayToday": "Hoy · {date}",
+      "callDayTomorrow": "Mañana · {date}",
+      "callDayYesterday": "Ayer · {date}",
+      "callRowSetter": "{where} · setter {setter}",
+      "callRowUnassigned": "{where} · sin tomar",
+      "callNoResult": "Sin resultado",
+      "callIn": "En {duration}",
+      "callScheduled": "Agendada",
+      "callNoCloser": "Sin closer",
+      "emptyCallsTitle": "No tenés llamadas agendadas",
+      "emptyCallsBody": "Cuando un setter te agende una llamada, aparece acá."
     },
     "messageThread": {
       "backToConversations": "Volver a las conversaciones",
@@ -254,7 +267,9 @@
       "noteSaveFailed": "No se pudo guardar la nota",
       "scheduleCall": "Agendar llamada",
       "callButton": "{closer} · {when}",
-      "rescheduleCall": "Reagendar llamada"
+      "rescheduleCall": "Reagendar llamada",
+      "tomorrow": "Mañana",
+      "createProposal": "Crear propuesta"
     },
     "composer": {
       "templates": "Plantillas",
@@ -455,7 +470,14 @@
       "proposalsBody": "Se arman en propuestas.saysells.com. Unir la propuesta con el contacto llega más adelante.",
       "openProposals": "Abrir Propuestas",
       "schedule": "Agendar",
-      "reschedule": "Cambiar"
+      "reschedule": "Cambiar",
+      "tabCall": "Llamada",
+      "callCardIn": "en {duration}",
+      "callCardPast": "ya pasó",
+      "afterCall": "Después de la llamada",
+      "outcomeReschedule": "Reagendar",
+      "outcomeFailed": "No se pudo registrar el resultado",
+      "outcomeRegistered": "Llamada registrada como {outcome}."
     },
     "schedule": {
       "titleNew": "Agendar llamada",

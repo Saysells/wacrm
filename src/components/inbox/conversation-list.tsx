@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import {
+  CalendarCheck,
   CalendarClock,
+  CircleAlert,
+  Clock,
   Filter,
   Hourglass,
   Inbox,
@@ -21,10 +24,11 @@ import {
   avatarColors,
   conversationGroup,
   durationParts,
-  filterConversations,
   groupColor,
+  hhmm,
   initialsOf,
   isClosed,
+  listsCalls,
   relativeTime,
   scheduledCall,
   shortWhen,
@@ -38,8 +42,10 @@ import {
   type ListFilters,
   type ListSelection,
   type RelativeTime,
+  type ScheduledCall,
   type ShortWhen,
 } from "@/lib/inbox/vistas";
+import { callDayHeading, callStatus, groupByDay } from "@/lib/inbox/closer";
 import {
   splitConversationTags,
   tagTint,
@@ -64,19 +70,26 @@ import {
 // sesión B, bloque 2). Prototipo: `list()`, `row()`, `.lh`, `.take`,
 // `.sec`, `.row`, `.ch`, `.who`, `.free`, `.empty`.
 //
-// No carga nada: recibe la lista entera del store compartido y la
-// selección (vista, grupo del embudo o búsqueda) que la página leyó de
-// la URL, y filtra con la misma lógica pura que usan los contadores
-// de la barra lateral. Lo único que decide sola son los filtros del
-// desplegable "Filtros" (conversación abierta o pendiente, etiquetas,
-// empresa), que no están en el prototipo y se conservan para no
-// perder funciones.
+// No carga nada ni filtra: recibe la lista YA filtrada y ordenada por
+// la página (`filterConversations`, la misma lógica pura que usan los
+// contadores de la barra lateral) más la lista entera del store, para
+// las opciones de los filtros y los vacíos. Desde la sesión E los
+// filtros del desplegable "Filtros" (conversación abierta o pendiente,
+// etiquetas, empresa; no están en el prototipo y se conservan para no
+// perder funciones) viven en la página: la misma lista filtrada es la
+// que recorren J y K. En Mis llamadas (closer) las filas son las de
+// `callRow()` del prototipo, agrupadas por día.
 // ============================================================
 
 interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (conversation: Conversation) => void;
+  /** La lista ya filtrada y ordenada por la página. */
   conversations: InboxConversation[];
+  /** Toda la lista del store: opciones de los filtros y vacíos. */
+  allConversations: InboxConversation[];
+  filters: ListFilters;
+  onFiltersChange: (updater: (prev: ListFilters) => ListFilters) => void;
   loading: boolean;
   /** Etiquetas de la cuenta, para el filtro. */
   tags: Tag[];
@@ -85,7 +98,6 @@ interface ConversationListProps {
   selection: Omit<ListSelection, "filters">;
   /** Reloj por minuto: horas relativas y ventana se calculan contra él. */
   now: number;
-  userId: string | null;
   /** Tomar siguiente (solo se muestra en Para mí). Null si no puede tomar. */
   onTakeNext: (() => void) | null;
 }
@@ -93,6 +105,7 @@ interface ConversationListProps {
 type Translator = ReturnType<typeof useTranslations>;
 
 const VISTA_TITLE_KEY: Record<ListSelection["vista"], string> = {
+  "mis-llamadas": "vistaMisLlamadas",
   "para-mi": "vistaParaMi",
   "sin-tomar": "vistaSinTomar",
   agendadas: "vistaAgendadas",
@@ -108,32 +121,23 @@ const CHIP =
 export function ConversationList({
   activeConversationId,
   onSelect,
-  conversations: allConversations,
+  conversations,
+  allConversations,
+  filters,
+  onFiltersChange: setFilters,
   loading,
   tags,
   memberNames,
   selection,
   now,
-  userId,
   onTakeNext,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   const tSidebar = useTranslations("Sidebar");
+  const tThread = useTranslations("Inbox.messageThread");
   // Con la barra lateral plegada sobran ~170 px en la fila y las
   // etiquetas secundarias entran enteras; abierta, son puntitos.
   const { collapsed: sidebarCollapsed } = useSidebarCollapsed();
-
-  const [filters, setFilters] = useState<ListFilters>({
-    status: null,
-    tagIds: [],
-    company: null,
-  });
-
-  const ctx = useMemo(() => ({ userId, now }), [userId, now]);
-  const conversations = useMemo(
-    () => filterConversations(allConversations, { ...selection, filters }, ctx),
-    [allConversations, selection, filters, ctx],
-  );
 
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
@@ -147,14 +151,17 @@ export function ConversationList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allConversations]);
 
-  const toggleTag = useCallback((id: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      tagIds: prev.tagIds.includes(id)
-        ? prev.tagIds.filter((x) => x !== id)
-        : [...prev.tagIds, id],
-    }));
-  }, []);
+  const toggleTag = useCallback(
+    (id: string) => {
+      setFilters((prev) => ({
+        ...prev,
+        tagIds: prev.tagIds.includes(id)
+          ? prev.tagIds.filter((x) => x !== id)
+          : [...prev.tagIds, id],
+      }));
+    },
+    [setFilters],
+  );
 
   const activeFilterCount =
     (filters.status ? 1 : 0) + filters.tagIds.length + (filters.company ? 1 : 0);
@@ -171,16 +178,46 @@ export function ConversationList({
 
   const sections = splitsUnread(selection) ? splitUnread(conversations) : null;
 
-  const emptyKind: "unassigned" | "inbox" | "search" | "view" | null =
+  // Mis llamadas (prototipo `list()` con `S.view=='calls'`): por hora y
+  // agrupadas por día. La lista ya viene ordenada por hora de llamada.
+  const callsView = listsCalls(selection);
+  const callGroups = useMemo(() => {
+    if (!callsView) return null;
+    const items: { conversation: InboxConversation; call: ScheduledCall }[] = [];
+    for (const conversation of conversations) {
+      const call = scheduledCall(conversation);
+      if (call) items.push({ conversation, call });
+    }
+    return groupByDay(items, (item) => item.call.at);
+  }, [callsView, conversations]);
+
+  const emptyKind: "unassigned" | "calls" | "inbox" | "search" | "view" | null =
     conversations.length > 0
       ? null
       : selection.query.trim()
         ? "search"
-        : allConversations.length === 0
-          ? "inbox"
-          : selection.vista === "sin-tomar" && !selection.embudo
-            ? "unassigned"
-            : "view";
+        : callsView
+          ? "calls"
+          : allConversations.length === 0
+            ? "inbox"
+            : selection.vista === "sin-tomar" && !selection.embudo
+              ? "unassigned"
+              : "view";
+
+  const formatCallDay = (day: number): string => {
+    const heading = callDayHeading(day, now);
+    const weekdays = tThread("weekdaysLong").split(",");
+    const months = tThread("months").split(",");
+    const date = tThread("dayDate", {
+      weekday: weekdays[heading.weekday] ?? "",
+      day: heading.day,
+      month: months[heading.month] ?? "",
+    });
+    if (heading.relative === "today") return t("callDayToday", { date });
+    if (heading.relative === "tomorrow") return t("callDayTomorrow", { date });
+    if (heading.relative === "yesterday") return t("callDayYesterday", { date });
+    return date.charAt(0).toUpperCase() + date.slice(1);
+  };
 
   const renderRow = (conv: InboxConversation) => (
     <ConversationRow
@@ -203,7 +240,9 @@ export function ConversationList({
       <div className="flex h-[60px] shrink-0 items-center gap-2 pr-3 pl-5">
         <h2 className="truncate text-[19px] font-semibold text-foreground">{title}</h2>
         <span className="mt-[3px] shrink-0 text-[13px] tabular-nums text-muted-foreground">
-          {t("conversationCount", { count: conversations.length })}
+          {callsView
+            ? t("callsToDo", { count: conversations.length })
+            : t("conversationCount", { count: conversations.length })}
         </span>
 
         <DropdownMenu>
@@ -294,7 +333,7 @@ export function ConversationList({
                 <DropdownMenuSeparator />
                 <button
                   type="button"
-                  onClick={() => setFilters({ status: null, tagIds: [], company: null })}
+                  onClick={() => setFilters(() => ({ status: null, tagIds: [], company: null }))}
                   className="flex w-full items-center gap-2 px-4 py-[9px] text-left text-[13px] font-semibold text-primary hover:bg-hover"
                 >
                   {t("clearAll")}
@@ -340,6 +379,30 @@ export function ConversationList({
           </div>
         ) : emptyKind ? (
           <EmptyState kind={emptyKind} query={selection.query} t={t} />
+        ) : callGroups ? (
+          <div className="flex flex-col pb-3">
+            {callGroups.map((group) => (
+              <div key={group.day}>
+                <SectionHeader label={formatCallDay(group.day)} count={group.items.length} />
+                {group.items.map(({ conversation, call }) => (
+                  <CallRow
+                    key={conversation.id}
+                    conversation={conversation}
+                    call={call}
+                    isActive={conversation.id === activeConversationId}
+                    onSelect={onSelect}
+                    now={now}
+                    setterName={
+                      conversation.assigned_agent_id
+                        ? (memberNames.get(conversation.assigned_agent_id) ?? "")
+                        : null
+                    }
+                    t={t}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         ) : sections ? (
           <div className="flex flex-col pb-3">
             {sections.unread.length > 0 && (
@@ -387,28 +450,40 @@ function EmptyState({
   query,
   t,
 }: {
-  kind: "unassigned" | "inbox" | "search" | "view";
+  kind: "unassigned" | "calls" | "inbox" | "search" | "view";
   query: string;
   t: Translator;
 }) {
   const Icon =
-    kind === "unassigned" ? UserRoundCheck : kind === "inbox" ? MessagesSquare : kind === "search" ? Search : Inbox;
+    kind === "unassigned"
+      ? UserRoundCheck
+      : kind === "calls"
+        ? CalendarCheck
+        : kind === "inbox"
+          ? MessagesSquare
+          : kind === "search"
+            ? Search
+            : Inbox;
   const title =
     kind === "unassigned"
       ? t("emptyUnassignedTitle")
-      : kind === "inbox"
-        ? t("emptyInboxTitle")
-        : kind === "search"
-          ? t("emptySearchTitle")
-          : t("emptyViewTitle");
+      : kind === "calls"
+        ? t("emptyCallsTitle")
+        : kind === "inbox"
+          ? t("emptyInboxTitle")
+          : kind === "search"
+            ? t("emptySearchTitle")
+            : t("emptyViewTitle");
   const body =
     kind === "unassigned"
       ? t("emptyUnassignedBody")
-      : kind === "inbox"
-        ? t("emptyInboxBody")
-        : kind === "search"
-          ? t("emptySearchBody", { query: query.trim() })
-          : t("emptyViewBody");
+      : kind === "calls"
+        ? t("emptyCallsBody")
+        : kind === "inbox"
+          ? t("emptyInboxBody")
+          : kind === "search"
+            ? t("emptySearchBody", { query: query.trim() })
+            : t("emptyViewBody");
   return (
     <div className="px-7 py-12 text-center text-sm leading-relaxed text-muted-foreground">
       <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-selected text-primary">
@@ -691,6 +766,92 @@ function ConversationRow({
                 ))}
               </span>
             ))}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ------------------------------------------------------------
+// Fila de Mis llamadas (prototipo `callRow()`): hora, avatar, nombre,
+// "empresa o teléfono · setter <nombre>" y el estado de la llamada.
+// ------------------------------------------------------------
+
+interface CallRowProps {
+  conversation: InboxConversation;
+  call: ScheduledCall;
+  isActive: boolean;
+  onSelect: (conversation: Conversation) => void;
+  now: number;
+  /** Nombre del setter, "" si no se conoce, null si está sin tomar. */
+  setterName: string | null;
+  t: Translator;
+}
+
+function CallRow({ conversation: conv, call, isActive, onSelect, now, setterName, t }: CallRowProps) {
+  const contact = conv.contact;
+  const displayName = contact?.name || contact?.phone || t("unknown");
+  const [avatarBg, avatarInk] = avatarColors(displayName);
+  const where = contact?.company?.trim() || contact?.phone || "";
+  const status = callStatus(call.at, now);
+
+  const handleClick = useCallback(() => {
+    onSelect(conv);
+  }, [onSelect, conv]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-current={isActive ? "true" : undefined}
+      className={cn(
+        "mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-xl px-3.5 py-[11px] text-left transition-colors hover:bg-hover",
+        isActive && "bg-selected hover:bg-selected",
+      )}
+    >
+      <span className="w-[50px] shrink-0 text-base font-semibold tabular-nums text-foreground">
+        {hhmm(call.at)}
+      </span>
+      <span
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[14px] font-semibold"
+        style={{ background: avatarBg, color: avatarInk }}
+      >
+        {contact?.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={contact.avatar_url} alt="" className="size-full object-cover" />
+        ) : (
+          initialsOf(displayName)
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-foreground">{displayName}</span>
+        <span className="mt-0.5 block truncate text-[13.5px] text-sidebar-foreground">
+          {setterName === null
+            ? t("callRowUnassigned", { where })
+            : t("callRowSetter", { where, setter: setterName || t("unknown") })}
+        </span>
+        <div className="mt-[7px] flex flex-wrap items-center gap-1.5">
+          {status.kind === "past" ? (
+            <span className={cn(CHIP, "bg-warning-soft text-warning")}>
+              <CircleAlert />
+              {t("callNoResult")}
+            </span>
+          ) : status.kind === "soon" ? (
+            <span className={cn(CHIP, "bg-selected-strong text-primary")}>
+              <Clock />
+              {t("callIn", { duration: formatDuration(durationParts(status.inMs), t) })}
+            </span>
+          ) : (
+            <span className={cn(CHIP, "border border-border bg-card text-sidebar-foreground")}>
+              <CalendarClock />
+              {t("callScheduled")}
+            </span>
+          )}
+          {/* Sin closer: "Agendada" / "Reagendado" no dicen de quién es la llamada. */}
+          {call.closer === null && (
+            <span className={cn(CHIP, "bg-neutral-soft text-neutral")}>{t("callNoCloser")}</span>
+          )}
         </div>
       </div>
     </button>

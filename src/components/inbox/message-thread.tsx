@@ -17,12 +17,14 @@ import type {
 } from "@/types";
 import {
   ArrowLeft,
+  ArrowUpRight,
   CalendarClock,
   CalendarPlus,
   Check,
   CircleCheck,
   Copy,
   Ellipsis,
+  FilePen,
   MessagesSquare,
   RefreshCw,
   RotateCcw,
@@ -66,6 +68,7 @@ import {
   lastCustomerMessageAt,
   type DayLabel,
 } from "@/lib/inbox/thread";
+import { PROPOSALS_URL } from "@/lib/inbox/closer";
 import { toast } from "sonner";
 
 // ============================================================
@@ -149,6 +152,12 @@ interface MessageThreadProps {
   /** La cuenta tiene etiquetas con fecha y la persona puede agendar (agent+). */
   canSchedule: boolean;
   onSchedule: () => void;
+  /**
+   * Closer con la llamada abierta a su nombre, del equipo de Saysells
+   * (sesión E): la acción principal es "Crear propuesta", que abre
+   * propuestas.saysells.com en otra pestaña. Si no, la de la D.
+   */
+  proposalAction: boolean;
 }
 
 type Translator = ReturnType<typeof useTranslations>;
@@ -180,6 +189,8 @@ function formatDayLabel(label: DayLabel, t: Translator): string {
       return t("today");
     case "yesterday":
       return t("yesterday");
+    case "tomorrow":
+      return t("tomorrow");
     case "date": {
       const weekdays = t("weekdaysLong").split(",");
       const months = t("months").split(",");
@@ -211,6 +222,7 @@ export function MessageThread({
   call,
   canSchedule,
   onSchedule,
+  proposalAction,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tQuote = useTranslations("Inbox.replyQuote");
@@ -930,6 +942,15 @@ export function MessageThread({
             <Button variant="outline" onClick={handleReopenConversation}>
               <RotateCcw />
               {t("reopen")}
+            </Button>
+          ) : proposalAction ? (
+            <Button
+              variant="outline"
+              render={<a href={PROPOSALS_URL} target="_blank" rel="noopener noreferrer" />}
+            >
+              <FilePen />
+              {t("createProposal")}
+              <ArrowUpRight />
             </Button>
           ) : canSchedule && call ? (
             <Button

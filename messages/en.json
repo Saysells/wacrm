@@ -42,7 +42,8 @@
     "roleAdmin": "Admin",
     "roleAgent": "Agent",
     "roleViewer": "Viewer",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "vistaMisLlamadas": "My calls"
   },
   "TopBar": {
     "openMenu": "Open menu",
@@ -214,7 +215,19 @@
       "emptyViewTitle": "Nothing here",
       "emptyViewBody": "There are no conversations in this view.",
       "emptySearchTitle": "No results",
-      "emptySearchBody": "Nothing matches “{query}”."
+      "emptySearchBody": "Nothing matches “{query}”.",
+      "callsToDo": "{count} to do",
+      "callDayToday": "Today · {date}",
+      "callDayTomorrow": "Tomorrow · {date}",
+      "callDayYesterday": "Yesterday · {date}",
+      "callRowSetter": "{where} · setter {setter}",
+      "callRowUnassigned": "{where} · unassigned",
+      "callNoResult": "No outcome",
+      "callIn": "In {duration}",
+      "callScheduled": "Scheduled",
+      "callNoCloser": "No closer",
+      "emptyCallsTitle": "You have no scheduled calls",
+      "emptyCallsBody": "When a setter schedules a call for you, it shows up here."
     },
     "messageThread": {
       "backToConversations": "Back to conversations",
@@ -254,7 +267,9 @@
       "noteSaveFailed": "Couldn't save the note",
       "scheduleCall": "Schedule call",
       "callButton": "{closer} · {when}",
-      "rescheduleCall": "Reschedule call"
+      "rescheduleCall": "Reschedule call",
+      "tomorrow": "Tomorrow",
+      "createProposal": "Create proposal"
     },
     "composer": {
       "templates": "Templates",
@@ -455,7 +470,14 @@
       "proposalsBody": "They are built in propuestas.saysells.com. Linking a proposal to the contact comes later.",
       "openProposals": "Open Proposals",
       "schedule": "Schedule",
-      "reschedule": "Change"
+      "reschedule": "Change",
+      "tabCall": "Call",
+      "callCardIn": "in {duration}",
+      "callCardPast": "already passed",
+      "afterCall": "After the call",
+      "outcomeReschedule": "Reschedule",
+      "outcomeFailed": "Could not register the outcome",
+      "outcomeRegistered": "Call registered as {outcome}."
     },
     "schedule": {
       "titleNew": "Schedule call",

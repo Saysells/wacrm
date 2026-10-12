@@ -42,7 +42,8 @@
     "roleAdmin": "관리자",
     "roleAgent": "상담원",
     "roleViewer": "뷰어",
-    "closeMenu": "메뉴 닫기"
+    "closeMenu": "메뉴 닫기",
+    "vistaMisLlamadas": "내 통화"
   },
   "TopBar": {
     "openMenu": "메뉴 열기",
@@ -214,7 +215,19 @@
       "emptyViewTitle": "여기에는 아무것도 없습니다",
       "emptyViewBody": "이 보기에는 대화가 없습니다.",
       "emptySearchTitle": "결과 없음",
-      "emptySearchBody": "“{query}”과(와) 일치하는 항목이 없습니다."
+      "emptySearchBody": "“{query}”과(와) 일치하는 항목이 없습니다.",
+      "callsToDo": "{count}건 예정",
+      "callDayToday": "오늘 · {date}",
+      "callDayTomorrow": "내일 · {date}",
+      "callDayYesterday": "어제 · {date}",
+      "callRowSetter": "{where} · 세터 {setter}",
+      "callRowUnassigned": "{where} · 미배정",
+      "callNoResult": "결과 없음",
+      "callIn": "{duration} 후",
+      "callScheduled": "예약됨",
+      "callNoCloser": "클로저 없음",
+      "emptyCallsTitle": "예약된 통화가 없습니다",
+      "emptyCallsBody": "세터가 통화를 예약하면 여기에 표시됩니다."
     },
     "messageThread": {
       "backToConversations": "대화 목록으로 돌아가기",
@@ -254,7 +267,9 @@
       "noteSaveFailed": "메모를 저장할 수 없습니다",
       "scheduleCall": "통화 예약",
       "callButton": "{closer} · {when}",
-      "rescheduleCall": "통화 다시 예약"
+      "rescheduleCall": "통화 다시 예약",
+      "tomorrow": "내일",
+      "createProposal": "제안서 만들기"
     },
     "composer": {
       "templates": "템플릿",
@@ -455,7 +470,14 @@
       "proposalsBody": "propuestas.saysells.com에서 작성합니다. 제안서를 연락처와 연결하는 기능은 나중에 추가됩니다.",
       "openProposals": "제안서 열기",
       "schedule": "예약",
-      "reschedule": "변경"
+      "reschedule": "변경",
+      "tabCall": "통화",
+      "callCardIn": "{duration} 후",
+      "callCardPast": "지남",
+      "afterCall": "통화 후",
+      "outcomeReschedule": "재예약",
+      "outcomeFailed": "결과를 기록하지 못했습니다",
+      "outcomeRegistered": "통화가 {outcome}(으)로 기록되었습니다."
     },
     "schedule": {
       "titleNew": "통화 예약",

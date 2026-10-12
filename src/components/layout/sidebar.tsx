@@ -37,6 +37,7 @@ import type { AccountRole } from "@/lib/auth/roles";
 import { canSendMessages } from "@/lib/auth/roles";
 import { homePathFor, showsInNav } from "@/lib/auth/nav";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { useCloser } from "@/hooks/use-closer";
 import {
   VISTAS,
   countFunnel,
@@ -115,6 +116,7 @@ const bottomNavItems = [
 
 /** Vistas de la Bandeja (prototipo `VIEWS`): ícono y rótulo por clave. */
 const VISTA_META: Record<Vista, { icon: typeof Inbox; labelKey: string }> = {
+  "mis-llamadas": { icon: CalendarClock, labelKey: "vistaMisLlamadas" },
   "para-mi": { icon: Inbox, labelKey: "vistaParaMi" },
   "sin-tomar": { icon: UserRoundPlus, labelKey: "vistaSinTomar" },
   agendadas: { icon: CalendarClock, labelKey: "vistaAgendadas" },
@@ -163,9 +165,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const store = useInboxStore();
   const inboxSearch = useInboxSearch();
   const now = useNow();
+  // Closer (sesión E): ve Mis llamadas primera y arranca ahí.
+  const { closer, isCloser } = useCloser();
   const vistaCounts = useMemo(
-    () => countVistas(store.conversations, { userId: user?.id ?? null, now }),
-    [store.conversations, user?.id, now],
+    () => countVistas(store.conversations, { userId: user?.id ?? null, now, closer }),
+    [store.conversations, user?.id, now, closer],
   );
   const funnelCounts = useMemo(() => countFunnel(store.conversations), [store.conversations]);
   const groups = useMemo(() => funnelGroups(store.tags), [store.tags]);
@@ -175,7 +179,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const activeEmbudo = onInbox ? searchParams.get("embudo") : null;
   const activeVista: Vista | null =
     onInbox && !activeEmbudo
-      ? (parseVista(searchParams.get("vista")) ?? defaultVista(accountRole))
+      ? (parseVista(searchParams.get("vista")) ?? defaultVista(accountRole, isCloser))
       : null;
   const searching = onInbox && inboxSearch.trim().length > 0;
 
@@ -233,7 +237,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     };
   }, [open, onClose]);
 
-  const vistasToShow = VISTAS.filter((v) => v !== "agendadas" || showAgendadas);
+  // Mis llamadas solo para un closer; Agendadas solo si la cuenta agenda.
+  // Las demás vistas quedan para todos: un closer puede ser admin.
+  const vistasToShow = VISTAS.filter((v) => {
+    if (v === "mis-llamadas") return isCloser;
+    if (v === "agendadas") return showAgendadas;
+    return true;
+  });
 
   return (
     <>

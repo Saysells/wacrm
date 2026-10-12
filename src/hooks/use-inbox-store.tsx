@@ -29,6 +29,7 @@ import {
 } from "@/lib/inbox/inbox-conversation";
 import type { AccountRole } from "@/lib/auth/roles";
 import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
+import { createHydrateQueue, finishHydrate, requestHydrate } from "@/lib/inbox/hydrate-queue";
 import type { Contact, Conversation, Message, Tag } from "@/types";
 
 // ============================================================
@@ -122,7 +123,13 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
   }, [conversations]);
 
   const activeIdRef = useRef<string | null>(null);
-  const hydratingRef = useRef<Set<string>>(new Set());
+  // Relecturas por conversación: una a la vez y la pedida durante otra
+  // corre apenas termina (ver hydrate-queue.ts). Quien pide mientras
+  // otra corre espera el resultado de esa lectura extra.
+  const hydrateQueueRef = useRef(createHydrateQueue());
+  const hydrateWaitersRef = useRef<Map<string, Array<(row: InboxConversation | null) => void>>>(
+    new Map(),
+  );
   const listenersRef = useRef<Set<(conv: Conversation) => void>>(new Set());
   // Número de pedido de la carga: gana la respuesta más nueva. Ver
   // load-sequence.ts por qué no hay un guard de "una sola en vuelo".
@@ -256,10 +263,9 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
   }, [profileLoading, resyncToken]);
 
   // ---- hidratar una fila -------------------------------------------
-  const hydrate = useCallback(async (convId: string): Promise<InboxConversation | null> => {
-    if (hydratingRef.current.has(convId)) return knownRef.current.get(convId) ?? null;
-    hydratingRef.current.add(convId);
-    try {
+  /** UNA lectura de la fila, sin cola: la cola la pone `hydrate`. */
+  const readConversationRow = useCallback(
+    async (convId: string): Promise<InboxConversation | null> => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("conversations")
@@ -305,10 +311,44 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
         return [fetched, ...prev];
       });
       return fetched;
-    } finally {
-      hydratingRef.current.delete(convId);
-    }
-  }, []);
+    },
+    [],
+  );
+
+  // Relectura con cola (sesión E): si ya hay una en curso para esa
+  // conversación, no se descarta —antes sí, y con dos cambios de
+  // etiqueta seguidos la lista quedaba con el estado del medio— sino
+  // que corre UNA más apenas termina la actual, con lo último que
+  // haya en la base. Las lecturas van en serie, así que la última
+  // respuesta aplicada es siempre la de la última lectura.
+  const hydrate = useCallback(
+    async (convId: string): Promise<InboxConversation | null> => {
+      const queue = hydrateQueueRef.current;
+      if (requestHydrate(queue, convId) === "queued") {
+        return new Promise<InboxConversation | null>((resolve) => {
+          const waiters = hydrateWaitersRef.current;
+          const list = waiters.get(convId) ?? [];
+          list.push(resolve);
+          waiters.set(convId, list);
+        });
+      }
+      let result: InboxConversation | null = null;
+      for (;;) {
+        try {
+          result = await readConversationRow(convId);
+        } catch (err) {
+          console.error("Failed to hydrate conversation:", err);
+          result = null;
+        }
+        if (finishHydrate(queue, convId) === "idle") break;
+      }
+      const waiters = hydrateWaitersRef.current.get(convId);
+      hydrateWaitersRef.current.delete(convId);
+      if (waiters) for (const resolve of waiters) resolve(result);
+      return result;
+    },
+    [readConversationRow],
+  );
 
   // ---- realtime ----------------------------------------------------
   const subscribedOnceRef = useRef(false);

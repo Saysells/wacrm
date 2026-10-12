@@ -5,8 +5,11 @@ import { useTranslations } from "next-intl";
 import {
   ArrowUpRight,
   Calendar,
+  CalendarClock,
+  CalendarX,
   Check,
   ChevronDown,
+  CircleCheck,
   Copy,
   FilePen,
   Mail,
@@ -20,6 +23,8 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useInboxStore } from "@/hooks/use-inbox-store";
+import { useCloser } from "@/hooks/use-closer";
+import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
 import { usePresence } from "@/hooks/use-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
@@ -34,6 +39,15 @@ import {
   TagCreateError,
 } from "@/lib/inbox/contact-tags";
 import { requestFromAction, requestFromEstado, type ScheduleRequest } from "@/lib/inbox/agendar";
+import {
+  CALL_OUTCOMES,
+  PROPOSALS_URL,
+  callDayHeading,
+  callStatus,
+  outcomeTag,
+  showsCallCard,
+  type CallOutcome,
+} from "@/lib/inbox/closer";
 import { loadContactFormValues, type ContactFieldValue } from "@/lib/inbox/contact-form-values";
 import {
   contactOrigin,
@@ -47,6 +61,7 @@ import type { SideTab } from "@/lib/inbox/side-panel";
 import { firstNameOf } from "@/lib/inbox/thread";
 import {
   avatarColors,
+  durationParts,
   estadoGroupOf,
   groupColor,
   hasScheduling,
@@ -54,6 +69,8 @@ import {
   initialsOf,
   scheduledCall,
   shortWhen,
+  type DurationParts,
+  type ScheduledCall,
   type ShortWhen,
 } from "@/lib/inbox/vistas";
 import { tagTint } from "@/lib/inbox/conversation-tags";
@@ -133,6 +150,20 @@ function formatShortWhen(when: ShortWhen, tList: Translator): string {
   }
 }
 
+function formatDuration(d: DurationParts, tList: Translator): string {
+  if (d.hours > 0 && d.minutes > 0) return tList("durationHm", { h: d.hours, m: d.minutes });
+  if (d.hours > 0) return tList("durationH", { h: d.hours });
+  return tList("durationM", { m: d.minutes });
+}
+
+/** Resultado registrado en esta conversación (vive hasta cambiar de hilo). */
+interface RegisteredOutcome {
+  conversationId: string;
+  /** La llamada tal como estaba al registrar: la etiqueta de fecha ya no existe. */
+  call: ScheduledCall;
+  tag: Tag;
+}
+
 function Group({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
   return (
     <section className={cn("rounded-[14px] bg-muted", className)}>
@@ -205,6 +236,18 @@ export function SidePanel({
   const tList = useTranslations("Inbox.conversationList");
   const store = useInboxStore();
 
+  // Tarjeta de la llamada (sesión E, prototipo `callc`): closer con la
+  // llamada abierta suya o sin closer. Después de registrar un
+  // resultado la etiqueta de fecha desaparece (la base saca la anterior),
+  // así que la versión hecha se guarda acá hasta cambiar de conversación;
+  // al recargar vuelve la ficha común, porque el resultado no tiene
+  // dónde guardarse en la llamada.
+  const { closer } = useCloser();
+  const [registered, setRegistered] = useState<RegisteredOutcome | null>(null);
+  const outcome = registered && registered.conversationId === conversation?.id ? registered : null;
+  const call = conversation ? scheduledCall(conversation) : null;
+  const callCard = outcome !== null || showsCallCard(closer, call);
+
   const title =
     tab === "calls"
       ? t("tabCalls")
@@ -212,7 +255,9 @@ export function SidePanel({
         ? t("tabNotes")
         : tab === "props"
           ? t("tabProposals")
-          : t("tabFicha");
+          : callCard
+            ? t("tabCall")
+            : t("tabFicha");
 
   return (
     <div className="flex h-full w-[330px] shrink-0 flex-col border-l border-border bg-card">
@@ -265,6 +310,11 @@ export function SidePanel({
             onSaveNote={onSaveNote}
             onAssignChange={onAssignChange}
             onSchedule={onSchedule}
+            callCard={callCard}
+            outcome={outcome}
+            onOutcome={(tag, registeredCall) =>
+              setRegistered({ conversationId: conversation.id, call: registeredCall, tag })
+            }
             now={now}
             t={t}
             tList={tList}
@@ -286,12 +336,30 @@ interface FichaProps {
   onSaveNote: (text: string) => Promise<boolean>;
   onAssignChange: (conversationId: string, agentId: string | null) => void;
   onSchedule: (request: ScheduleRequest) => void;
+  /** Arriba va la tarjeta de la llamada (closer) en vez de la identidad. */
+  callCard: boolean;
+  /** Resultado ya registrado en esta conversación: la tarjeta va en su versión hecha. */
+  outcome: RegisteredOutcome | null;
+  onOutcome: (tag: Tag, call: ScheduledCall) => void;
   now: number;
   t: Translator;
   tList: Translator;
 }
 
-function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSchedule, now, t, tList }: FichaProps) {
+function Ficha({
+  conversation,
+  contact,
+  notes,
+  onSaveNote,
+  onAssignChange,
+  onSchedule,
+  callCard,
+  outcome,
+  onOutcome,
+  now,
+  t,
+  tList,
+}: FichaProps) {
   const contactId = contact.id;
   // Los nombres de los colores ya viven en Configuración → Campos y
   // etiquetas; se reusan en vez de duplicar los ocho en tres idiomas.
@@ -301,6 +369,8 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSch
   const { patchContact, addTag, hydrate } = store;
   const accountTags = store.tags;
   const { getPresence, getRow, now: presenceNow } = usePresence();
+  const tThread = useTranslations("Inbox.messageThread");
+  const saysells = useSaysellsSelector();
 
   // Poner/sacar etiquetas y asignar escriben con rol agent+ (la API de
   // etiquetas y el RLS de conversations). Un viewer ve la ficha y no
@@ -377,7 +447,7 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSch
   );
 
   const failToast = useCallback(
-    (key: "tagUpdateFailed" | "assignFailed", err: unknown) => {
+    (key: "tagUpdateFailed" | "assignFailed" | "outcomeFailed", err: unknown) => {
       const reason = err instanceof Error ? err.message : "";
       toast.error(reason ? `${t(key)}: ${reason}` : t(key));
     },
@@ -521,12 +591,133 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSch
     [assignedId, conversation.id, onAssignChange, failToast],
   );
 
+  // Resultado de la llamada (prototipo `outcome()`): la etiqueta de
+  // estado con ese nombre por `attachTag`, el camino de siempre; la base
+  // saca la de fecha y el puente avisa al CRM. Propuesta además abre
+  // propuestas.saysells.com en otra pestaña para el equipo de Saysells
+  // (antes de esperar la red: el navegador bloquea pestañas tardías).
+  const handleOutcome = useCallback(
+    async (kind: CallOutcome) => {
+      const tag = outcomeTag(accountTags, kind);
+      if (!tag || !call) return;
+      if (kind === "propuesta" && saysells.visible) {
+        window.open(PROPOSALS_URL, "_blank", "noopener,noreferrer");
+      }
+      setBusy(true);
+      try {
+        const attached = await attachTag(contactId, tag, contactTags);
+        onOutcome(tag, call);
+        toast.success(t("outcomeRegistered", { outcome: tag.name }));
+        await syncContact({ tags: attached });
+      } catch (err) {
+        failToast("outcomeFailed", err);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [accountTags, call, saysells.visible, contactId, contactTags, onOutcome, syncContact, failToast, t],
+  );
+
   const createdAt = new Date(conversation.created_at).getTime();
   const showTagsGroup = otherTags.length > 0 || (canEdit && assignable.length > 0);
 
+  // Tarjeta de la llamada (prototipo `.callc`): el día, la hora con "en
+  // X" / "ya pasó" (o el resultado), nombre y empresa. Debajo, los
+  // cuatro botones; solo los que tienen etiqueta en la cuenta.
+  const cardCall = outcome?.call ?? call;
+  const callCardNode = (() => {
+    if (!callCard || !cardCall) return null;
+    const heading = callDayHeading(cardCall.at, now);
+    const weekdays = tThread("weekdaysLong").split(",");
+    const months = tThread("months").split(",");
+    const date = tThread("dayDate", {
+      weekday: weekdays[heading.weekday] ?? "",
+      day: heading.day,
+      month: months[heading.month] ?? "",
+    });
+    const dayText =
+      heading.relative === "today"
+        ? tList("callDayToday", { date })
+        : heading.relative === "tomorrow"
+          ? tList("callDayTomorrow", { date })
+          : heading.relative === "yesterday"
+            ? tList("callDayYesterday", { date })
+            : date.charAt(0).toUpperCase() + date.slice(1);
+    const status = callStatus(cardCall.at, now);
+    const suffix = outcome
+      ? outcome.tag.name
+      : status.kind === "past"
+        ? t("callCardPast")
+        : t("callCardIn", {
+            duration: formatDuration(durationParts(cardCall.at - now), tList),
+          });
+    const outcomes = CALL_OUTCOMES.map((kind) => ({ kind, tag: outcomeTag(accountTags, kind) }));
+    return (
+      <>
+        <div
+          className={cn(
+            "rounded-[14px] p-3.5",
+            outcome ? "bg-muted text-foreground" : "bg-primary text-primary-foreground",
+          )}
+        >
+          <div className={cn("flex items-center gap-1.5 text-[12.5px]", outcome ? "text-muted-foreground" : "opacity-75")}>
+            <CalendarClock className="size-3.5 shrink-0" />
+            {dayText}
+          </div>
+          <b className="mt-1 block text-xl font-semibold tabular-nums">
+            {hhmm(cardCall.at)} · {suffix}
+          </b>
+          <div className={cn("mt-0.5 text-[13px]", outcome ? "text-secondary-foreground" : "opacity-85")}>
+            {contact.company ? `${displayName} · ${contact.company}` : displayName}
+          </div>
+        </div>
+        {!outcome && canEdit && (
+          <div>
+            <div className="mx-0.5 mb-2 text-[12.5px] font-semibold text-muted-foreground">
+              {t("afterCall")}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {outcomes[0].tag && (
+                <OutcomeButton
+                  label={outcomes[0].tag.name}
+                  icon={<CircleCheck className="text-success" />}
+                  disabled={busy}
+                  onClick={() => void handleOutcome("realizada")}
+                />
+              )}
+              <OutcomeButton
+                label={t("outcomeReschedule")}
+                icon={<CalendarClock className="text-warning" />}
+                disabled={busy}
+                onClick={() => onSchedule(requestFromAction(call))}
+              />
+              {outcomes[1].tag && (
+                <OutcomeButton
+                  label={outcomes[1].tag.name}
+                  icon={<CalendarX className="text-danger" />}
+                  disabled={busy}
+                  onClick={() => void handleOutcome("no_se_presento")}
+                />
+              )}
+              {outcomes[2].tag && (
+                <OutcomeButton
+                  label={outcomes[2].tag.name}
+                  icon={<FilePen className="text-secondary-foreground" />}
+                  disabled={busy}
+                  onClick={() => void handleOutcome("propuesta")}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  })();
+
   return (
     <>
-      {/* Identidad (prototipo `.idt`): avatar de 72, nombre, empresa. */}
+      {callCardNode ?? (
+      /* Identidad (prototipo `.idt`): avatar de 72, nombre, empresa. */
       <div className="flex flex-col items-center px-1 pt-1 pb-0.5 text-center">
         <span
           aria-hidden="true"
@@ -580,6 +771,7 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSch
           )}
         </div>
       </div>
+      )}
 
       {/* Embudo: estado, setter y llamada. */}
       <Group title={t("funnel")}>
@@ -936,6 +1128,31 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSch
   );
 }
 
+/** Botón de resultado de la llamada (prototipo `.oc`). */
+function OutcomeButton({
+  label,
+  icon,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-left text-[13.5px] font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 [&>svg]:size-[17px] [&>svg]:shrink-0"
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 // ------------------------------------------------------------
 // Notas (grupo de la ficha y pestaña Notas)
 // ------------------------------------------------------------
@@ -1065,8 +1282,6 @@ function CallsTab({ conversations, activeId, onOpen, now, t, tList }: CallsTabPr
 // ------------------------------------------------------------
 // Propuestas
 // ------------------------------------------------------------
-
-const PROPOSALS_URL = "https://propuestas.saysells.com";
 
 function ProposalsTab({ conversation, t }: { conversation: InboxConversation | null; t: Translator }) {
   const firstName = firstNameOf(conversation?.contact?.name, conversation?.contact?.phone);
