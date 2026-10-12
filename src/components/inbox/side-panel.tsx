@@ -33,12 +33,7 @@ import {
   groupAssignableTags,
   TagCreateError,
 } from "@/lib/inbox/contact-tags";
-import {
-  fromDatetimeLocalValue,
-  initialCallDate,
-  scheduleWithDate,
-  toDatetimeLocalValue,
-} from "@/lib/inbox/fecha-llamada";
+import { requestFromAction, requestFromEstado, type ScheduleRequest } from "@/lib/inbox/agendar";
 import { loadContactFormValues, type ContactFieldValue } from "@/lib/inbox/contact-form-values";
 import {
   contactOrigin,
@@ -65,14 +60,6 @@ import { tagTint } from "@/lib/inbox/conversation-tags";
 import { cn } from "@/lib/utils";
 import type { Contact, ContactNote, Deal, Tag } from "@/types";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,10 +88,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 // por el canal del store (contact_tags y contacts).
 //
 // Las escrituras son las de siempre: etiquetas por
-// `/api/contacts/[id]/tags` (attachTag / detachTag), estado con fecha
-// por `scheduleWithDate` (primero la fecha, después la etiqueta),
-// asignación con el UPDATE de `conversations.assigned_agent_id` que
-// hacía "Asignar a…" del menú "Más", notas con el alta de la página.
+// `/api/contacts/[id]/tags` (attachTag / detachTag), asignación con el
+// UPDATE de `conversations.assigned_agent_id` que hacía "Asignar a…"
+// del menú "Más", notas con el alta de la página. Un estado con fecha
+// (y Agendar / Cambiar de la fila Llamada) no escribe acá: pide a la
+// página que abra el modal "Agendar llamada" (`onSchedule`), que guarda
+// primero la fecha y después la etiqueta.
 // ============================================================
 
 type Translator = ReturnType<typeof useTranslations>;
@@ -196,6 +185,8 @@ export interface SidePanelProps {
   onAssignChange: (conversationId: string, agentId: string | null) => void;
   /** Pestaña Llamadas: abrir esa conversación. */
   onOpenConversation: (conversation: InboxConversation) => void;
+  /** Abrir el modal "Agendar llamada" con ese pedido (fila Llamada, estados con fecha). */
+  onSchedule: (request: ScheduleRequest) => void;
   now: number;
 }
 
@@ -207,6 +198,7 @@ export function SidePanel({
   onSaveNote,
   onAssignChange,
   onOpenConversation,
+  onSchedule,
   now,
 }: SidePanelProps) {
   const t = useTranslations("Inbox.sidebar");
@@ -272,6 +264,7 @@ export function SidePanel({
             notes={notes}
             onSaveNote={onSaveNote}
             onAssignChange={onAssignChange}
+            onSchedule={onSchedule}
             now={now}
             t={t}
             tList={tList}
@@ -292,12 +285,13 @@ interface FichaProps {
   notes: ContactNote[];
   onSaveNote: (text: string) => Promise<boolean>;
   onAssignChange: (conversationId: string, agentId: string | null) => void;
+  onSchedule: (request: ScheduleRequest) => void;
   now: number;
   t: Translator;
   tList: Translator;
 }
 
-function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, t, tList }: FichaProps) {
+function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, onSchedule, now, t, tList }: FichaProps) {
   const contactId = contact.id;
   // Los nombres de los colores ya viven en Configuración → Campos y
   // etiquetas; se reusan en vez de duplicar los ocho en tres idiomas.
@@ -323,11 +317,6 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState<string>(DEFAULT_TAG_COLOR);
   const [creatingTag, setCreatingTag] = useState(false);
-  // Modal "Fecha y hora de la llamada" para los estados con fecha
-  // (bloque 1; el modal de agendar del prototipo llega en el bloque 2).
-  const [dateTag, setDateTag] = useState<Tag | null>(null);
-  const [dateValue, setDateValue] = useState("");
-  const [savingDate, setSavingDate] = useState(false);
 
   // Oportunidades y respuestas del formulario: lo único que la fila del
   // store no trae. Una lectura por contacto.
@@ -388,7 +377,7 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
   );
 
   const failToast = useCallback(
-    (key: "tagUpdateFailed" | "callDateSaveFailed" | "assignFailed", err: unknown) => {
+    (key: "tagUpdateFailed" | "assignFailed", err: unknown) => {
       const reason = err instanceof Error ? err.message : "";
       toast.error(reason ? `${t(key)}: ${reason}` : t(key));
     },
@@ -408,11 +397,12 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
   const handleSetEstado = useCallback(
     async (tag: Tag) => {
       if (tag.id === estado?.id && !tag.requiere_fecha) return;
-      // Etiqueta que pide fecha: no se aplica todavía; la aplicación sale
-      // de handleConfirmDate, DESPUÉS de guardar la fecha.
+      // Etiqueta que pide fecha: no se aplica acá. Abre el modal de
+      // agendar ("Agendado a X" con X marcado; "Agendada" / "Reagendado"
+      // fijas; el estado actual abre Reagendar) y la etiqueta se aplica
+      // allá, DESPUÉS de guardar la fecha.
       if (tag.requiere_fecha) {
-        setDateValue(toDatetimeLocalValue(initialCallDate(contact.fecha_llamada)));
-        setDateTag(tag);
+        onSchedule(requestFromEstado(tag, estado, call));
         return;
       }
       setBusy(true);
@@ -429,35 +419,8 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
         setBusy(false);
       }
     },
-    [contactId, contactTags, estado?.id, contact.fecha_llamada, syncContact, failToast],
+    [contactId, contactTags, estado, call, onSchedule, syncContact, failToast],
   );
-
-  const handleConfirmDate = useCallback(async () => {
-    if (!dateTag) return;
-    const fecha = fromDatetimeLocalValue(dateValue);
-    if (!fecha) {
-      toast.error(t("callDateInvalid"));
-      return;
-    }
-    setSavingDate(true);
-    try {
-      // Primero la fecha, después la etiqueta: el aviso al CRM sale del
-      // INSERT de la etiqueta y lee contacts.fecha_llamada.
-      const result = await scheduleWithDate({
-        db: createClient(),
-        contactId,
-        tag: dateTag,
-        fecha,
-        attached: contactTags,
-      });
-      setDateTag(null);
-      await syncContact({ fecha_llamada: result.fechaLlamada, tags: result.attached });
-    } catch (err) {
-      failToast("callDateSaveFailed", err);
-    } finally {
-      setSavingDate(false);
-    }
-  }, [dateTag, dateValue, contactId, contactTags, syncContact, failToast, t]);
 
   const handleAttachTag = useCallback(
     async (tag: Tag) => {
@@ -758,6 +721,16 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
             ) : (
               <span className={cn(ROW_VALUE, "text-muted-foreground")}>{t("callNone")}</span>
             )}
+            {canEdit && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onSchedule(requestFromAction(call))}
+                className="ml-auto shrink-0 font-semibold text-primary outline-none hover:underline focus-visible:underline disabled:opacity-50"
+              >
+                {call ? t("reschedule") : t("schedule")}
+              </button>
+            )}
           </div>
         )}
       </Group>
@@ -959,43 +932,6 @@ function Ficha({ conversation, contact, notes, onSaveNote, onAssignChange, now, 
         tList={tList}
       />
 
-      {/* Fecha y hora de la llamada (bloque 1). Cancelar no aplica la etiqueta. */}
-      <Dialog
-        open={dateTag !== null}
-        onOpenChange={(open) => {
-          if (!open && !savingDate) setDateTag(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("callDateTitle")}</DialogTitle>
-            <DialogDescription>
-              {dateTag ? t("callDateFor", { tag: dateTag.name }) : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="datetime-local"
-            value={dateValue}
-            onChange={(e) => setDateValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleConfirmDate();
-            }}
-            disabled={savingDate}
-            aria-label={t("callDateTitle")}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDateTag(null)} disabled={savingDate}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={() => void handleConfirmDate()}
-              disabled={savingDate || !fromDatetimeLocalValue(dateValue)}
-            >
-              {t("callDateConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

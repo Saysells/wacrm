@@ -1459,3 +1459,103 @@ no; sin SQL, sin dependencias. Prototipo: `thread()`, `composer()`,
   (Ficha, Llamadas, Notas, Propuestas) y llevar "Asignar a…" del menú
   "Más" a la ficha. Sesión E: atajos (J, K, A, L, E, N, ?) y Mis
   llamadas.
+
+# Rediseño · sesión D (ficha y agendar)
+
+Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `2de5640`
+(riel y ficha) y el de agendar. Misma regla: frontend sí, lógica no;
+sin SQL, sin dependencias. Prototipo: `rail()`, `side()`,
+`primaryAction()`, `openSchedule()`, `drawSchedule()`, `saveSchedule()`,
+`setState()`, `busy()`, los menús `state` / `setter` / `tags`.
+
+## Riel y panel
+
+- **Riel** (`src/components/layout/side-rail.tsx`, montado en el shell
+  a la derecha de la tarjeta, 56 px, solo `lg`): Ficha, Llamadas (solo
+  con `hasScheduling`), Notas y Propuestas (solo `useSaysellsSelector().
+  visible`). En la Bandeja la activa cierra el panel y otra lo abre;
+  desde otra pantalla lleva a `/inbox` con esa pestaña. Sin el "+".
+- **Estado del panel**: `src/hooks/use-side-panel.ts` (reemplaza a
+  `use-contact-panel-open.ts`; misma clave de localStorage para
+  abierto/cerrado; sin nada guardado arranca abierto desde 1380 px). La
+  pestaña vive en memoria. Lógica pura en `src/lib/inbox/side-panel.ts`
+  (`togglePanelTab`, `tabAfterOpeningConversation`, `effectiveSideTab`).
+  `useSaysellsSelector` pasó a un store de módulo: un fetch por persona
+  aunque lo monten la barra superior y el riel.
+- **Panel** (`src/components/inbox/side-panel.tsx`, 330 px; reemplaza a
+  `contact-sidebar.tsx`). **La ficha lee la fila VIVA del store**
+  (`activeRow`: el contacto con etiquetas y `fecha_llamada` de la misma
+  lista que pintan la barra, la lista y Llamadas) y después de escribir
+  hace `patchContact` + `hydrate(conversationId)`. Con eso lista,
+  contadores, Llamadas, ficha y encabezado se actualizan sin recargar y
+  sin esperar al realtime; lo del CRM llega por el canal del store. Lo
+  único que la ficha pide aparte son oportunidades y datos del
+  formulario. Las escrituras no cambiaron (`attachTag` / `detachTag` /
+  `createAndAttachTag`; el UPDATE de `assigned_agent_id` del viejo
+  "Asignar a…", que salió del menú "Más").
+- **Notas** las carga la página (`inbox/page.tsx`, con `load-sequence`)
+  y las comparten hilo y ficha: una nota cargada en cualquiera de los
+  dos aparece en el otro. Autor por `memberNames` del store (el hilo ya
+  no pide `profiles`). Orden: la más vieja primero, cuadro abajo.
+- **Etiquetas**: la fila Estado del grupo Embudo lista las de estado en
+  orden de embudo; el grupo Etiquetas muestra las que NO son de estado
+  (manuales, origen y señal) con cruz y "Agregar" (`ficha.ts`:
+  `nonEstadoTags`, `tagChipLabel` —"Origen: anuncio" / "Origen:
+  formulario"—, `contactOrigin` para "Llegó por", `upcomingCalls` para
+  la pestaña Llamadas).
+- `usePresence` pasó a `uniqueChannelName("presence")` (lo montan la
+  ficha y Miembros).
+
+## Agendar llamada
+
+`src/lib/inbox/agendar.ts` (puro, con pruebas) +
+`src/components/inbox/schedule-call-dialog.tsx` (780 px, calendario
+propio, horarios 09:00–12:30 y 14:00–18:30). Lo abren la acción
+principal del hilo (`primaryAction`), Agendar / Cambiar de la fila
+Llamada y los estados con fecha. **Salió el diálogo con el campo nativo
+`datetime-local`.** Siempre **primero la fecha, después la etiqueta**
+(`applySchedule` → `saveFechaLlamada` → `attachTag`).
+
+Qué etiqueta se aplica (`resolveScheduleTag`, decisión de Emi del
+12/10):
+
+1. Agendar sin llamada vigente: "Agendado a <closer elegido>"; sin
+   closers en la cuenta, la de estado con fecha que no es "Reagendado"
+   en orden de embudo ("Agendada").
+2. Reagendar con llamada vigente: "Reagendado"; con un closer distinto
+   del actual, "Agendado a <nuevo>"; sin "Reagendado" en la cuenta, la
+   actual.
+3. Desde Estado: "Agendado a X" abre Agendar con X marcado; "Agendada" /
+   "Reagendado" abren sin lista de closers y aplican esa (`fixedTag`);
+   el estado actual con fecha abre Reagendar (`requestFromEstado`).
+4. Si el contacto ya tiene la etiqueta que corresponde, después de la
+   fecha se saca y se vuelve a poner (`needsReattach`): el aviso al CRM
+   sale del INSERT y el duplicado no inserta nada.
+
+- **Ocupados**: misma hora y minuto, mismo closer, mismo día, sobre las
+  conversaciones del store (`busySlots`, `daysWithCalls`,
+  `callsNextWeek`). Closer `null` = las etiquetas que no nombran a nadie.
+- **Mensaje al cliente** (`Inbox.schedule.msg*`): con la casilla
+  "Dejarlo listo en el composer" y la ventana abierta o por vencer,
+  queda escrito en Responder de esa conversación sin enviarse, con el
+  foco al final; si había un borrador se agrega abajo. Los borradores
+  del cuadro salieron a `src/lib/inbox/composer-drafts.ts`
+  (`prefillReplyDraft` + suscripción del cuadro). Ventana cerrada o sin
+  respuesta: casilla deshabilitada con el motivo.
+- USA y Star Energy no tienen etiquetas con fecha: ahí no hay botón
+  Agendar, ni fila Llamada, ni pestaña Llamadas.
+
+## Pendientes y lo que queda para la sesión E
+
+- **Nada se vio en un navegador**: verificado typecheck, lint (0
+  errores, 36 warnings: uno menos que la base), tests (los 3 rojos de
+  `currency.test.ts`), validador de mensajes y build.
+- El panel y el riel son de escritorio; `(movil)` no se tocó.
+- Las notas de otras personas siguen llegando al actualizar (realtime
+  de `contact_notes` es SQL).
+- Las notas de la ficha se listan por `shortWhen` ("lun 6, 10:00"), sin
+  año: una nota de otro año se ve igual que una de este.
+- Sesión E: la vista de closer (tarjeta de la llamada, Realizada /
+  Reagendar / No se presentó / Propuesta, "Crear propuesta"), Mis
+  llamadas y los atajos (J, K, A, L, E, N, ?). Sesión F: Contactos,
+  Notificaciones, Configuración y el selector.

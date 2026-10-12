@@ -72,6 +72,13 @@ import {
   moveSelection,
   slashQuery,
 } from "@/lib/inbox/quick-replies";
+import {
+  getNoteDraft,
+  getReplyDraft,
+  setNoteDraft as storeNoteDraft,
+  setReplyDraft as storeReplyDraft,
+  subscribeReplyDraft,
+} from "@/lib/inbox/composer-drafts";
 
 // ============================================================
 // Cuadro de mensaje de la Bandeja (rediseño, sesión C).
@@ -193,15 +200,16 @@ function formatRecording(seconds: number): string {
  *  Meta-accepted format means no server ffmpeg / transcode step. */
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
-/**
- * Borradores por conversación (prototipo `S.draft[c.id]`). El cuadro se
- * monta con `key` por conversación, así que al volver a un hilo el
- * texto se recupera de acá; y si la ventana se cierra con un borrador
- * escrito, el texto sigue en el estado del componente (el textarea se
- * desmonta, el componente no).
+/*
+ * Borradores por conversación: viven en `composer-drafts.ts` (un store
+ * de módulo) y no en el estado del componente, porque el cuadro se
+ * remonta con `key` al cambiar de hilo y volver a uno tiene que
+ * encontrar lo que se estaba escribiendo. Con el panel de plantillas
+ * en lugar del cuadro (ventana cerrada), el texto sigue ahí: el
+ * textarea se desmonta, el borrador no. Desde la sesión D, el modal
+ * "Agendar llamada" deja el mensaje para el cliente en ese mismo store
+ * (`prefillReplyDraft`) y el cuadro se entera por suscripción.
  */
-const replyDrafts = new Map<string, string>();
-const noteDrafts = new Map<string, string>();
 
 /** Botón redondo de 34 px de la barra del cuadro (prototipo `.ctb .ib`). */
 const BAR_BUTTON_CLASS =
@@ -224,8 +232,8 @@ export function MessageComposer({
   const t = useTranslations("Inbox.composer");
 
   const [tab, setTab] = useState<ComposerTab>("reply");
-  const [text, setTextState] = useState(() => replyDrafts.get(conversationId) ?? "");
-  const [noteText, setNoteTextState] = useState(() => noteDrafts.get(conversationId) ?? "");
+  const [text, setTextState] = useState(() => getReplyDraft(conversationId));
+  const [noteText, setNoteTextState] = useState(() => getNoteDraft(conversationId));
   const [sending, setSending] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -233,14 +241,14 @@ export function MessageComposer({
 
   const setText = useCallback(
     (value: string) => {
-      replyDrafts.set(conversationId, value);
+      storeReplyDraft(conversationId, value);
       setTextState(value);
     },
     [conversationId],
   );
   const setNoteText = useCallback(
     (value: string) => {
-      noteDrafts.set(conversationId, value);
+      storeNoteDraft(conversationId, value);
       setNoteTextState(value);
     },
     [conversationId],
@@ -351,6 +359,18 @@ export function MessageComposer({
       }
     });
   }, [adjustHeight]);
+
+  // Texto dejado listo desde afuera (el modal "Agendar llamada"): pasa a
+  // Responder, muestra el borrador y pone el foco al final. No envía.
+  useEffect(
+    () =>
+      subscribeReplyDraft(conversationId, (next) => {
+        setTextState(next);
+        setTab("reply");
+        focusEnd();
+      }),
+    [conversationId, focusEnd],
+  );
 
   // ---- Respuestas rápidas con "/" --------------------------------------
 

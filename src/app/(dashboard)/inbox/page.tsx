@@ -20,15 +20,18 @@ import {
   escapeLike,
   hasScheduling,
   parseVista,
+  scheduledCall,
   unassignedOldestFirst,
   type ListSelection,
   type Vista,
 } from "@/lib/inbox/vistas";
+import { requestFromAction, type ScheduleRequest } from "@/lib/inbox/agendar";
 import { effectiveSideTab, tabAfterOpeningConversation } from "@/lib/inbox/side-panel";
 import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { SidePanel } from "@/components/inbox/side-panel";
+import { ScheduleCallDialog, type ScheduledResult } from "@/components/inbox/schedule-call-dialog";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -320,6 +323,30 @@ function InboxPageInner() {
     [store.conversations, activeConversation],
   );
   const liveContact = activeRow?.contact ?? activeContact;
+  // Llamada agendada del contacto abierto (estado con fecha + fecha).
+  const activeCall = useMemo(() => (activeRow ? scheduledCall(activeRow) : null), [activeRow]);
+  // Agendar: la cuenta tiene etiquetas con fecha y la persona es agent+.
+  const canSchedule = hasScheduling(store.tags) && canTakeNext;
+
+  // ---- modal "Agendar llamada" ----------------------------------------
+  // Lo abren la acción principal del encabezado, Agendar / Cambiar de la
+  // fila Llamada de la ficha y los estados con fecha. Al guardar, la
+  // fecha y las etiquetas nuevas se copian al store (lista, contadores,
+  // Llamadas y encabezado) y se relee la fila.
+  const [scheduleRequest, setScheduleRequest] = useState<ScheduleRequest | null>(null);
+  const openSchedule = useCallback((request: ScheduleRequest) => setScheduleRequest(request), []);
+  const closeSchedule = useCallback(() => setScheduleRequest(null), []);
+  const handleScheduleFromHeader = useCallback(() => {
+    openSchedule(requestFromAction(activeCall));
+  }, [openSchedule, activeCall]);
+  const { patchContact, hydrate: hydrateRow } = store;
+  const handleScheduled = useCallback(
+    (result: ScheduledResult) => {
+      patchContact(result.contactId, { fecha_llamada: result.fechaLlamada, tags: result.attached });
+      void hydrateRow(result.conversationId);
+    },
+    [patchContact, hydrateRow],
+  );
 
   // ---- notas internas del contacto abierto ---------------------------
   // Las comparten el hilo (línea de tiempo) y la ficha (grupo Notas):
@@ -645,6 +672,9 @@ function InboxPageInner() {
             notes={notes}
             onSaveNote={handleSaveNote}
             memberNames={store.memberNames}
+            call={activeCall}
+            canSchedule={canSchedule}
+            onSchedule={handleScheduleFromHeader}
           />
         </div>
 
@@ -661,11 +691,23 @@ function InboxPageInner() {
               onSaveNote={handleSaveNote}
               onAssignChange={handleAssignChange}
               onOpenConversation={handleSelectConversation}
+              onSchedule={openSchedule}
               now={now}
             />
           </div>
         )}
       </div>
+
+      {/* Modal "Agendar llamada" (prototipo `drawSchedule`). */}
+      <ScheduleCallDialog
+        request={scheduleRequest}
+        onClose={closeSchedule}
+        conversation={activeRow}
+        conversations={store.conversations}
+        accountTags={store.tags}
+        now={now}
+        onScheduled={handleScheduled}
+      />
     </div>
   );
 }

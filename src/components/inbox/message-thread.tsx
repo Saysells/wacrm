@@ -17,6 +17,8 @@ import type {
 } from "@/types";
 import {
   ArrowLeft,
+  CalendarClock,
+  CalendarPlus,
   Check,
   CircleCheck,
   Copy,
@@ -51,7 +53,14 @@ import { TemplatePicker, type TemplateSendValues } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
-import { avatarColors, initialsOf, windowState } from "@/lib/inbox/vistas";
+import {
+  avatarColors,
+  initialsOf,
+  shortWhen,
+  windowState,
+  type ScheduledCall,
+  type ShortWhen,
+} from "@/lib/inbox/vistas";
 import {
   buildTimeline,
   lastCustomerMessageAt,
@@ -131,6 +140,15 @@ interface MessageThreadProps {
   onSaveNote: (text: string) => Promise<boolean>;
   /** Nombre por `user_id` de los miembros de la cuenta (autor de cada nota). */
   memberNames: ReadonlyMap<string, string>;
+  /**
+   * Llamada agendada del contacto (estado con fecha + fecha_llamada),
+   * leída de la fila viva del store. Con ella la acción principal es
+   * "<closer> · <cuándo>" y abre Reagendar; sin ella, "Agendar llamada".
+   */
+  call: ScheduledCall | null;
+  /** La cuenta tiene etiquetas con fecha y la persona puede agendar (agent+). */
+  canSchedule: boolean;
+  onSchedule: () => void;
 }
 
 type Translator = ReturnType<typeof useTranslations>;
@@ -138,6 +156,23 @@ type Translator = ReturnType<typeof useTranslations>;
 /** Botón redondo de 40 px del prototipo (`.ib`). */
 const ICON_BUTTON_CLASS =
   "inline-flex size-10 shrink-0 items-center justify-center rounded-full text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:opacity-50 [&_svg]:size-5";
+
+function formatShortWhen(when: ShortWhen, tList: Translator): string {
+  switch (when.kind) {
+    case "today":
+      return tList("whenToday", { time: when.time });
+    case "tomorrow":
+      return tList("whenTomorrow", { time: when.time });
+    case "other": {
+      const weekdays = tList("weekdays").split(",");
+      return tList("whenOther", {
+        weekday: weekdays[when.weekday] ?? "",
+        day: when.day,
+        time: when.time,
+      });
+    }
+  }
+}
 
 function formatDayLabel(label: DayLabel, t: Translator): string {
   switch (label.kind) {
@@ -173,9 +208,13 @@ export function MessageThread({
   notes,
   onSaveNote,
   memberNames,
+  call,
+  canSchedule,
+  onSchedule,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tQuote = useTranslations("Inbox.replyQuote");
+  const tList = useTranslations("Inbox.conversationList");
 
   const { user } = useAuth();
   const now = useNow();
@@ -858,8 +897,10 @@ export function MessageThread({
     <div className="flex min-w-0 flex-1 flex-col bg-card">
       {/* Encabezado (prototipo `.th`): 72 px, avatar de 42, nombre de
           17 px y "empresa · teléfono" debajo; a la derecha la acción
-          principal (hoy solo "Reabrir" cuando está cerrada; Agendar
-          llamada llega con el bloque 2), cerrar y "Más". */}
+          principal (`primaryAction`: cerrada ⇒ Reabrir; con llamada
+          vigente ⇒ "<closer> · <cuándo>" que abre Reagendar; si no,
+          "Agendar llamada"; sin etiquetas con fecha o viewer, nada),
+          cerrar y "Más". */}
       <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-border px-3 sm:px-4 sm:pl-6">
         {/* Back-to-list button — mobile only. Hidden on lg+ where the
             conversation list is always visible next to the thread. */}
@@ -890,7 +931,27 @@ export function MessageThread({
               <RotateCcw />
               {t("reopen")}
             </Button>
-          ) : (
+          ) : canSchedule && call ? (
+            <Button
+              variant="outline"
+              onClick={onSchedule}
+              title={t("rescheduleCall")}
+              className="max-w-[260px]"
+            >
+              <CalendarClock />
+              <span className="truncate">
+                {call.closer
+                  ? t("callButton", { closer: call.closer, when: formatShortWhen(shortWhen(call.at, now), tList) })
+                  : formatShortWhen(shortWhen(call.at, now), tList)}
+              </span>
+            </Button>
+          ) : canSchedule ? (
+            <Button onClick={onSchedule}>
+              <CalendarPlus />
+              {t("scheduleCall")}
+            </Button>
+          ) : null}
+          {!isClosed && (
             <button
               type="button"
               onClick={handleCloseConversation}
