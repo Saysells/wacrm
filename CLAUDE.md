@@ -1186,3 +1186,135 @@ Variables de **servidor**, nunca `NEXT_PUBLIC_`:
   clases `dark:` de shadcn siguen sin aplicar (`.dark` nadie lo pone).
 - Botón 32→38 px y campo 32→40: las pantallas densas crecen en alto;
   lo que se desborde se corrige en F.
+
+# Rediseño · sesión B (navegación y lista)
+
+Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits
+`8ac0608` (barra lateral) y el de la lista. Misma regla: frontend sí,
+lógica no; sin SQL, sin dependencias. Prototipo: `nav()`, `list()`,
+`row()`, `rel()`, `shortWhen()`, `dur()`, `win()`, `takeNext()`.
+
+## El store compartido
+
+`src/hooks/use-inbox-store.tsx` (`InboxStoreProvider`, montado en el
+shell; `useInboxStore()`): **una** lista de conversaciones para toda
+la app. La barra lateral cuenta sobre ella y la Bandeja la filtra, así
+un contador y la lista no pueden contar distinto. Se carga una vez
+cuando el perfil resuelve, con `conversationVisibilityFilter` (vistas,
+contadores y búsqueda cuentan solo lo que el rol ya ve), y trae en la
+**misma consulta** el último mensaje (`last_msg`, para "Vos:" /
+"Bot:") y el último del cliente (`last_customer_msg`, la ventana de
+24 h) embebidos con orden y límite por conversación
+(`INBOX_CONVERSATION_SELECT` en `src/lib/inbox/inbox-conversation.ts`).
+Nunca una consulta por fila; la sintaxis se verificó contra PostgREST.
+
+- **Un canal de realtime, nombre único** (`uniqueChannelName`):
+  `messages` INSERT (vista previa, contador, quién mandó, ventana),
+  `conversations` *, `contact_tags` INSERT/DELETE (relee ESA
+  conversación: cambió el estado) y `contacts` UPDATE (nombre, empresa,
+  `fecha_llamada`). Cada evento toca su fila en memoria; nunca vuelve a
+  pedir todo (#106). Solo una fila desconocida se hidrata, deduplicada
+  por id. Reconexión y pestaña visible → una recarga, nunca más de una
+  en vuelo.
+- El hilo abierto sigue siendo de `inbox/page.tsx`: el store sabe cuál
+  es (`setActiveConversationId`) para no subir su contador, y avisa por
+  `subscribeConversationUpdates` cuando esa fila cambia. La página
+  copia al store (`patch`) lo que el hilo cambia (estado, asignación,
+  etiquetas de la ficha). El canal del hilo también lleva nombre único
+  y `useRealtime` ganó `onReconnect` (sin efecto con setState).
+- `tags` (embudo y filtro) y `memberNames` (setter de cada fila, de
+  `profiles` acotado por RLS) salen del mismo store, una lectura cada
+  uno.
+- **Tope de filas**: la consulta no pagina y Supabase corta en su tope
+  (1000 por defecto). Como contadores y lista salen de la misma lista,
+  cuentan lo mismo, pero con más de 1000 conversaciones visibles las
+  más viejas (orden por `last_message_at`) no entran ni en una ni en
+  otra.
+
+## Vistas contra datos
+
+`src/lib/inbox/vistas.ts`, puro, con tests en `vistas.test.ts`.
+
+| Vista | Datos | Cuenta cerradas |
+| --- | --- | --- |
+| Para mí | `assigned_agent_id = yo` | no |
+| Sin tomar | `assigned_agent_id IS NULL` (contador en naranja) | no |
+| Agendadas | estado con `requiere_fecha` + `contacts.fecha_llamada` (solo si la cuenta tiene una etiqueta así) | no |
+| Por vencer | ventana con menos de 2 h (24 h desde el último mensaje del cliente) | no |
+| Todas | todo lo no cerrado | no |
+| Cerradas | `status = 'closed'` (sin contador) | sí |
+
+- **Embudo**: grupo = nombre de la etiqueta de estado, salvo que pida
+  fecha → "Agendada" (`estadoGroupOf`). Orden por `ESTADO_FUNNEL` con
+  una regla: "Agendada" y cualquier "Agendado a …" van donde van las
+  de Paola y Gustavo, sea quien sea el closer (`groupRank`); un nombre
+  desconocido va al final, en gris neutro (`groupColor`). Los grupos
+  salen de las etiquetas de la cuenta (`funnelGroups`), con cero si no
+  tienen conversaciones. Cuenta solo no cerradas.
+- **Closer** = lo que sigue a "Agendado a " en la etiqueta
+  (`closerFromTag`); "Agendada" / "Reagendado" → chip sin nombre.
+- **Ventana** (`windowState`): abierta, por vencer (< 2 h), cerrada
+  (> 24 h, no se muestra en Ganada ni Perdido) o sin mensajes del
+  cliente (sin chip).
+- `relativeTime`, `shortWhen`, `durationParts` devuelven descriptores;
+  la lista los traduce (es y en) y los recalcula con `useNow()` (un
+  reloj por minuto, no un temporizador por fila).
+
+## URL y barra lateral
+
+- `/inbox?vista=para-mi|sin-tomar|agendadas|por-vencer|todas|cerradas`,
+  `/inbox?embudo=<grupo>`, `/inbox?q=<texto>`, `/inbox?c=<id>` (hilo
+  abierto; al elegir un hilo se conserva la vista o el grupo). Sin
+  vista: **Para mí** para el agent, **Todas** para los demás
+  (`defaultVista`). Cambiar de vista o de grupo no abre ningún hilo.
+- Barra lateral: "Nuevo mensaje" (celeste, `canSendMessages`; abre el
+  diálogo de siempre y navega con `?c=`), vistas con contador, embudo
+  con cuadrado de color, Herramientas con las entradas de antes menos
+  "Bandeja" (`nav.ts` intacto). Plegada: íconos con `title` y
+  `aria-label`. Lee `?vista=` / `?embudo=` con `useSearchParams` bajo
+  un `Suspense` del shell.
+- **Búsqueda**: store externo `useInboxSearch` (como la barra plegada;
+  sin efectos que siembren estado). En la Bandeja la barra superior
+  filtra mientras se escribe: nombre, empresa, teléfono por dígitos y
+  texto de los mensajes (una consulta `ilike` con `%`/`_` escapados,
+  300 ms entre teclas, tope 1000 filas, cruzada con la lista visible).
+  Título "Resultados"; vaciar vuelve a la vista. Desde otra pantalla,
+  Enter lleva a `/inbox?q=`. Contactos sigue leyendo su `?q=`.
+- **Tomar siguiente** (solo en Para mí, `canSendMessages`): la sin
+  tomar más antigua por `created_at`, con el `update` de
+  `assigned_agent_id` de siempre más `.is('assigned_agent_id', null)`;
+  si otra persona la tomó primero, sigue con la próxima. Después abre
+  `/inbox?vista=para-mi&c=<id>`.
+
+## Lista
+
+`src/components/inbox/conversation-list.tsx` no carga nada: filtra la
+lista del store con `filterConversations` (búsqueda > grupo > vista,
+más los filtros del desplegable) y pinta. Encabezado con título y
+"N conversaciones"; el desplegable **Filtros** (conversación abierta o
+pendiente, etiquetas, empresa) conserva lo que el prototipo no tiene;
+todo rótulo va dentro de su `DropdownMenuGroup`. Secciones "Sin leer"
+/ "Leídas" ("Conversaciones" si no hay sin leer) solo en Para mí y
+Todas. Fila de tres líneas como `row()`: nombre y hora relativa; vista
+previa con "Vos:" / "Bot:" y contador en naranja; estado (grupo en
+rectángulo de 5 px con el color de `GROUP_COLORS` al 15 %), llamada
+("Manuel · hoy 16:00"), ventana ("Vence en 1 h 20 min" / "Ventana
+cerrada"), setter (iniciales en círculo de 22 px, color por hash) o
+sin tomar, y las etiquetas secundarias al final (chips con la barra
+plegada, puntitos abierta: `visibleChips`). Vacíos del prototipo:
+Sin tomar vacía, Bandeja sin conversaciones, búsqueda sin resultados y
+vista vacía. Ancho 350 px.
+
+## Pendientes y lo que queda para la sesión C
+
+- **Nada se vio en un navegador**: verificado typecheck, lint (0
+  errores, 39 warnings: uno menos que la base), tests (los 3 rojos de
+  `currency.test.ts`), validador y build; y la sintaxis de la consulta
+  con embebidos contra PostgREST real (sin sesión, 200).
+- Los colores de los chips de estado son la tinta de `GROUP_COLORS`
+  sobre su tinte al 15 %, no los pares pastel exactos del prototipo.
+- El panel de contacto abierto/plegado pasó a un store externo
+  (`useContactPanelOpen`), misma clave de localStorage.
+- Sesión C: el hilo, el composer y la ventana dentro del hilo. Sesión D:
+  ficha y agendar. Sesión E: Mis llamadas y atajos. Sesión F: Contactos,
+  Notificaciones, Configuración y el selector.

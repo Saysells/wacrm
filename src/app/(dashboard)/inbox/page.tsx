@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message, Contact, ConversationStatus, Tag } from "@/types";
 import { useAuth } from "@/hooks/use-auth";
+import { canSendMessages } from "@/lib/auth/roles";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useInboxStore } from "@/hooks/use-inbox-store";
 import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
@@ -69,6 +70,8 @@ function InboxPageInner() {
   const searchParams = useSearchParams();
   const { user: authUser, accountRole } = useAuth();
   const userId = authUser?.id ?? null;
+  // Tomar siguiente: mismo permiso que enviar.
+  const canTakeNext = !!accountRole && canSendMessages(accountRole);
   const store = useInboxStore();
   const now = useNow();
 
@@ -527,10 +530,11 @@ function InboxPageInner() {
             conversations={store.conversations}
             loading={store.loading}
             tags={store.tags}
+            memberNames={store.memberNames}
             selection={selection}
             now={now}
             userId={userId}
-            onTakeNext={handleTakeNext}
+            onTakeNext={canTakeNext ? handleTakeNext : null}
           />
         </div>
 

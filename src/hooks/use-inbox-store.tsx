@@ -59,6 +59,8 @@ export interface InboxStore {
   loading: boolean;
   /** Etiquetas de la cuenta: el embudo sale de las de estado; los filtros, de todas. */
   tags: Tag[];
+  /** Nombre por `user_id` de los miembros que el RLS deja ver (el setter de cada fila). */
+  memberNames: ReadonlyMap<string, string>;
   /** Actualiza filas en memoria (optimista). */
   patch: (updater: (prev: InboxConversation[]) => InboxConversation[]) => void;
   /** Trae una conversación por id con su contacto y la mete en la lista. */
@@ -88,6 +90,7 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [memberNames, setMemberNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [resyncToken, setResyncToken] = useState(0);
 
   // Espejos síncronos para los handlers de realtime (identidad estable).
@@ -192,6 +195,30 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
     (async () => {
       const { data } = await supabase.from("tags").select("*").order("name");
       if (!cancelled && data) setTags(data as Tag[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileLoading, resyncToken]);
+
+  // ---- miembros (setter de cada fila) ------------------------------
+  // Mismo origen que el selector de asignación del hilo: `profiles`,
+  // acotado por RLS a la cuenta. Una lectura por carga.
+  useEffect(() => {
+    if (profileLoading) return;
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email")
+        .order("full_name");
+      if (cancelled || !data) return;
+      const next = new Map<string, string>();
+      for (const row of data as { user_id: string; full_name: string | null; email: string | null }[]) {
+        next.set(row.user_id, row.full_name?.trim() || row.email || "");
+      }
+      setMemberNames(next);
     })();
     return () => {
       cancelled = true;
@@ -406,13 +433,14 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
       conversations,
       loading,
       tags,
+      memberNames,
       patch,
       hydrate,
       refetch,
       setActiveConversationId,
       subscribeConversationUpdates,
     }),
-    [conversations, loading, tags, patch, hydrate, refetch, setActiveConversationId, subscribeConversationUpdates],
+    [conversations, loading, tags, memberNames, patch, hydrate, refetch, setActiveConversationId, subscribeConversationUpdates],
   );
 
   return <InboxStoreContext.Provider value={value}>{children}</InboxStoreContext.Provider>;
@@ -422,6 +450,7 @@ const EMPTY_STORE: InboxStore = {
   conversations: [],
   loading: true,
   tags: [],
+  memberNames: new Map(),
   patch: () => {},
   hydrate: async () => null,
   refetch: () => {},

@@ -1,33 +1,78 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { matchesContactFilters } from "@/lib/inbox/conversations";
+import { useCallback, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+import {
+  CalendarClock,
+  Filter,
+  Hourglass,
+  Inbox,
+  Lock,
+  MessagesSquare,
+  Search,
+  User,
+  UserRoundCheck,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import type { Conversation, Tag } from "@/types";
 import type { InboxConversation } from "@/lib/inbox/inbox-conversation";
-import { filterConversations, NO_LIST_FILTERS, type ListSelection } from "@/lib/inbox/vistas";
+import {
+  avatarColors,
+  conversationGroup,
+  durationParts,
+  filterConversations,
+  groupColor,
+  initialsOf,
+  isClosed,
+  relativeTime,
+  scheduledCall,
+  shortWhen,
+  showsClosedWindow,
+  showsTakeNext,
+  splitUnread,
+  splitsUnread,
+  unassignedOldestFirst,
+  windowState,
+  type DurationParts,
+  type ListFilters,
+  type ListSelection,
+  type RelativeTime,
+  type ShortWhen,
+} from "@/lib/inbox/vistas";
 import {
   splitConversationTags,
   tagTint,
   visibleChips,
 } from "@/lib/inbox/conversation-tags";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { ChevronDown, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { useTranslations } from "next-intl";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Rediseño, sesión B (bloque 1): la lista ya no carga nada. Recibe la
-// lista entera del store compartido y la selección (vista, grupo,
-// búsqueda) que la página leyó de la URL; filtra con la misma lógica
-// pura que usan los contadores de la barra lateral.
+// ============================================================
+// Lista de conversaciones de la Bandeja de escritorio (rediseño,
+// sesión B, bloque 2). Prototipo: `list()`, `row()`, `.lh`, `.take`,
+// `.sec`, `.row`, `.ch`, `.who`, `.free`, `.empty`.
+//
+// No carga nada: recibe la lista entera del store compartido y la
+// selección (vista, grupo del embudo o búsqueda) que la página leyó de
+// la URL, y filtra con la misma lógica pura que usan los contadores
+// de la barra lateral. Lo único que decide sola son los filtros del
+// desplegable "Filtros" (conversación abierta o pendiente, etiquetas,
+// empresa), que no están en el prototipo y se conservan para no
+// perder funciones.
+// ============================================================
+
 interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (conversation: Conversation) => void;
@@ -35,21 +80,30 @@ interface ConversationListProps {
   loading: boolean;
   /** Etiquetas de la cuenta, para el filtro. */
   tags: Tag[];
+  /** Nombre por `user_id` para el setter de cada fila. */
+  memberNames: ReadonlyMap<string, string>;
   selection: Omit<ListSelection, "filters">;
+  /** Reloj por minuto: horas relativas y ventana se calculan contra él. */
   now: number;
   userId: string | null;
-  onTakeNext: () => void;
+  /** Tomar siguiente (solo se muestra en Para mí). Null si no puede tomar. */
+  onTakeNext: (() => void) | null;
 }
 
-const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
+type Translator = ReturnType<typeof useTranslations>;
+
+const VISTA_TITLE_KEY: Record<ListSelection["vista"], string> = {
+  "para-mi": "vistaParaMi",
+  "sin-tomar": "vistaSinTomar",
+  agendadas: "vistaAgendadas",
+  "por-vencer": "vistaPorVencer",
+  todas: "vistaTodas",
+  cerradas: "vistaCerradas",
 };
 
-
-
-type InboxFilter = ConversationStatus | "all" | "unread";
+/** Chip de la tercera línea (prototipo `.ch`): rectángulo de 5 px, 22 px de alto. */
+const CHIP =
+  "inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-[5px] px-[7px] text-xs font-medium whitespace-nowrap [&>svg]:size-[13px] [&>svg]:shrink-0";
 
 export function ConversationList({
   activeConversationId,
@@ -57,459 +111,587 @@ export function ConversationList({
   conversations: allConversations,
   loading,
   tags,
+  memberNames,
   selection,
   now,
   userId,
+  onTakeNext,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  const conversations = useMemo(
-    () =>
-      filterConversations(
-        allConversations,
-        { ...selection, filters: NO_LIST_FILTERS },
-        { userId, now },
-      ),
-    [allConversations, selection, userId, now],
-  );
-  // Con la barra lateral plegada sobran ~180px en la fila: la lista se
-  // queda con una parte y con eso entran las etiquetas enteras. Abierta
-  // no hay ancho y las secundarias se resumen en puntitos.
+  const tSidebar = useTranslations("Sidebar");
+  // Con la barra lateral plegada sobran ~170 px en la fila y las
+  // etiquetas secundarias entran enteras; abierta, son puntitos.
   const { collapsed: sidebarCollapsed } = useSidebarCollapsed();
-  
-  const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
-    { label: t("filterAll"), value: "all" },
-    { label: t("filterUnread"), value: "unread" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
-  ], [t]);
 
-  const [filter, setFilter] = useState<InboxFilter>("all");
-  // Contact-based filters (issue #272). Tags use OR logic (a conversation
-  // matches if its contact carries any selected tag), consistent with
-  // Broadcast audience filtering. Company is an exact match on the field.
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ListFilters>({
+    status: null,
+    tagIds: [],
+    company: null,
+  });
+
+  const ctx = useMemo(() => ({ userId, now }), [userId, now]);
+  const conversations = useMemo(
+    () => filterConversations(allConversations, { ...selection, filters }, ctx),
+    [allConversations, selection, filters, ctx],
+  );
 
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
   // are worth offering as an inbox filter.
   const companies = useMemo(() => {
     const set = new Set<string>();
-    for (const c of conversations) {
+    for (const c of allConversations) {
       const co = c.contact?.company?.trim();
       if (co) set.add(co);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [conversations]);
-
-  const tagsById = useMemo(() => {
-    const m = new Map<string, Tag>();
-    for (const t of tags) m.set(t.id, t);
-    return m;
-  }, [tags]);
-
-  const filtered = useMemo(() => {
-    let result = conversations;
-
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
-    }
-
-    // Contact-based filters (tags via OR logic, exact company match).
-    if (selectedTagIds.length > 0 || selectedCompany !== null) {
-      result = result.filter((c) =>
-        matchesContactFilters(c, {
-          tagIds: selectedTagIds,
-          company: selectedCompany,
-        })
-      );
-    }
-
-    return result;
-  }, [conversations, filter, selectedTagIds, selectedCompany]);
+  }, [allConversations]);
 
   const toggleTag = useCallback((id: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
-    );
+    setFilters((prev) => ({
+      ...prev,
+      tagIds: prev.tagIds.includes(id)
+        ? prev.tagIds.filter((x) => x !== id)
+        : [...prev.tagIds, id],
+    }));
   }, []);
 
-  const clearContactFilters = useCallback(() => {
-    setSelectedTagIds([]);
-    setSelectedCompany(null);
-  }, []);
+  const activeFilterCount =
+    (filters.status ? 1 : 0) + filters.tagIds.length + (filters.company ? 1 : 0);
 
-  const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
+  const title = selection.query.trim()
+    ? t("titleResults")
+    : (selection.embudo ?? tSidebar(VISTA_TITLE_KEY[selection.vista]));
 
-  const handleSelect = useCallback(
-    (conv: Conversation) => {
-      onSelect(conv);
-    },
-    [onSelect]
+  // Aviso "N consultas sin tomar" (prototipo `.take`), solo en Para mí.
+  const unassigned = useMemo(
+    () => (showsTakeNext(selection) ? unassignedOldestFirst(allConversations) : []),
+    [selection, allConversations],
   );
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const sections = splitsUnread(selection) ? splitUnread(conversations) : null;
+
+  const emptyKind: "unassigned" | "inbox" | "search" | "view" | null =
+    conversations.length > 0
+      ? null
+      : selection.query.trim()
+        ? "search"
+        : allConversations.length === 0
+          ? "inbox"
+          : selection.vista === "sin-tomar" && !selection.embudo
+            ? "unassigned"
+            : "view";
+
+  const renderRow = (conv: InboxConversation) => (
+    <ConversationRow
+      key={conv.id}
+      conversation={conv}
+      isActive={conv.id === activeConversationId}
+      onSelect={onSelect}
+      now={now}
+      setterName={conv.assigned_agent_id ? (memberNames.get(conv.assigned_agent_id) ?? "") : null}
+      showTagChips={sidebarCollapsed}
+      t={t}
+    />
+  );
 
   return (
-    // w-full on mobile so the list occupies the whole viewport when it's
-    // the single pane showing; fixed 320px on desktop where it shares the
-    // row with the thread + contact sidebar — 384px con la barra lateral
-    // plegada, que es el ancho que necesitan los chips de etiqueta.
-    <div
-      className={cn(
-        "flex h-full w-full flex-col border-r border-border bg-card",
-        sidebarCollapsed ? "lg:w-96" : "lg:w-80",
-      )}
-    >
-      {/* Search + Filter */}
-      <div className="space-y-2 border-b border-border p-3">
-        <div className="flex flex-wrap items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-                {activeFilter?.label ?? t("filterAll")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="border-border bg-popover"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => setFilter(opt.value)}
-                  className={cn(
-                    "text-sm",
-                    filter === opt.value
-                      ? "text-primary"
-                      : "text-popover-foreground"
-                  )}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+    // Prototipo `.card`: la lista mide 350 px en escritorio; en mobile
+    // ocupa todo el ancho cuando es el único panel visible.
+    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-[350px]">
+      {/* Encabezado (prototipo `.lh`): título, cantidad y Filtros. */}
+      <div className="flex h-[60px] shrink-0 items-center gap-2 pr-3 pl-5">
+        <h2 className="truncate text-[19px] font-semibold text-foreground">{title}</h2>
+        <span className="mt-[3px] shrink-0 text-[13px] tabular-nums text-muted-foreground">
+          {t("conversationCount", { count: conversations.length })}
+        </span>
 
-          {tags.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedTagIds.length > 0
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {t("tags")}
-                {selectedTagIds.length > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                    {selectedTagIds.length}
-                  </span>
-                )}
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-64 w-56 border-border bg-popover"
-              >
-                {tags.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t.id}
-                    checked={selectedTagIds.includes(t.id)}
-                    onCheckedChange={() => toggleTag(t.id)}
-                    className="text-sm text-popover-foreground"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: t.color }}
-                      />
-                      <span className="truncate">{t.name}</span>
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {companies.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex max-w-40 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedCompany
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span className="truncate">{selectedCompany ?? t("company")}</span>
-                <ChevronDown className="h-3 w-3 shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-64 w-56 border-border bg-popover"
-              >
-                <DropdownMenuItem
-                  onClick={() => setSelectedCompany(null)}
-                  className={cn(
-                    "text-sm",
-                    selectedCompany === null
-                      ? "text-primary"
-                      : "text-popover-foreground"
-                  )}
-                >
-                  {t("allCompanies")}
-                </DropdownMenuItem>
-                {companies.map((co) => (
-                  <DropdownMenuItem
-                    key={co}
-                    onClick={() => setSelectedCompany(co)}
-                    className={cn(
-                      "text-sm",
-                      selectedCompany === co
-                        ? "text-primary"
-                        : "text-popover-foreground"
-                    )}
-                  >
-                    <span className="truncate">{co}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-
-        {hasContactFilters && (
-          <div className="flex flex-wrap items-center gap-1">
-            {selectedTagIds.map((id) => {
-              const tag = tagsById.get(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => toggleTag(id)}
-                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag?.color ?? "var(--muted-foreground)" }}
-                  />
-                  <span className="max-w-24 truncate">{tag?.name ?? t("tags")}</span>
-                  <X className="h-3 w-3" />
-                </button>
-              );
-            })}
-            {selectedCompany && (
-              <button
-                onClick={() => setSelectedCompany(null)}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-              >
-                <span className="max-w-24 truncate">{selectedCompany}</span>
-                <X className="h-3 w-3" />
-              </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={t("filters")}
+            title={t("filters")}
+            className={cn(
+              "ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[13px] text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-muted",
+              activeFilterCount > 0 && "border-primary text-primary",
             )}
-            <button
-              onClick={clearContactFilters}
-              className="px-1 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              {t("clearAll")}
-            </button>
-          </div>
-        )}
+          >
+            <Filter className="size-[15px] text-muted-foreground" />
+            <span className="hidden sm:inline">{t("filters")}</span>
+            {activeFilterCount > 0 && (
+              <span className="rounded-[5px] bg-selected-strong px-1 text-[11px] font-semibold tabular-nums text-primary">
+                {activeFilterCount}
+              </span>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            {/* Todo rótulo va adentro de su grupo: base-ui tira error si
+                un DropdownMenuLabel queda suelto (issue #336). */}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t("filterStatus")}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={filters.status ?? "any"}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    status: value === "open" || value === "pending" ? value : null,
+                  }))
+                }
+              >
+                <DropdownMenuRadioItem value="any">{t("filterStatusAny")}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="open">{t("filterOpen")}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="pending">{t("filterPending")}</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+            {tags.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("tags")}</DropdownMenuLabel>
+                  <div className="max-h-56 overflow-y-auto">
+                    {tags.map((tag) => (
+                      <DropdownMenuCheckboxItem
+                        key={tag.id}
+                        checked={filters.tagIds.includes(tag.id)}
+                        onCheckedChange={() => toggleTag(tag.id)}
+                        closeOnClick={false}
+                      >
+                        <span
+                          className="size-[11px] shrink-0 rounded-[3px]"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        <span className="truncate">{tag.name}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </div>
+                </DropdownMenuGroup>
+              </>
+            )}
+            {companies.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("company")}</DropdownMenuLabel>
+                  <div className="max-h-56 overflow-y-auto">
+                    <DropdownMenuRadioGroup
+                      value={filters.company ?? ""}
+                      onValueChange={(value) =>
+                        setFilters((prev) => ({ ...prev, company: value ? value : null }))
+                      }
+                    >
+                      <DropdownMenuRadioItem value="">{t("allCompanies")}</DropdownMenuRadioItem>
+                      {companies.map((co) => (
+                        <DropdownMenuRadioItem key={co} value={co}>
+                          <span className="truncate">{co}</span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </div>
+                </DropdownMenuGroup>
+              </>
+            )}
+            {activeFilterCount > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <button
+                  type="button"
+                  onClick={() => setFilters({ status: null, tagIds: [], company: null })}
+                  className="flex w-full items-center gap-2 px-4 py-[9px] text-left text-[13px] font-semibold text-primary hover:bg-hover"
+                >
+                  {t("clearAll")}
+                </button>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Conversation Items.
-          `min-h-0` is load-bearing: a flex child defaults to
+      {/* "N consultas sin tomar" (prototipo `.take`). */}
+      {onTakeNext && unassigned.length > 0 && (
+        <div className="mx-4 mb-2 flex shrink-0 items-center gap-3 rounded-xl bg-[color-mix(in_srgb,var(--pending)_10%,transparent)] py-2.5 pr-3 pl-3.5 text-pending">
+          <UserRoundCheck className="size-[18px] shrink-0" strokeWidth={1.8} />
+          <div className="min-w-0 flex-1">
+            <b className="block truncate text-[13.5px] font-semibold">
+              {t("takeNextTitle", { count: unassigned.length })}
+            </b>
+            <span className="block truncate text-xs">
+              {t("takeNextOldest", {
+                when: formatRelative(relativeTime(new Date(unassigned[0].created_at).getTime(), now), t),
+              })}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onTakeNext}
+            className="inline-flex h-[34px] shrink-0 items-center rounded-lg bg-unread px-3 text-[13px] font-semibold text-white transition-colors hover:bg-pending"
+          >
+            {t("takeNext")}
+          </button>
+        </div>
+      )}
+
+      {/* `min-h-0` is load-bearing: a flex child defaults to
           min-height:auto, so without it this ScrollArea grows to fit
           every conversation instead of shrinking to the remaining
-          space — the list then overflows and gets clipped by the
-          parent's overflow-hidden with no scrollbar (issue #229). */}
+          space (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
+        ) : emptyKind ? (
+          <EmptyState kind={emptyKind} query={selection.query} t={t} />
+        ) : sections ? (
+          <div className="flex flex-col pb-3">
+            {sections.unread.length > 0 && (
+              <>
+                <SectionHeader label={t("sectionUnread")} count={sections.unread.length} />
+                {sections.unread.map(renderRow)}
+              </>
+            )}
+            {sections.read.length > 0 && (
+              <>
+                <SectionHeader
+                  label={sections.unread.length > 0 ? t("sectionRead") : t("sectionConversations")}
+                  count={sections.read.length}
+                  className={sections.unread.length > 0 ? "mt-1.5" : undefined}
+                />
+                {sections.read.map(renderRow)}
+              </>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col">
-            {filtered.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={conv.id === activeConversationId}
-                onSelect={handleSelect}
-                showTagChips={sidebarCollapsed}
-                t={t}
-              />
-            ))}
-          </div>
+          <div className="flex flex-col pt-1 pb-3">{conversations.map(renderRow)}</div>
         )}
       </ScrollArea>
-
     </div>
   );
 }
 
-interface ConversationItemProps {
-  conversation: Conversation;
-  isActive: boolean;
-  onSelect: (conversation: Conversation) => void;
-  /**
-   * Con la barra lateral plegada la fila tiene ancho para pintar las
-   * etiquetas secundarias como chips con su nombre; sin plegar, apenas
-   * para un puntito por etiqueta.
-   */
-  showTagChips: boolean;
-  t: ReturnType<typeof useTranslations>;
+/** Prototipo `.sec`: rótulo de sección con su cantidad. */
+function SectionHeader({ label, count, className }: { label: string; count: number; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between px-5 pt-2.5 pb-1.5 text-[12.5px] font-semibold text-muted-foreground",
+        className,
+      )}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">{count}</span>
+    </div>
+  );
 }
 
-function ConversationItem({
-  conversation,
+function EmptyState({
+  kind,
+  query,
+  t,
+}: {
+  kind: "unassigned" | "inbox" | "search" | "view";
+  query: string;
+  t: Translator;
+}) {
+  const Icon =
+    kind === "unassigned" ? UserRoundCheck : kind === "inbox" ? MessagesSquare : kind === "search" ? Search : Inbox;
+  const title =
+    kind === "unassigned"
+      ? t("emptyUnassignedTitle")
+      : kind === "inbox"
+        ? t("emptyInboxTitle")
+        : kind === "search"
+          ? t("emptySearchTitle")
+          : t("emptyViewTitle");
+  const body =
+    kind === "unassigned"
+      ? t("emptyUnassignedBody")
+      : kind === "inbox"
+        ? t("emptyInboxBody")
+        : kind === "search"
+          ? t("emptySearchBody", { query: query.trim() })
+          : t("emptyViewBody");
+  return (
+    <div className="px-7 py-12 text-center text-sm leading-relaxed text-muted-foreground">
+      <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-selected text-primary">
+        <Icon className="size-[26px]" strokeWidth={1.8} />
+      </div>
+      <b className="mt-3 mb-1 block text-base font-semibold text-foreground">{title}</b>
+      {body}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Textos de tiempo: la lógica pura devuelve descriptores, acá se
+// traducen (es y en).
+// ------------------------------------------------------------
+
+function formatRelative(rel: RelativeTime, t: Translator): string {
+  switch (rel.kind) {
+    case "now":
+      return t("timeNow");
+    case "minutes":
+      return t("timeMinutes", { n: rel.n });
+    case "hours":
+      return t("timeHours", { n: rel.n });
+    case "yesterday":
+      return t("timeYesterday");
+    case "days":
+      return t("timeDays", { n: rel.n });
+    case "date":
+      return `${String(rel.day).padStart(2, "0")}/${String(rel.month).padStart(2, "0")}`;
+  }
+}
+
+function formatShortWhen(when: ShortWhen, t: Translator): string {
+  switch (when.kind) {
+    case "today":
+      return t("whenToday", { time: when.time });
+    case "tomorrow":
+      return t("whenTomorrow", { time: when.time });
+    case "other": {
+      const weekdays = t("weekdays").split(",");
+      return t("whenOther", {
+        weekday: weekdays[when.weekday] ?? "",
+        day: when.day,
+        time: when.time,
+      });
+    }
+  }
+}
+
+function formatDuration(d: DurationParts, t: Translator): string {
+  if (d.hours > 0 && d.minutes > 0) return t("durationHm", { h: d.hours, m: d.minutes });
+  if (d.hours > 0) return t("durationH", { h: d.hours });
+  return t("durationM", { m: d.minutes });
+}
+
+// ------------------------------------------------------------
+// Fila (prototipo `row()`): tres líneas.
+// ------------------------------------------------------------
+
+interface ConversationRowProps {
+  conversation: InboxConversation;
+  isActive: boolean;
+  onSelect: (conversation: Conversation) => void;
+  now: number;
+  /** Nombre del setter, "" si no se conoce, null si está sin tomar. */
+  setterName: string | null;
+  /** Barra lateral plegada: las etiquetas secundarias entran como chips; si no, puntitos. */
+  showTagChips: boolean;
+  t: Translator;
+}
+
+function ConversationRow({
+  conversation: conv,
   isActive,
   onSelect,
+  now,
+  setterName,
   showTagChips,
   t,
-}: ConversationItemProps) {
-  const contact = conversation.contact;
+}: ConversationRowProps) {
+  const contact = conv.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
-  const initials = displayName.charAt(0).toUpperCase();
-  // Etiquetas del contacto: la principal (la de estado, o la primera
-  // sin grupo si no tiene estado) se ve siempre entera; las que alguien
-  // puso a mano son chips o puntitos segun el ancho. Las del bot
-  // ('origen', 'senal') no entran en la lista — eso lo decide
-  // splitConversationTags. `contact.tags` viene hidratado por
-  // CONVERSATION_SELECT, asi que esto no cuesta una consulta.
-  const { principal, secundarias } = splitConversationTags(contact?.tags);
+  const [avatarBg, avatarInk] = avatarColors(displayName);
+  const unread = conv.unread_count > 0;
+
+  const activity = new Date(conv.last_message_at ?? conv.created_at).getTime();
+  const when = Number.isNaN(activity) ? "" : formatRelative(relativeTime(activity, now), t);
+
+  // Vista previa con "Vos:" / "Bot:" si el último mensaje es saliente.
+  const prefix =
+    conv.last_sender_type === "agent"
+      ? t("previewYou")
+      : conv.last_sender_type === "bot"
+        ? t("previewBot")
+        : null;
+  const preview = conv.last_message_text?.replace(/\s+/g, " ").trim();
+
+  // Tercera línea: estado, llamada, ventana, setter y etiquetas.
+  const group = conversationGroup(conv);
+  const call = scheduledCall(conv);
+  const windowChip = (() => {
+    if (isClosed(conv)) return null;
+    const w = windowState(conv.last_customer_message_at, now);
+    if (w.kind === "expiring") {
+      return (
+        <span className={cn(CHIP, "bg-warning-soft text-warning")}>
+          <Hourglass />
+          {t("windowExpiring", { duration: formatDuration(durationParts(w.remainingMs), t) })}
+        </span>
+      );
+    }
+    if (w.kind === "closed" && showsClosedWindow(conv)) {
+      return (
+        <span className={cn(CHIP, "border border-border bg-card text-sidebar-foreground")}>
+          <Lock />
+          {t("windowClosed")}
+        </span>
+      );
+    }
+    return null;
+  })();
+
+  // Etiquetas secundarias (las puestas a mano): chips o puntitos según el
+  // ancho; la de estado ya va como grupo del embudo.
+  const { secundarias } = splitConversationTags(contact?.tags);
   const { chips, extra } = visibleChips(secundarias);
 
   const handleClick = useCallback(() => {
-    onSelect(conversation);
-  }, [onSelect, conversation]);
-
-  const timeAgo = conversation.last_message_at
-    ? formatDistanceToNow(new Date(conversation.last_message_at), {
-        addSuffix: false,
-      })
-    : "";
+    onSelect(conv);
+  }, [onSelect, conv]);
 
   return (
     <button
+      type="button"
       onClick={handleClick}
+      aria-current={isActive ? "true" : undefined}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        "mx-2 flex w-[calc(100%-16px)] gap-3 rounded-xl px-3.5 py-[11px] text-left transition-colors hover:bg-hover",
+        isActive && "bg-selected hover:bg-selected",
       )}
     >
-      {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+      {/* Avatar (prototipo `av(name, 42)`). */}
+      <span
+        aria-hidden="true"
+        className="grid size-[42px] shrink-0 place-items-center overflow-hidden rounded-full text-[15px] font-semibold"
+        style={{ background: avatarBg, color: avatarInk }}
+      >
         {contact?.avatar_url ? (
-          <img
-            src={contact.avatar_url}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={contact.avatar_url} alt="" className="size-full object-cover" />
         ) : (
-          initials
+          initialsOf(displayName)
         )}
-      </div>
+      </span>
 
-      {/* Content */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-sm font-medium text-foreground">
-              {displayName}
+        {/* Línea 1: nombre y hora relativa. */}
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-[15px] text-foreground",
+              unread ? "font-bold" : "font-medium",
+            )}
+          >
+            {displayName}
+          </span>
+          <span
+            className={cn(
+              "shrink-0 text-[12.5px] tabular-nums",
+              unread ? "font-semibold text-primary" : "text-muted-foreground",
+            )}
+          >
+            {when}
+          </span>
+        </div>
+
+        {/* Línea 2: vista previa y no leídos. */}
+        <div className="mt-0.5 flex items-center gap-2">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-[13.5px]",
+              unread ? "text-foreground" : "text-sidebar-foreground",
+            )}
+          >
+            {preview ? (
+              <>
+                {prefix && <b className="font-medium text-muted-foreground">{prefix} </b>}
+                {preview}
+              </>
+            ) : (
+              <span className="text-muted-foreground">{t("noMessagesYet")}</span>
+            )}
+          </span>
+          {unread && (
+            <span
+              aria-label={t("unreadCount", { count: conv.unread_count })}
+              className="grid h-5 min-w-5 shrink-0 place-items-center rounded-[5px] bg-unread px-1.5 text-xs font-bold tabular-nums text-white"
+            >
+              {conv.unread_count}
             </span>
-            {principal && (
-              // Chip chico y acotado (max-w) para que el nombre no
-              // desaparezca en pantallas angostas.
+          )}
+        </div>
+
+        {/* Línea 3: estado, llamada, ventana, setter y etiquetas. */}
+        <div className="mt-[7px] flex flex-wrap items-center gap-1.5">
+          {group && (
+            <span
+              className={CHIP}
+              style={{ color: groupColor(group), background: tagTint(groupColor(group)) }}
+            >
+              {group}
+            </span>
+          )}
+          {call && (
+            <span className={cn(CHIP, "bg-selected-strong text-primary")}>
+              <CalendarClock />
+              {call.closer
+                ? t("callChip", { closer: call.closer, when: formatShortWhen(shortWhen(call.at, now), t) })
+                : formatShortWhen(shortWhen(call.at, now), t)}
+            </span>
+          )}
+          {windowChip}
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            {setterName === null ? (
               <span
-                className="max-w-24 shrink-0 truncate rounded-full px-1.5 py-px text-[9px] font-semibold leading-4 text-white"
-                style={{ backgroundColor: principal.color }}
-                title={principal.name}
+                title={t("unassigned")}
+                aria-label={t("unassigned")}
+                className="grid size-[22px] place-items-center rounded-full border-[1.5px] border-dashed border-[#9AA6B8] text-[#7A8699]"
               >
-                {principal.name}
+                <User className="size-3" />
+              </span>
+            ) : (
+              <span
+                title={t("setter", { name: setterName })}
+                aria-label={t("setter", { name: setterName })}
+                className="grid size-[22px] place-items-center rounded-full text-[8px] font-semibold"
+                style={{
+                  background: avatarColors(setterName || "?")[0],
+                  color: avatarColors(setterName || "?")[1],
+                }}
+              >
+                {initialsOf(setterName || "?")}
               </span>
             )}
-            {!showTagChips && secundarias.length > 0 && (
-              // Barra abierta: no hay ancho para los nombres, asi que
-              // cada etiqueta sin grupo es un punto de 8px de su color.
-              // Sin tope, pero acotados en ancho: del sexto en adelante
-              // bajan a un segundo renglon en vez de comerse el nombre
-              // del contacto, que es lo que se busca al mirar la lista.
+          </span>
+          {/* Etiquetas secundarias al final de la línea. */}
+          {secundarias.length > 0 &&
+            (showTagChips ? (
+              <>
+                {chips.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className={cn(CHIP, "max-w-32 truncate")}
+                    style={{ backgroundColor: tagTint(tag.color), color: tag.color }}
+                    title={tag.name}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+                {extra > 0 && (
+                  <span
+                    className={cn(CHIP, "bg-neutral-soft text-neutral")}
+                    title={secundarias.slice(chips.length).map((tag) => tag.name).join(", ")}
+                  >
+                    +{extra}
+                  </span>
+                )}
+              </>
+            ) : (
               <span className="flex max-w-24 shrink-0 flex-wrap items-center gap-1">
                 {secundarias.map((tag) => (
                   <span
                     key={tag.id}
-                    className="h-2 w-2 rounded-full"
+                    className="size-2 rounded-full"
                     style={{ backgroundColor: tag.color }}
                     title={tag.name}
                     aria-label={tag.name}
                   />
                 ))}
               </span>
-            )}
-          </div>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {conversation.last_message_text || t("noMessagesYet")}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {conversation.unread_count}
-              </span>
-            )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
-          </div>
-        </div>
-
-        {/* Barra plegada: las secundarias van enteras, en su propio
-            renglon. Abajo del preview y no al lado del nombre para no
-            comerse el nombre cuando el contacto tiene varias. El
-            renglon solo existe si hay etiquetas, asi que las filas sin
-            etiqueta miden lo mismo que siempre. */}
-        {showTagChips && secundarias.length > 0 && (
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {chips.map((tag) => (
-              <span
-                key={tag.id}
-                className="max-w-32 truncate rounded-full px-1.5 py-px text-[9px] font-medium leading-4"
-                style={{
-                  backgroundColor: tagTint(tag.color),
-                  color: tag.color,
-                }}
-                title={tag.name}
-              >
-                {tag.name}
-              </span>
             ))}
-            {extra > 0 && (
-              <span
-                className="rounded-full bg-muted px-1.5 py-px text-[9px] font-medium leading-4 text-muted-foreground"
-                title={secundarias
-                  .slice(chips.length)
-                  .map((tag) => tag.name)
-                  .join(", ")}
-              >
-                +{extra}
-              </span>
-            )}
-          </div>
-        )}
+        </div>
       </div>
     </button>
   );
