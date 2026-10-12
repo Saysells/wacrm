@@ -1160,6 +1160,12 @@ Variables de **servidor**, nunca `NEXT_PUBLIC_`:
   el pie "apps.saysells.com" del prototipo (no estaba en el pedido).
 - `ko.json` se mantuvo en paridad de claves con `en.json`: lo exige
   `src/i18n/messages.test.ts`.
+- **Arreglo 2026-10-12**: el selector tiraba la página entera en USA
+  porque su `DropdownMenuLabel` iba suelto; es el `Menu.GroupLabel` de
+  base-ui y **siempre va adentro de un `DropdownMenuGroup`** (mismo
+  caso del issue #336; igual `SelectLabel` dentro de `SelectGroup`).
+  `src/components/ui/menu-label-grouping.test.ts` recorre los `.tsx`
+  de `src/` y falla si vuelve a pasar.
 - **Nada se vio en un navegador**: verificado typecheck, lint (0
   errores, 40 warnings de base), tests (los 3 rojos de
   `currency.test.ts` ya estaban), validador de mensajes y build.

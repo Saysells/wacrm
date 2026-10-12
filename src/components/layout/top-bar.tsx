@@ -48,6 +48,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -202,6 +203,11 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
             <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[370px] max-w-[calc(100vw-24px)]">
+            {/* DropdownMenuGroup es OBLIGATORIO: DropdownMenuLabel es el
+                Menu.GroupLabel de base-ui y tira error al renderizarse sin
+                un Menu.Group arriba; suelto, abrir el selector tiraba la
+                página entera (mismo caso del issue #336). */}
+            <DropdownMenuGroup>
             <DropdownMenuLabel>{t("inboxesHeading")}</DropdownMenuLabel>
             {selector.bandejas.map((bandeja) => {
               const current = isCurrentBandeja(bandeja, currentHost);
@@ -232,6 +238,7 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
                 </DropdownMenuItem>
               );
             })}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
