@@ -8,11 +8,13 @@ import {
   CheckCheck,
   XCircle,
   MapPin,
-  LayoutTemplate,
+  FileText,
+  Bot,
   CornerDownLeft,
   Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
+import { outgoingLabel } from "@/lib/inbox/thread";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
 import {
@@ -40,18 +42,21 @@ interface MessageBubbleProps {
   onOpenMedia?: (messageId: string) => void;
 }
 
+// Tildes de 14 px dentro de la burbuja navy (prototipo `.bb .mt svg`):
+// toman la misma tinta blanca al 70 % que la hora; el leído sube a
+// celeste y el fallido a un rojo claro que lea sobre el navy.
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="size-3.5" />;
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return <Check className="size-3.5" />;
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return <CheckCheck className="size-3.5" />;
     case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
+      return <CheckCheck className="size-3.5 text-sky-300" />;
     case "failed":
-      return <XCircle className="h-3 w-3 text-red-400" />;
+      return <XCircle className="size-3.5 text-red-300" />;
     default:
       return null;
   }
@@ -60,13 +65,10 @@ function StatusIcon({ status }: { status: Message["status"] }) {
 function MessageContent({
   message,
   t,
-  isAgent,
   onOpenMedia,
 }: {
   message: Message;
   t: ReturnType<typeof useTranslations>;
-  /** Outbound bubbles sit on the primary fill — badges must invert. */
-  isAgent: boolean;
   onOpenMedia?: (messageId: string) => void;
 }) {
   // Passed to the media bubbles as a no-arg callback; `undefined` when the
@@ -76,7 +78,7 @@ function MessageContent({
   switch (message.content_type) {
     case "text":
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap break-words">
           {message.content_text}
         </p>
       );
@@ -90,7 +92,7 @@ function MessageContent({
             <MediaUnavailable label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap break-words">
               {message.content_text}
             </p>
           )}
@@ -106,7 +108,7 @@ function MessageContent({
             <MediaUnavailable label={t("video")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap break-words">
               {message.content_text}
             </p>
           )}
@@ -131,43 +133,19 @@ function MessageContent({
       return <MediaDocumentBubble message={message} t={t} />;
 
     case "template":
-      // Templates are almost always outbound, where the bubble fill IS
-      // `primary` — so the old `bg-primary/20 text-primary` chip was
-      // primary-on-primary and invisible. Paired with a null
-      // content_text (issue #483) that rendered a bubble with nothing
-      // in it at all. Invert on the primary fill, and fall back to the
-      // template's name when we have no stored body (legacy rows sent
-      // before the fix).
-      return (
-        <div>
-          <span
-            className={cn(
-              "mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
-              isAgent
-                ? "bg-primary-foreground/20 text-primary-foreground"
-                : "bg-primary/20 text-primary",
-            )}
-          >
-            <LayoutTemplate className="h-3 w-3" />
-            {t("template")}
-          </span>
-          {message.content_text ? (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
-          ) : (
-            message.template_name && (
-              <p className="mt-1 break-words text-sm italic opacity-80">
-                {message.template_name}
-              </p>
-            )
-          )}
-        </div>
-      );
+      // El rotulo "Plantilla · nombre" va ARRIBA de la burbuja (sesion C,
+      // prototipo `.lab`), no adentro. Aca queda el cuerpo renderizado, o
+      // el nombre de la plantilla en cursiva para las filas viejas que se
+      // guardaron sin cuerpo (issue #483).
+      return message.content_text ? (
+        <p className="whitespace-pre-wrap break-words">{message.content_text}</p>
+      ) : message.template_name ? (
+        <p className="break-words italic opacity-80">{message.template_name}</p>
+      ) : null;
 
     case "location":
       return (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span>{message.content_text || t("locationShared")}</span>
         </div>
@@ -193,14 +171,14 @@ function MessageContent({
               <CornerDownLeft className="h-3 w-3" />
               {t("buttonReply")}
             </span>
-            <p className="whitespace-pre-wrap break-words text-sm">
+            <p className="whitespace-pre-wrap break-words">
               {message.content_text || t("interactiveReply")}
             </p>
           </div>
         );
       }
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap break-words">
           {message.content_text || t("interactiveReply")}
         </p>
       );
@@ -208,7 +186,7 @@ function MessageContent({
 
     default:
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap break-words">
           {message.content_text || t("unsupported")}
         </p>
       );
@@ -227,9 +205,13 @@ export function MessageBubble({
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
+  const label = outgoingLabel(message);
 
-  // Row alignment + width cap are owned by <MessageActions> so its hover
-  // group matches the bubble's content area, not the full row.
+  // Burbuja del prototipo (`.bb`): 70 % de ancho como maximo (lo pone
+  // <MessageActions>), 14.5 px, radio 20 px con la esquina de abajo
+  // recortada hacia su lado; la entrante gris, la saliente navy con la
+  // hora y las tildes adentro. El rotulo "Bot" / "Plantilla · nombre"
+  // (`.lab`) va arriba, pegado al borde derecho.
   return (
     <div
       className={cn(
@@ -237,12 +219,29 @@ export function MessageBubble({
         isAgent ? "items-end" : "items-start",
       )}
     >
+      {label && (
+        <div className="mb-1 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+          {label.kind === "bot" ? (
+            <>
+              <Bot className="size-[13px]" />
+              {t("labelBot")}
+            </>
+          ) : (
+            <>
+              <FileText className="size-[13px]" />
+              {label.name
+                ? t("labelTemplate", { name: label.name })
+                : t("labelTemplateNoName")}
+            </>
+          )}
+        </div>
+      )}
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative rounded-[20px] px-3.5 pb-[7px] pt-[9px] text-[14.5px] leading-[1.42]",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            : "rounded-bl-md bg-bubble-in text-foreground",
         )}
       >
         {reply && (
@@ -252,16 +251,11 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent
-          message={message}
-          t={t}
-          isAgent={isAgent}
-          onOpenMedia={onOpenMedia}
-        />
+        <MessageContent message={message} t={t} onOpenMedia={onOpenMedia} />
         <div
           className={cn(
-            "mt-1 flex items-center gap-1",
-            isAgent ? "justify-end" : "justify-start",
+            "mt-0.5 flex items-center justify-end gap-1 text-[11.5px]",
+            isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
           )}
         >
           {/* AI badge — only on replies the auto-reply bot generated
@@ -270,25 +264,14 @@ export function MessageBubble({
               glance. */}
           {message.ai_generated && (
             <span
-              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+              className="inline-flex items-center gap-0.5 rounded-[5px] bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
               title={t("aiBadgeTitle")}
             >
-              <Sparkles className="h-2.5 w-2.5" />
+              <Sparkles className="size-2.5" />
               {t("aiBadge")}
             </span>
           )}
-          <span
-            className={cn(
-              "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
-              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
-            )}
-          >
-            {time}
-          </span>
+          <span>{time}</span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
       </div>

@@ -163,7 +163,7 @@ export function AiThreadBanner({
   return (
     <Banner tone="primary">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
+        <Sparkles className="size-4 flex-shrink-0 text-primary" />
         <span className="truncate font-medium text-foreground">
           {t("activeText")}
         </span>
@@ -185,10 +185,10 @@ function Banner({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-b px-3 py-2 text-xs sm:px-4",
-        tone === "primary"
-          ? "border-primary/20 bg-primary/5"
-          : "border-border bg-muted/40",
+        // Rediseno (sesion C): franja plana del sistema de diseno, celeste
+        // suave cuando el bot esta activo y gris cuando esta pausado.
+        "flex items-center gap-3 border-b border-border px-4 py-2 text-[13px] sm:px-6",
+        tone === "primary" ? "bg-selected" : "bg-muted",
       )}
     >
       {children}
@@ -212,12 +212,12 @@ function BannerButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+      className="inline-flex h-[34px] flex-shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
     >
       {busy ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <Loader2 className="size-4 animate-spin" />
       ) : (
-        <Icon className="h-3 w-3" />
+        <Icon className="size-4" />
       )}
       {children}
     </button>

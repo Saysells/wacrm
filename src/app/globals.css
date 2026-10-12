@@ -70,6 +70,9 @@
   --color-info-soft: var(--info-soft);
   --color-neutral: var(--neutral);
   --color-neutral-soft: var(--neutral-soft);
+  /* Rediseno (sesion C): fondo de la burbuja ENTRANTE del hilo
+   * (prototipo `--in`). La saliente es `--primary`. */
+  --color-bubble-in: var(--bubble-in);
   --shadow-menu: var(--shadow-menu);
   --shadow-card: var(--shadow-card);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -166,6 +169,7 @@ html[data-mode="dark"] {
   --info-soft: oklch(0.471 0.14 259.3 / 0.2);
   --neutral: oklch(0.8 0.02 260);
   --neutral-soft: oklch(0.5 0.04 262 / 0.22);
+  --bubble-in: oklch(0.25 0.01 260);
   --shadow-menu: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -218,6 +222,7 @@ html[data-mode="light"] {
   --info-soft: oklch(0.942 0.019 252.9); /* #E3EDF9 */
   --neutral: oklch(0.408 0.051 262.5); /* #3B4A66 */
   --neutral-soft: oklch(0.95 0.01 252.8); /* #EAEFF5 */
+  --bubble-in: oklch(0.963 0.007 253.4); /* #F0F3F7 */
   --shadow-menu: 0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 8px rgba(16, 24, 40, 0.08);
   --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
 }

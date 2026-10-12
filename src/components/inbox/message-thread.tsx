@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useNow } from "@/hooks/use-now";
 import { usePresence } from "@/hooks/use-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
+  ContactNote,
   Message,
   MessageReaction,
   Contact,
@@ -18,27 +20,33 @@ import type {
   InteractiveMessagePayload,
 } from "@/types";
 import {
-  MessageSquare,
-  ChevronDown,
-  UserPlus,
-  Check,
-  Clock,
   ArrowLeft,
-  RefreshCw,
-  PanelRightOpen,
+  Check,
+  CircleCheck,
+  Copy,
+  Ellipsis,
+  MessagesSquare,
   PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  RotateCcw,
+  StickyNote,
+  UserPlus,
 } from "lucide-react";
-import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
 import { MediaLightbox } from "./media-lightbox";
@@ -49,11 +57,35 @@ import {
   type SendMediaPayload,
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
-import { TemplatePicker } from "./template-picker";
+import { TemplatePicker, type TemplateSendValues } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
+import { avatarColors, initialsOf, windowState } from "@/lib/inbox/vistas";
+import {
+  buildTimeline,
+  lastCustomerMessageAt,
+  type DayLabel,
+} from "@/lib/inbox/thread";
 import { toast } from "sonner";
+
+// ============================================================
+// Hilo de la Bandeja de escritorio (rediseño, sesión C).
+//
+// Prototipo `thread()`: encabezado de 72 px (avatar, nombre, empresa y
+// teléfono; a la derecha la acción principal, cerrar y "Más"), los
+// mensajes sobre fondo blanco con separadores de día y las notas
+// internas intercaladas, y abajo el cuadro de mensaje (composer).
+//
+// La lógica no cambió: los mensajes se piden y se mandan como antes
+// (`/api/whatsapp/send`), las reacciones tienen su canal, el estado y
+// la asignación son los mismos UPDATE de `conversations`. Lo que se
+// movió: la ventana de 24 h ya no es un badge de horas enteras en el
+// encabezado sino el indicador vivo del cuadro (`windowState` +
+// `useNow`, la misma regla que la lista), y pasar a abierta /
+// pendiente, asignar, actualizar y copiar el teléfono viven en el menú
+// "Más" hasta que la sesión D lleve la asignación a la ficha.
+// ============================================================
 
 interface ReplyDraft {
   id: string;
@@ -89,11 +121,11 @@ interface MessageThreadProps {
    */
   resyncToken?: number;
   /**
-   * Fired by the manual-refresh button in the thread header. The parent
-   * typically bumps the same `resyncToken` it controls — this gives the
-   * user a way to force a refetch when they suspect realtime missed an
-   * event (or they're impatient). Optional so existing callers keep
-   * working; the button is only rendered when this is provided.
+   * Fired by "Actualizar" in the "Más" menu. The parent typically bumps
+   * the same `resyncToken` it controls — this gives the user a way to
+   * force a refetch when they suspect realtime missed an event. Optional
+   * so existing callers keep working; the entry is only rendered when
+   * this is provided.
    */
   onRefresh?: () => void;
   /**
@@ -107,47 +139,30 @@ interface MessageThreadProps {
   onToggleContactPanel?: () => void;
 }
 
-function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
-  const date = new Date(dateStr);
-  if (isToday(date)) return t("today");
-  if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
-}
+type Translator = ReturnType<typeof useTranslations>;
 
-function groupMessagesByDate(messages: Message[]) {
-  const groups: { date: string; messages: Message[] }[] = [];
-  let currentDate = "";
+/** Botón redondo de 40 px del prototipo (`.ib`). */
+const ICON_BUTTON_CLASS =
+  "inline-flex size-10 shrink-0 items-center justify-center rounded-full text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:opacity-50 [&_svg]:size-5";
 
-  for (const msg of messages) {
-    const day = format(new Date(msg.created_at), "yyyy-MM-dd");
-    if (day !== currentDate) {
-      currentDate = day;
-      groups.push({ date: msg.created_at, messages: [msg] });
-    } else {
-      groups[groups.length - 1].messages.push(msg);
+function formatDayLabel(label: DayLabel, t: Translator): string {
+  switch (label.kind) {
+    case "today":
+      return t("today");
+    case "yesterday":
+      return t("yesterday");
+    case "date": {
+      const weekdays = t("weekdaysLong").split(",");
+      const months = t("months").split(",");
+      const weekday = weekdays[label.weekday] ?? "";
+      const month = months[label.month] ?? "";
+      const text = label.sameYear
+        ? t("dayDate", { weekday, day: label.day, month })
+        : t("dayDateYear", { weekday, day: label.day, month, year: label.year });
+      return text.charAt(0).toUpperCase() + text.slice(1);
     }
   }
-
-  return groups;
 }
-
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
-];
-
-/**
- * WhatsApp-style doodle background applied to the chat area (both the
- * active thread and the empty state). The SVG tile lives at
- * `/public/inbox-doodle.svg`; the slate-950 colour sits underneath so
- * the doodles read as a subtle pattern rather than a stark grid.
- *
- * Defined once at module scope so the two render paths can't drift —
- * if we ever switch the asset, both spots update together.
- */
-const DOODLE_BG_CLASSES =
-  "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
 export function MessageThread({
   conversation,
@@ -165,38 +180,22 @@ export function MessageThread({
   onToggleContactPanel,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
-  const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user } = useAuth();
-  const { getPresence, getRow, now } = usePresence();
+  const { getPresence, getRow, now: presenceNow } = usePresence();
+  const now = useNow();
   const [loading, setLoading] = useState(false);
+  // Conversación cuyos mensajes ya se cargaron: hasta que coincide con
+  // la abierta, la ventana es "desconocida" y el cuadro no decide entre
+  // texto y plantillas (evita que el panel de plantillas parpadee un
+  // instante al cambiar de hilo, cuando `messages` todavía está vacío).
+  const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
-  // Purely visual spin state for the manual-refresh button. The actual
-  // refetch is fire-and-forget through `onRefresh` (which bumps the
-  // parent's resyncToken); the 700ms spin is just feedback so the click
-  // doesn't feel like a no-op. Cleared via the timer ref on unmount.
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-      }
-    };
-  }, []);
-  const handleRefreshClick = useCallback(() => {
-    if (isRefreshing || !onRefresh) return;
-    setIsRefreshing(true);
-    onRefresh();
-    refreshTimerRef.current = setTimeout(() => {
-      setIsRefreshing(false);
-      refreshTimerRef.current = null;
-    }, 700);
-  }, [isRefreshing, onRefresh]);
+  const [notes, setNotes] = useState<ContactNote[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   // Which attachment the media viewer is showing. Lives here rather than in
   // the bubble so the viewer can page through every image/video in the
@@ -209,8 +208,8 @@ export function MessageThread({
   } | null>(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — today that's just the current user, but the dropdown keeps the
-  // shape ready for shared-team workspaces without a refactor.
+  // see — the account's members. They name the assignee in "Más" and the
+  // author of each internal note.
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
@@ -231,33 +230,6 @@ export function MessageThread({
     };
   }, []);
 
-  // 24-hour session timer
-  const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
-
-    // Find last customer message
-    const lastCustomerMsg = [...messages]
-      .reverse()
-      .find((m) => m.sender_type === "customer");
-
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
-
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
-    const expired = hoursSince >= 24;
-
-    if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
-    }
-
-    const hoursLeft = 24 - hoursSince;
-    const remaining =
-      hoursLeft >= 1
-        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
-        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
-
-    return { expired, remaining };
-  }, [messages, tTimer]);
-
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
   // fetchMessages to change → useEffect re-fires → refetch → realtime
@@ -271,6 +243,7 @@ export function MessageThread({
   });
 
   const conversationId = conversation?.id;
+  const contactId = contact?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
   const mediaMessageId =
@@ -311,6 +284,7 @@ export function MessageThread({
         console.error("Failed to fetch messages:", error);
       } else {
         onMessagesLoadedRef.current(data ?? []);
+        setLoadedConversationId(conversationId);
       }
 
       if (!cancelled) setLoading(false);
@@ -324,6 +298,35 @@ export function MessageThread({
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
   }, [conversationId, resyncToken]);
+
+  // Notas internas del contacto (`contact_notes`): las mismas que lista
+  // la ficha, intercaladas en el hilo por fecha. Se releen con el hilo
+  // (cambio de contacto o `resyncToken`); una nota que otra persona
+  // agrega mientras tanto aparece al actualizar.
+  useEffect(() => {
+    if (!contactId) {
+      setNotes([]);
+      return;
+    }
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("contact_notes")
+        .select("*")
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to fetch contact notes:", error);
+        return;
+      }
+      setNotes((data as ContactNote[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId, resyncToken]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -455,13 +458,13 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages (and new notes).
   useEffect(() => {
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, notes]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -500,7 +503,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -512,12 +515,12 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "sent" });
       } catch (err) {
         console.error("Failed to send message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [conversation, onNewMessage, onUpdateMessage, t]
   );
 
   const handleSendMedia = useCallback(
@@ -566,7 +569,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
@@ -577,13 +580,13 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "sent" });
       } catch (err) {
         console.error("Failed to send media:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, t],
   );
 
   const handleSendInteractive = useCallback(
@@ -623,7 +626,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -631,42 +634,71 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "sent" });
       } catch (err) {
         console.error("Failed to send interactive message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, t],
   );
 
+  // Estado de la conversación: el mismo UPDATE de siempre. Cerrar y
+  // reabrir son los dos botones del encabezado; abierta / pendiente
+  // quedaron en "Más". Devuelve si la base aceptó el cambio.
   const handleStatusChange = useCallback(
-    async (status: ConversationStatus) => {
-      if (!conversation) return;
+    async (status: ConversationStatus): Promise<boolean> => {
+      if (!conversation) return false;
 
       const supabase = createClient();
-      await supabase
+      const { error } = await supabase
         .from("conversations")
         .update({ status })
         .eq("id", conversation.id);
+      if (error) {
+        console.error("Failed to update conversation status:", error);
+        toast.error(t("statusUpdateFailed"));
+        return false;
+      }
 
       onStatusChange(conversation.id, status);
+      return true;
     },
-    [conversation, onStatusChange]
+    [conversation, onStatusChange, t]
   );
+
+  const handleCloseConversation = useCallback(async () => {
+    if (!(await handleStatusChange("closed"))) return;
+    toast(t("closed"), {
+      action: {
+        label: t("undo"),
+        onClick: () => {
+          void handleStatusChange("open");
+        },
+      },
+    });
+  }, [handleStatusChange, t]);
+
+  const handleReopenConversation = useCallback(async () => {
+    if (!(await handleStatusChange("open"))) return;
+    toast(t("reopened"));
+  }, [handleStatusChange, t]);
+
+  const handleCopyPhone = useCallback(async () => {
+    if (!contact?.phone) return;
+    try {
+      await navigator.clipboard.writeText(contact.phone);
+      toast.success(t("phoneCopied"));
+    } catch {
+      toast.error(t("copyFailed"));
+    }
+  }, [contact?.phone, t]);
 
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
   }, []);
 
   const handleSendTemplate = useCallback(
-    async (
-      template: MessageTemplate,
-      values: {
-        body: string[];
-        headerText?: string;
-        buttonParams?: Record<number, string>;
-      },
-    ) => {
+    async (template: MessageTemplate, values: TemplateSendValues) => {
       if (!conversation) return;
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
@@ -712,7 +744,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
-          toast.error(`Failed to send template: ${reason}`);
+          toast.error(t("sendTemplateFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -720,12 +752,12 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "sent" });
       } catch (err) {
         console.error("Failed to send template:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send template: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendTemplateFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, t],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -751,17 +783,37 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName = contact?.name || contact?.phone || "Customer";
+  // Nombre por user_id para el autor de cada nota y el asignado.
+  const namesByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of profiles) map.set(p.user_id, p.full_name);
+    return map;
+  }, [profiles]);
 
-  // Author label for a quoted message: "You" when we sent the parent,
+  // Mensajes y notas intercalados con sus separadores de día. `now`
+  // entra para que "Hoy" pase a "Ayer" solo, a medianoche.
+  const timeline = useMemo(
+    () => buildTimeline(messages, notes, now),
+    [messages, notes, now],
+  );
+
+  // Ventana de 24 h: la misma regla que la lista (`windowState`) sobre el
+  // último mensaje del cliente del hilo cargado. Desconocida (null)
+  // hasta que los mensajes de ESTA conversación terminaron de cargar.
+  const windowReady = !!conversationId && loadedConversationId === conversationId && !loading;
+  const win = windowReady ? windowState(lastCustomerMessageAt(messages), now) : null;
+
+  const contactDisplayName = contact?.name || contact?.phone || t("unknownContact");
+
+  // Author label for a quoted message: "Vos" when we sent the parent,
   // contact name when the customer sent it.
   const authorLabelFor = useCallback(
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      return isAgentMsg ? t("you") : contactDisplayName;
     },
-    [contactDisplayName],
+    [contactDisplayName, t],
   );
 
   const handleStartReply = useCallback(
@@ -772,7 +824,7 @@ export function MessageThread({
         preview: buildReplyPreview(msg, tQuote),
       });
     },
-    [authorLabelFor],
+    [authorLabelFor, tQuote],
   );
 
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
@@ -786,7 +838,7 @@ export function MessageThread({
         return;
       }
       if (messageId.startsWith("temp-")) {
-        toast.error("Wait for the message to finish sending");
+        toast.error(t("waitForSend"));
         return;
       }
 
@@ -831,12 +883,12 @@ export function MessageThread({
           throw new Error(payload?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Reaction failed: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("reactionFailed", { reason }));
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id],
+    [conversation, user?.id, t],
   );
 
   const handleAssignChange = useCallback(
@@ -851,44 +903,37 @@ export function MessageThread({
 
       if (error) {
         console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
+        toast.error(t("assignFailed"));
         return;
       }
 
       onAssignChange(conversation.id, agentId);
     },
-    [conversation, onAssignChange],
+    [conversation, onAssignChange, t],
   );
 
-  // Empty state — same WhatsApp-style doodle background as the active
-  // thread below, so swapping between empty/selected doesn't change the
-  // pattern under the user's eye.
+  // Vacío del prototipo (`.nosel`), sin la línea de J y K: los atajos
+  // son de la sesión E.
   if (!conversation || !contact) {
     return (
-      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <MessageSquare className="h-8 w-8 text-muted-foreground" />
+      <div className="flex flex-1 items-center justify-center bg-card">
+        <div className="px-7 py-12 text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-selected text-primary">
+            <MessagesSquare className="size-[26px]" strokeWidth={1.8} />
+          </div>
+          <b className="mt-3 block text-base font-semibold text-foreground">
+            {t("selectConversation")}
+          </b>
         </div>
-        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
-          {t("selectConversation")}
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("selectConversationHint")}
-        </p>
       </div>
     );
   }
 
   const displayName = contact.name || contact.phone;
-  const messageGroups = groupMessagesByDate(messages);
-  const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
-  );
+  const [avatarBg, avatarInk] = avatarColors(displayName);
+  const isClosed = conversation.status === "closed";
   const assignedAgentId = conversation.assigned_agent_id ?? null;
-  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
-  const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
+  const subtitle = contact.company ? `${contact.company} · ${contact.phone}` : contact.phone;
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -899,50 +944,39 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
-      {/* Header — solid card surface sits on top of the doodle so the
-          name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          {/* Back-to-list button — mobile only. Hidden on lg+ where the
-              conversation list is always visible next to the thread. */}
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
-          {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
-          <Badge
-            variant="outline"
-            className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
-            )}
+    <div className="flex min-w-0 flex-1 flex-col bg-card">
+      {/* Encabezado (prototipo `.th`): 72 px, avatar de 42, nombre de
+          17 px y "empresa · teléfono" debajo; a la derecha la acción
+          principal (Agendar llamada es de la sesión D; hoy solo
+          "Reabrir" cuando está cerrada), cerrar y "Más". */}
+      <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-border px-3 sm:px-4 sm:pl-6">
+        {/* Back-to-list button — mobile only. Hidden on lg+ where the
+            conversation list is always visible next to the thread. */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label={t("backToConversations")}
+            className={cn(ICON_BUTTON_CLASS, "-ml-1 lg:hidden")}
           >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
+            <ArrowLeft />
+          </button>
+        )}
+        <div
+          className="grid size-[42px] shrink-0 place-items-center rounded-full text-[15px] font-semibold"
+          style={{ background: avatarBg, color: avatarInk }}
+        >
+          {initialsOf(displayName)}
+        </div>
+        <div className="min-w-0">
+          <b className="block truncate text-[17px] font-semibold text-foreground">{displayName}</b>
+          <span className="block truncate text-[13px] text-muted-foreground">{subtitle}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* Contact-panel toggle — desktop only. Lets agents reclaim the
+              sidebar's width when they just want to read and reply.
+              Issue #258. */}
           {onToggleContactPanel && (
             <button
               type="button"
@@ -953,207 +987,130 @@ export function MessageThread({
               title={contactPanelOpen ? t("hideContact") : t("showContact")}
               aria-pressed={contactPanelOpen}
               className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
+                ICON_BUTTON_CLASS,
+                "hidden lg:inline-flex",
+                contactPanelOpen && "text-primary",
               )}
             >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
+              {contactPanelOpen ? <PanelRightClose /> : <PanelRightOpen />}
             </button>
           )}
 
-          {/* Manual refresh — forces a refetch of the messages + the
-              conversation list (the parent bumps its resyncToken). Useful
-              when realtime missed an event or the agent just wants to be
-              sure nothing's stale. Only rendered when the parent wires
-              up `onRefresh`. */}
-          {onRefresh && (
+          {isClosed ? (
+            <Button variant="outline" onClick={handleReopenConversation}>
+              <RotateCcw />
+              {t("reopen")}
+            </Button>
+          ) : (
             <button
               type="button"
-              onClick={handleRefreshClick}
-              disabled={isRefreshing}
-              aria-label={t("refreshConversation")}
-              title={t("refresh")}
-              className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
-              )}
+              onClick={handleCloseConversation}
+              aria-label={t("close")}
+              title={t("close")}
+              className={ICON_BUTTON_CLASS}
             >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
-              />
+              <CircleCheck />
             </button>
           )}
 
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
-                >
-                  {t(`status${opt.label}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Assign dropdown */}
+          {/* "Más": lo que no es la acción principal. Pasar a abierta /
+              pendiente, asignar y actualizar esperan acá a que la
+              sesión D lleve la asignación a la ficha. */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
-              )}
+              aria-label={t("more")}
+              title={t("more")}
+              className={cn(ICON_BUTTON_CLASS, "aria-expanded:bg-selected-strong aria-expanded:text-primary")}
             >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
+              <Ellipsis />
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
+            <DropdownMenuContent align="end" className="w-[240px]">
+              {/* DropdownMenuGroup es OBLIGATORIO alrededor de cada
+                  DropdownMenuLabel (Menu.GroupLabel de base-ui; issue
+                  #336). */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{t("menuConversation")}</DropdownMenuLabel>
+                <DropdownMenuItem
+                  disabled={conversation.status === "open"}
+                  onClick={() => void handleStatusChange("open")}
+                >
+                  {t("markOpen")}
+                  {conversation.status === "open" && <Check className="ml-auto text-muted-foreground" />}
                 </DropdownMenuItem>
-              ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
+                <DropdownMenuItem
+                  disabled={conversation.status === "pending"}
+                  onClick={() => void handleStatusChange("pending")}
+                >
+                  {t("markPending")}
+                  {conversation.status === "pending" && <Check className="ml-auto text-muted-foreground" />}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <UserPlus />
+                  <span className="min-w-0 flex-1 truncate">
+                    {assignedAgentId
+                      ? (namesByUserId.get(assignedAgentId) ?? t("assigned"))
+                      : t("assignTo")}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-[240px]">
+                  {profiles.length === 0 ? (
+                    <DropdownMenuItem disabled>{t("noTeammates")}</DropdownMenuItem>
+                  ) : (
+                    profiles.map((p) => {
+                      const isSelected = p.user_id === assignedAgentId;
+                      const presence = getPresence(p.user_id);
+                      return (
+                        <DropdownMenuItem
+                          key={p.id}
+                          onClick={() => handleAssignChange(p.user_id)}
+                          className={cn(isSelected && "bg-selected")}
+                        >
+                          <PresenceDot
+                            status={presence}
+                            label={presenceLabel(
+                              presence,
+                              getRow(p.user_id)?.last_seen_at ?? null,
+                              presenceNow
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {p.full_name}
+                            {p.user_id === user?.id ? t("me") : ""}
+                          </span>
+                          {isSelected && <Check className="text-muted-foreground" />}
+                        </DropdownMenuItem>
+                      );
+                    })
+                  )}
+                  {assignedAgentId && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleAssignChange(null)}
+                        className="text-muted-foreground"
+                      >
+                        {t("unassign")}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              {onRefresh && (
+                <DropdownMenuItem onClick={onRefresh}>
+                  <RefreshCw />
+                  {t("refresh")}
+                </DropdownMenuItem>
               )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {t("unassign")}
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuItem onClick={() => void handleCopyPhone()}>
+                <Copy />
+                {t("copyPhone")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
-
-      {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t("sendTemplateHint")}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {messageGroups.map((group) => (
-              <div key={group.date}>
-                {/* Date separator */}
-                <div className="mb-4 flex items-center justify-center">
-                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
-                    {formatDateSeparator(group.date, t)}
-                  </span>
-                </div>
-                {/* Messages */}
-                <div className="space-y-2">
-                  {group.messages.map((msg) => {
-                    const parent = msg.reply_to_message_id
-                      ? messagesById.get(msg.reply_to_message_id)
-                      : null;
-                    const reply = parent
-                      ? {
-                          authorLabel:
-                            parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
-                          preview: buildReplyPreview(parent, tQuote),
-                        }
-                      : null;
-                    const msgReactions = reactionsByMessageId.get(msg.id);
-                    // Toggle is computed at the call site — `msgReactions`
-                    // and `user?.id` are already in scope, no extra hook.
-                    const handlePillToggle = (emoji: string) => {
-                      const own = msgReactions?.find(
-                        (r) =>
-                          r.actor_type === "agent" &&
-                          r.actor_id === user?.id,
-                      );
-                      const next = own?.emoji === emoji ? "" : emoji;
-                      void postReaction(msg.id, next);
-                    };
-                    return (
-                      <MessageActions
-                        key={msg.id}
-                        message={msg}
-                        onReply={() => handleStartReply(msg)}
-                        onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
-                        }}
-                      >
-                        <MessageBubble
-                          message={msg}
-                          reply={reply}
-                          reactions={msgReactions}
-                          currentUserId={user?.id}
-                          onToggleReaction={handlePillToggle}
-                          onOpenMedia={handleMediaChange}
-                        />
-                      </MessageActions>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* AI auto-reply banner — take over an active bot, or resume it
@@ -1172,10 +1129,100 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
+      {/* Mensajes (prototipo `.msgs`): fondo blanco, columna con 8 px
+          entre burbujas y un espaciador arriba que las apoya abajo
+          cuando son pocas. */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="flex min-h-full flex-col justify-end gap-2 px-4 pb-2 pt-5 sm:px-10">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : timeline.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <p className="text-sm font-medium text-foreground">{t("noMessagesYet")}</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">{t("sendTemplateHint")}</p>
+            </div>
+          ) : (
+            timeline.map((item) => {
+              if (item.kind === "day") {
+                return (
+                  <span
+                    key={item.key}
+                    className="my-1.5 self-center text-[12.5px] font-medium text-muted-foreground"
+                  >
+                    {formatDayLabel(item.label, t)}
+                  </span>
+                );
+              }
+              if (item.kind === "note") {
+                const author = namesByUserId.get(item.note.user_id);
+                return (
+                  <div
+                    key={item.key}
+                    className="max-w-[70%] self-end whitespace-pre-wrap break-words rounded-2xl border border-warning/30 bg-warning-soft px-3.5 py-[9px] text-sm text-foreground"
+                  >
+                    <div className="mb-0.5 flex items-center gap-1.5 text-xs font-semibold text-warning">
+                      <StickyNote className="size-[13px]" />
+                      {author ? t("noteBy", { author }) : t("noteInternal")}
+                    </div>
+                    {item.note.note_text}
+                  </div>
+                );
+              }
+              const msg = item.message;
+              const parent = msg.reply_to_message_id
+                ? messagesById.get(msg.reply_to_message_id)
+                : null;
+              const reply = parent
+                ? {
+                    authorLabel: authorLabelFor(parent),
+                    preview: buildReplyPreview(parent, tQuote),
+                  }
+                : null;
+              const msgReactions = reactionsByMessageId.get(msg.id);
+              // Toggle is computed at the call site — `msgReactions`
+              // and `user?.id` are already in scope, no extra hook.
+              const handlePillToggle = (emoji: string) => {
+                const own = msgReactions?.find(
+                  (r) =>
+                    r.actor_type === "agent" &&
+                    r.actor_id === user?.id,
+                );
+                const next = own?.emoji === emoji ? "" : emoji;
+                void postReaction(msg.id, next);
+              };
+              return (
+                <MessageActions
+                  key={item.key}
+                  message={msg}
+                  onReply={() => handleStartReply(msg)}
+                  onReact={(emoji) => {
+                    if (emoji) void postReaction(msg.id, emoji);
+                  }}
+                >
+                  <MessageBubble
+                    message={msg}
+                    reply={reply}
+                    reactions={msgReactions}
+                    currentUserId={user?.id}
+                    onToggleReaction={handlePillToggle}
+                    onOpenMedia={handleMediaChange}
+                  />
+                </MessageActions>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Cuadro de mensaje. Con `key` por conversación: el borrador, el
+          adjunto en curso y la grabación son de ESTE hilo y no viajan
+          al siguiente. */}
       <MessageComposer
+        key={conversation.id}
         conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
+        sessionExpired={win ? win.kind === "closed" || win.kind === "none" : false}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
