@@ -7,6 +7,7 @@ import {
   conversationVisibilityFilter,
 } from "@/lib/auth/visibility";
 import { useAuth } from "@/hooks/use-auth";
+import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import type { Conversation } from "@/types";
 
 /**
@@ -15,7 +16,10 @@ import type { Conversation } from "@/types";
  * Inbox nav entry when the user is elsewhere in the app.
  *
  * Lives on its own realtime channel (distinct from the inbox page's
- * "inbox-realtime") so both can coexist without sharing state.
+ * "inbox-realtime") so both can coexist without sharing state. The
+ * name is unique PER INSTANCE: a fixed name makes a second mount reuse
+ * (and crash on) the first one's channel — see
+ * `@/lib/realtime/channel-name`.
  */
 export function useTotalUnread(): number {
   const [total, setTotal] = useState(0);
@@ -63,7 +67,7 @@ export function useTotalUnread(): number {
     })();
 
     const channel = supabase
-      .channel("total-unread-realtime")
+      .channel(uniqueChannelName("total-unread-realtime"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },

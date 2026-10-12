@@ -1166,6 +1166,16 @@ Variables de **servidor**, nunca `NEXT_PUBLIC_`:
   caso del issue #336; igual `SelectLabel` dentro de `SelectGroup`).
   `src/components/ui/menu-label-grouping.test.ts` recorre los `.tsx`
   de `src/` y falla si vuelve a pasar.
+- **Arreglo 2 (2026-10-12)**: con la barra superior,
+  `useUnreadNotifications` quedó montado dos veces (barra lateral y
+  barra superior) y su canal de realtime tenía nombre fijo:
+  `supabase.channel(nombre)` devuelve el canal existente y
+  `.on("postgres_changes")` tira error si ya se está uniendo, así que
+  toda pantalla con sesión caía. Regla: **un canal de realtime por
+  instancia, nombre único por llamada** (`uniqueChannelName` en
+  `src/lib/realtime/channel-name.ts`, con test); nunca un nombre fijo
+  en un hook que pueda vivir en dos lugares. Aplicado también a
+  `useTotalUnread`.
 - **Nada se vio en un navegador**: verificado typecheck, lint (0
   errores, 40 warnings de base), tests (los 3 rojos de
   `currency.test.ts` ya estaban), validador de mensajes y build.

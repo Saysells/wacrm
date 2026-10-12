@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import type { Notification } from "@/types";
 
 /**
  * Count of unread notifications for the current user. Used by the
- * sidebar to surface a badge on the Notifications nav entry.
+ * sidebar (badge on the Notifications nav entry) AND by the top bar
+ * (bell counter), so two instances live at once.
+ *
+ * Each instance opens ITS OWN realtime channel with a unique name:
+ * `supabase.channel(name)` returns the existing channel when the name
+ * repeats, and `.on("postgres_changes")` throws once that channel is
+ * already joining — a fixed name here crashed every page after the
+ * top bar landed (see `@/lib/realtime/channel-name`).
  *
  * RLS on `notifications` already scopes every read to `auth.uid() =
  * user_id`, so no explicit filter is needed here — same pattern as
@@ -31,7 +39,7 @@ export function useUnreadNotifications(): number {
     })();
 
     const channel = supabase
-      .channel("notifications-unread-count")
+      .channel(uniqueChannelName("notifications-unread-count"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications" },
