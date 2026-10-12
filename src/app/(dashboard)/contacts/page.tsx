@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
@@ -71,7 +72,27 @@ interface ContactWithTags extends Contact {
   tags?: Tag[];
 }
 
+// `?q=` (rediseño, sesión A): el buscador de la barra superior manda a
+// Contactos con la búsqueda aplicada. `useSearchParams` pide un
+// Suspense o el build de producción se cae ("missing Suspense with CSR
+// bailout"), igual que en Configuración. El `key` por `q` remonta la
+// pantalla cuando cambia la búsqueda desde la barra estando ya acá, así
+// el estado local arranca de la URL sin un efecto que lo sincronice.
 export default function ContactsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ContactsPageFromQuery />
+    </Suspense>
+  );
+}
+
+function ContactsPageFromQuery() {
+  const searchParams = useSearchParams();
+  const q = searchParams.get('q') ?? '';
+  return <ContactsPageInner key={q} initialSearch={q} />;
+}
+
+function ContactsPageInner({ initialSearch }: { initialSearch: string }) {
   const t = useTranslations('Contacts.page');
   const supabase = createClient();
   const canEdit = useCan('send-messages');
@@ -87,7 +108,7 @@ export default function ContactsPage() {
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   // Tag filter — contacts shown must have ANY of these tags (OR).

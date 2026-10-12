@@ -32,34 +32,31 @@
     "roleAdmin": "Administrador",
     "roleAgent": "Agente",
     "roleViewer": "Observador",
-    "closeMenu": "Cerrar menú",
-    "collapseSidebar": "Contraer menú",
-    "expandSidebar": "Expandir menú",
-    "defaultUser": "Usuario",
-    "defaultAvatar": "Avatar",
-    "menuProfile": "Perfil",
-    "menuSettings": "Configuración",
-    "menuSignOut": "Cerrar sesión"
+    "closeMenu": "Cerrar menú"
   },
-  "Header": {
-    "dashboard": "Panel",
-    "inbox": "Bandeja",
-    "notifications": "Notificaciones",
-    "contacts": "Contactos",
-    "pipelines": "Embudos",
-    "broadcasts": "Difusiones",
-    "automations": "Automatizaciones",
-    "settings": "Configuración",
+  "TopBar": {
     "openMenu": "Abrir menú",
+    "collapseSidebar": "Plegar menú",
+    "expandSidebar": "Desplegar menú",
+    "product": "Bandejas",
+    "switchInbox": "Cambiar de bandeja",
+    "inboxesHeading": "Bandejas",
+    "comingSoon": "Próximamente",
+    "current": "Bandeja actual",
+    "opening": "Abriendo {domain}…",
+    "searchPlaceholder": "Buscar en {name}",
+    "searchLabel": "Buscar contactos",
+    "notifications": "Notificaciones",
+    "unreadNotifications": "{count} {count, plural, =1 {notificación} other {notificaciones}} sin leer",
+    "apps": "Apps de Saysells",
     "openAccountMenu": "Abrir menú de la cuenta",
     "defaultUser": "Usuario",
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configuración",
-    "menuSignOut": "Cerrar sesión"
-  },
-  "ModeToggle": {
-    "switchMode": "Cambiar a modo {mode}"
+    "menuSignOut": "Cerrar sesión",
+    "modeLight": "Modo claro",
+    "modeDark": "Modo oscuro"
   },
   "AccountAccess": {
     "unlinkedTitle": "Este usuario no está vinculado a ninguna cuenta",

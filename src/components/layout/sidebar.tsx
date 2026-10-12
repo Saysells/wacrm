@@ -13,7 +13,6 @@ import {
   Crown,
   GitBranch,
   LayoutDashboard,
-  LogOut,
   MessageSquare,
   Radio,
   Settings,
@@ -63,18 +62,6 @@ const ROLE_CHIP: Record<
     className: "bg-muted text-muted-foreground",
   },
 };
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface NavItem {
   href: string;
@@ -116,14 +103,15 @@ import { WhatsAppGlyph } from "@/components/brand/whatsapp-glyph";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, permissionOverrides, signOut } =
+  const { profile, profileLoading, account, accountRole, permissionOverrides } =
     useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Plegada a solo iconos. Es una preferencia de ESCRITORIO: en mobile
   // la barra es un cajon que se abre y se cierra entero, asi que todo
-  // lo que responde a `collapsed` va detras del breakpoint `lg:`.
-  const { collapsed, toggle } = useSidebarCollapsed();
+  // lo que responde a `collapsed` va detras del breakpoint `lg:`. El
+  // boton que la pliega esta en la barra superior.
+  const { collapsed } = useSidebarCollapsed();
 
   // Navegación por permisos: cada entrada mapea a una clave nav_* y
   // se resuelve por rol + overrides (el middleware bloquea además la
@@ -206,67 +194,27 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         )}
         aria-label="Primary"
       >
-        {/* Logo row. On mobile we put a close button here; on desktop the
-            close button is hidden since the sidebar is always-visible. */}
-        <div
-          className={cn(
-            "flex h-14 shrink-0 items-center justify-between gap-2 px-4",
-            collapsed && "lg:justify-center lg:px-2",
-          )}
-        >
+        {/* Rediseño (sesión A): en escritorio la barra ya no tiene fila
+            de marca ni botón de plegar — la marca y el botón viven en la
+            barra superior (`top-bar.tsx`). Esta fila existe solo en el
+            cajón de mobile, para cerrarlo. */}
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-4 lg:hidden">
           <Link
             href={homePathFor(accountRole, permissionOverrides)}
-            className={cn(
-              "flex items-center gap-2",
-              // Plegada, la fila de 4.5rem no da para el logo Y el boton,
-              // y de los dos el que tiene que estar es el boton: sin el
-              // no hay forma de volver a abrir la barra. La marca vuelve
-              // al expandir; el cajon de mobile la conserva siempre.
-              collapsed && "lg:hidden",
-            )}
+            className="flex min-w-0 items-center gap-2"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
               <WhatsAppGlyph className="h-4 w-4" />
             </div>
-            <span className="text-sm font-semibold text-foreground">
+            <span className="truncate text-sm font-semibold text-foreground">
               {APP_NAME}
             </span>
           </Link>
-
-          {/* Contraer / expandir, al lado del nombre de la app. Solo el
-              icono: el rotulo va en `aria-label` y en `title`. Solo
-              escritorio (`lg:inline-flex`) — en mobile la barra es un
-              cajon con su propio boton de cerrar, plegarla ahi no
-              querria decir nada. */}
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
-            aria-expanded={!collapsed}
-            title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
-            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-hover-strong hover:text-foreground lg:inline-flex"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              className="h-4 w-4"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 3v18" />
-              {/* La flecha apunta a donde va a ir la barra al tocar. */}
-              <path d={collapsed ? "M13 15l3-3-3-3" : "M16 15l-3-3 3-3"} />
-            </svg>
-          </button>
           <button
             type="button"
             onClick={onClose}
             aria-label={t("closeMenu")}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-hover-strong hover:text-foreground lg:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-hover-strong hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>
@@ -393,116 +341,41 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </ul>
         </nav>
 
-        {/* User section */}
-        <div className="shrink-0 p-3">
-          {/* Account name display — surfaced only when the account
-              name differs from the user's own name (see
-              `showAccountStrip`). For a default solo account the two
-              match, so we hide it to avoid duplicating the user name
-              below; for renamed or shared accounts it tells the user
-              which account they're acting in. */}
-          {showAccountStrip && account?.name ? (
-            <div
-              className={cn(
-                "mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground",
-                // Plegada no entra ni el nombre ni el chip de rol; el
-                // rol sigue visible en Configuracion.
-                collapsed && "lg:hidden",
-              )}
-            >
-              <UsersRound className="size-3.5 shrink-0" />
-              {/* `title=` exposes the full name on hover when it
-                  gets truncated (long account names + narrow
-                  sidebars). Cheap a11y win. */}
-              <span className="truncate" title={account.name}>
-                {account.name}
-              </span>
-              {accountRole ? (
-                // Always render the chip — owners used to be
-                // invisible here, which made them indistinguishable
-                // from admins at a glance. Now everyone sees their
-                // role (with a colour cue) regardless of tier.
-                (() => {
-                  const meta = ROLE_CHIP[accountRole];
-                  const Icon = meta.icon;
-                  return (
-                    <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
-                    >
-                      <Icon className="size-3" />
-                      {t(meta.labelKey as string)}
-                    </span>
-                  );
-                })()
-              ) : null}
-            </div>
-          ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              title={collapsed ? (profile?.full_name ?? t("defaultUser")) : undefined}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-colors hover:bg-hover-strong focus:bg-hover-strong focus:outline-none data-popup-open:bg-hover-strong",
-                collapsed && "lg:justify-center lg:px-2",
-              )}
-            >
-              <Avatar className="size-8 shrink-0">
-                {profile?.avatar_url ? (
-                  <AvatarImage
-                    src={profile.avatar_url}
-                    alt={profile.full_name ?? t("defaultAvatar")}
-                  />
-                ) : null}
-                <AvatarFallback className="bg-selected-strong text-sm font-semibold text-primary">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() ??
-                    profile?.email?.charAt(0)?.toUpperCase() ??
-                    "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
-                <p className="truncate text-sm font-medium text-foreground">
-                  {profile?.full_name ?? t("defaultUser")}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {profile?.email ?? ""}
-                </p>
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              side="top"
-              sideOffset={6}
-              className="min-w-56"
-            >
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/settings?tab=profile"
-                    onClick={onClose}
-                  />
-                }
-              >
-                <User className="size-4" />
-                {t("menuProfile")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/settings?tab=whatsapp"
-                    onClick={onClose}
-                  />
-                }
-              >
-                <Settings className="size-4" />
-                {t("menuSettings")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={signOut}>
-                <LogOut className="size-4" />
-                {t("menuSignOut")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {/* Franja de cuenta — solo cuando el nombre de la cuenta difiere
+            del de la persona (ver `showAccountStrip`). El menú de avatar
+            que iba acá pasó a la barra superior. */}
+        {showAccountStrip && account?.name ? (
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-2 px-6 pb-4 pt-2 text-xs text-muted-foreground",
+              // Plegada no entra ni el nombre ni el chip de rol; el
+              // rol sigue visible en Configuracion.
+              collapsed && "lg:hidden",
+            )}
+          >
+            <UsersRound className="size-3.5 shrink-0" />
+            {/* `title=` exposes the full name on hover when it
+                gets truncated (long account names + narrow
+                sidebars). Cheap a11y win. */}
+            <span className="truncate" title={account.name}>
+              {account.name}
+            </span>
+            {accountRole ? (
+              (() => {
+                const meta = ROLE_CHIP[accountRole];
+                const Icon = meta.icon;
+                return (
+                  <span
+                    className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
+                  >
+                    <Icon className="size-3" />
+                    {t(meta.labelKey as string)}
+                  </span>
+                );
+              })()
+            ) : null}
+          </div>
+        ) : null}
       </aside>
     </>
   );

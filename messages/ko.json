@@ -32,34 +32,31 @@
     "roleAdmin": "관리자",
     "roleAgent": "상담원",
     "roleViewer": "뷰어",
-    "closeMenu": "메뉴 닫기",
+    "closeMenu": "메뉴 닫기"
+  },
+  "TopBar": {
+    "openMenu": "메뉴 열기",
     "collapseSidebar": "메뉴 접기",
     "expandSidebar": "메뉴 펼치기",
-    "defaultUser": "사용자",
-    "defaultAvatar": "아바타",
-    "menuProfile": "프로필",
-    "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
-  },
-  "Header": {
-    "dashboard": "대시보드",
-    "inbox": "인박스",
+    "product": "인박스",
+    "switchInbox": "인박스 전환",
+    "inboxesHeading": "인박스",
+    "comingSoon": "곧 제공",
+    "current": "현재 인박스",
+    "opening": "{domain} 여는 중…",
+    "searchPlaceholder": "{name}에서 검색",
+    "searchLabel": "연락처 검색",
     "notifications": "알림",
-    "contacts": "연락처",
-    "pipelines": "파이프라인",
-    "broadcasts": "브로드캐스트",
-    "automations": "자동화",
-    "settings": "설정",
-    "openMenu": "메뉴 열기",
+    "unreadNotifications": "읽지 않은 알림 {count}건",
+    "apps": "Saysells 앱",
     "openAccountMenu": "계정 메뉴 열기",
     "defaultUser": "사용자",
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
-  },
-  "ModeToggle": {
-    "switchMode": "{mode} 모드로 전환"
+    "menuSignOut": "로그아웃",
+    "modeLight": "라이트 모드",
+    "modeDark": "다크 모드"
   },
   "AccountAccess": {
     "unlinkedTitle": "이 사용자가 계정에 연결되어 있지 않음",

@@ -32,34 +32,31 @@
     "roleAdmin": "Admin",
     "roleAgent": "Agent",
     "roleViewer": "Viewer",
-    "closeMenu": "Close menu",
+    "closeMenu": "Close menu"
+  },
+  "TopBar": {
+    "openMenu": "Open menu",
     "collapseSidebar": "Collapse menu",
     "expandSidebar": "Expand menu",
-    "defaultUser": "User",
-    "defaultAvatar": "Avatar",
-    "menuProfile": "Profile",
-    "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
-  },
-  "Header": {
-    "dashboard": "Dashboard",
-    "inbox": "Inbox",
+    "product": "Inboxes",
+    "switchInbox": "Switch inbox",
+    "inboxesHeading": "Inboxes",
+    "comingSoon": "Coming soon",
+    "current": "Current inbox",
+    "opening": "Opening {domain}…",
+    "searchPlaceholder": "Search in {name}",
+    "searchLabel": "Search contacts",
     "notifications": "Notifications",
-    "contacts": "Contacts",
-    "pipelines": "Pipelines",
-    "broadcasts": "Broadcasts",
-    "automations": "Automations",
-    "settings": "Settings",
-    "openMenu": "Open menu",
+    "unreadNotifications": "{count} unread {count, plural, =1 {notification} other {notifications}}",
+    "apps": "Saysells apps",
     "openAccountMenu": "Open account menu",
     "defaultUser": "User",
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
-  },
-  "ModeToggle": {
-    "switchMode": "Switch to {mode} mode"
+    "menuSignOut": "Sign out",
+    "modeLight": "Light mode",
+    "modeDark": "Dark mode"
   },
   "AccountAccess": {
     "unlinkedTitle": "This user is not linked to an account",

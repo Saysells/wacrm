@@ -328,6 +328,8 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
 | `TALLY_ACCOUNT_ID` | solo con ≥2 cuentas | Cuenta destino de los leads. |
 | `TALLY_DEBUG_PAYLOAD` | no | `1` loguea un payload crudo. Apagar después. |
 | `NEXT_PUBLIC_APP_NAME` | no | Nombre de la app; default `CRM By Saysells`. |
+| `SELECTOR_BANDEJAS` | no | `Nombre\|URL,Nombre\|URL` (URL vacía = próximamente). Sin ella no hay selector de bandejas. Ver "Rediseño · sesión A". |
+| `SELECTOR_EQUIPO` | no | Mails separados por coma que ven el selector y el lanzador. Sin ella nadie los ve. |
 
 ## "Datos del formulario" en la Bandeja
 
@@ -1070,3 +1072,101 @@ blanco y el tubo calado, o sea la marca real invertida.
   de tamaño que esta sesión no tenía permitido hacer.
 - Ningún test cubre el catálogo de temas ni el CSS: no había pruebas
   de eso antes y no se agregaron.
+
+# Rediseño · sesión A (base y barra)
+
+Sesión 2026-10-12 (pedida por Emi). Rama `rediseno`, salida de `main`;
+se publica solo en la Bandeja USA hasta el merge final. Referencia:
+`docs/rediseno/prototipo-v1.html` (aprobado el 12/10/2026). Regla de
+todo el rediseño: **cambia el frontend, la lógica no** (ni `supabase/`,
+ni webhook, envío, flujos, `src/lib/auth/` ni `(movil)`). Sin
+dependencias nuevas. Plan: A base y barra · B navegación y lista ·
+C conversación · D ficha y agendar · E closer y teclado · F resto.
+
+## Qué cambió
+
+- **Outfit** por `next/font/google` (`layout.tsx`), misma variable
+  `--font-sans`. **Modo claro por defecto** (`DEFAULT_MODE`); quien ya
+  eligió uno lo conserva. En `globals.css`, `:root` siembra claro +
+  saysells, y el acento saysells quedó al revés: navy plano `#1C2B48`
+  como base, navy elevado como override de `data-mode="dark"`.
+- **Tokens del prototipo** en el bloque de modo claro (fondo `#F4F6F8`,
+  tarjeta blanca, línea `#E5E9EF`, tinta navy) y **tokens semánticos**
+  nuevos en los dos modos, mapeados a Tailwind: `selected` /
+  `selected-strong` (celeste suave), `hover` / `hover-strong`, `pending`
+  (naranja, **solo** lo que espera respuesta) y `unread`, y `success` /
+  `warning` / `danger` / `info` / `neutral` con su `-soft`; más
+  `shadow-menu` y `shadow-card`.
+- **Estructura** (`dashboard-shell.tsx`): grilla `4rem + 1fr`; la barra
+  lateral sobre el fondo gris sin panel, y el contenido de cada
+  pantalla en **una tarjeta blanca de 16 px** que es la que scrollea.
+  La Bandeja ocupa la tarjeta entera (`calc(100% + 2rem)` contra sus
+  márgenes negativos).
+- **`src/components/ui/`** (cada pantalla hereda el estilo): botón de
+  38 px navy con hover (`sm` 34); **badge en rectángulo de 5 px**,
+  nunca pastilla, con variantes `success` / `warning` / `danger` /
+  `info` / `selected` / `pending`; campos de 40 px con foco celeste
+  sin halo; menús, select y popover con panel de 14 px, `shadow-menu`,
+  sin padding y filas de borde a borde (el clic afuera los cierra:
+  son desplegables); **modales** (`dialog`, `sheet`) de 20 px con cruz
+  visible de 40 px y **clic afuera bloqueado**:
+  `disablePointerDismissal` en `true` por defecto y el velo sacude el
+  modal (`.modal-shake`, compone con la propiedad `translate` de
+  Tailwind v4). Escape cierra. Ningún uso pasaba
+  `showCloseButton={false}`. `DialogFooter` sangra `-mx-6`; el único
+  modal con `p-0` (`import-modal.tsx`) lo anula.
+- **Barra lateral**: 248 / 76 px plegada, filas de 36 px, activo
+  celeste, no leídos en naranja, contador como número. Mismo contenido
+  y permisos (`nav.ts` intacto). Perdió la fila de marca, el botón de
+  plegar y el menú de avatar: viven en la barra superior. Conserva el
+  cierre del cajón de mobile y la franja de cuenta + rol.
+- **Barra superior** (`top-bar.tsx` reemplaza a `header.tsx` y
+  `mode-toggle.tsx`; i18n `Header` → `TopBar` en en/es/ko, `ModeToggle`
+  desapareció): menú (mobile abre el cajón, escritorio pliega), marca
+  (cuadrado navy con S + "Bandejas"), **selector de bandeja** con
+  `NEXT_PUBLIC_APP_NAME` y el host actual; el desplegable lista
+  nombre + dominio, marca la actual por host (`isCurrentBandeja`),
+  deshabilita las sin URL como "Próximamente" y al elegir otra muestra
+  "Abriendo dominio…" y hace `window.location.assign` (otro dominio).
+  Buscador: Enter → `/contacts?q=`; Contactos lee `?q=` con
+  `useSearchParams` bajo `Suspense` y `key={q}` remonta la pantalla
+  (sin efecto que sincronice). Derecha: campana con el contador que ya
+  existía, lanzador de 9 puntos (Bandejas abre el selector; CRM,
+  Propuestas, SayWorld y Portal en otra pestaña, `SAYSELLS_APPS`) y
+  avatar con el menú de siempre más Modo claro / oscuro.
+
+## Selector: quién lo ve
+
+`GET /api/saysells/selector` lee el mail con la sesión del servidor y
+devuelve `{ visible, bandejas }`; sin sesión **401** con
+`{ visible: false, bandejas: [] }` (el middleware no cubre la ruta).
+Variables de **servidor**, nunca `NEXT_PUBLIC_`:
+
+- `SELECTOR_BANDEJAS`: `Nombre|URL,Nombre|URL`. URL vacía =
+  próximamente; una URL no absoluta se trata como vacía.
+- `SELECTOR_EQUIPO`: mails separados por coma, sin distinguir
+  mayúsculas.
+- **Default**: falta cualquiera de las dos, o el mail no está ⇒
+  `visible: false` y lista vacía: la barra muestra solo el nombre, sin
+  desplegable ni lanzador. Es el estado inicial del cliente
+  (`useSaysellsSelector`) y al que cae ante cualquier error.
+- Parseo puro en `src/lib/saysells/selector.ts`, con tests.
+
+## Decisiones y pendientes
+
+- Iniciales y color del cuadrado por hash del nombre (paleta fija):
+  la misma bandeja se ve igual en toda instancia. La variable no lleva
+  grupo, así que la lista sale plana en su orden. El lanzador no tiene
+  el pie "apps.saysells.com" del prototipo (no estaba en el pedido).
+- `ko.json` se mantuvo en paridad de claves con `en.json`: lo exige
+  `src/i18n/messages.test.ts`.
+- **Nada se vio en un navegador**: verificado typecheck, lint (0
+  errores, 40 warnings de base), tests (los 3 rojos de
+  `currency.test.ts` ya estaban), validador de mensajes y build.
+- Sesión B: vistas (Para mí, Sin tomar…), embudo en la barra, "Nuevo
+  mensaje" en la barra, lista del prototipo, búsqueda en mensajes y en
+  la lista. Sesión F: las demás pantallas conservan su layout viejo
+  adentro de la tarjeta. El modo oscuro anda pero no se rediseñó; las
+  clases `dark:` de shadcn siguen sin aplicar (`.dark` nadie lo pone).
+- Botón 32→38 px y campo 32→40: las pantallas densas crecen en alto;
+  lo que se desborde se corrige en F.

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
-import { Header } from "@/components/layout/header";
+import { TopBar } from "@/components/layout/top-bar";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 
@@ -53,7 +53,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       {/* Reports this tab's online/away presence once we know a user is
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
       <div className="flex min-h-0 overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={closeSidebar} />
         {/* La tarjeta de contenido. `min-w-0` para que una tabla ancha
