@@ -42,29 +42,25 @@ const ROLE_CHIP: Record<
     icon: Crown,
     labelKey: "roleOwner",
     // Amber: scarce, immutable, "the boss" — gets visual emphasis.
-    className:
-      "border-amber-500/40 bg-amber-500/10 text-amber-300",
+    className: "bg-warning-soft text-warning",
   },
   admin: {
     icon: Shield,
     labelKey: "roleAdmin",
     // Primary-tinted: significant but not as scarce as owner.
-    className:
-      "border-primary/40 bg-primary/10 text-primary",
+    className: "bg-selected-strong text-primary",
   },
   agent: {
     icon: UserCog,
     labelKey: "roleAgent",
     // Neutral slate: the operational default.
-    className:
-      "border-border bg-muted text-foreground",
+    className: "bg-neutral-soft text-neutral",
   },
   viewer: {
     icon: User,
     labelKey: "roleViewer",
     // Muted slate: read-only role; visually quieter than agent.
-    className:
-      "border-border bg-card text-muted-foreground",
+    className: "bg-muted text-muted-foreground",
   },
 };
 import {
@@ -188,7 +184,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         aria-label={t("closeMenu")}
         onClick={onClose}
         className={cn(
-          "fixed inset-0 z-30 bg-background/70 backdrop-blur-sm transition-opacity lg:hidden",
+          "fixed inset-0 z-30 bg-[rgba(15,23,42,0.34)] transition-opacity lg:hidden",
           open
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
@@ -198,12 +194,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <aside
         className={cn(
           // Mobile: fixed drawer that slides in from the left.
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-border bg-card",
+          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground shadow-menu",
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
-          "lg:static lg:z-0 lg:translate-x-0 lg:transition-none",
-          collapsed ? "lg:w-[4.5rem]" : "lg:w-60",
+          // Rediseno (sesion A): la barra se apoya directo sobre el fondo
+          // gris de la app, sin panel ni borde propio; anchos del
+          // prototipo (`.body` 248 px, `.body.nc` 76 px plegada).
+          "lg:static lg:z-0 lg:translate-x-0 lg:shadow-none lg:transition-none",
+          collapsed ? "lg:w-[76px]" : "lg:w-[248px]",
         )}
         aria-label="Primary"
       >
@@ -211,7 +210,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             close button is hidden since the sidebar is always-visible. */}
         <div
           className={cn(
-            "flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4",
+            "flex h-14 shrink-0 items-center justify-between gap-2 px-4",
             collapsed && "lg:justify-center lg:px-2",
           )}
         >
@@ -226,7 +225,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               collapsed && "lg:hidden",
             )}
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
               <WhatsAppGlyph className="h-4 w-4" />
             </div>
             <span className="text-sm font-semibold text-foreground">
@@ -245,7 +244,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
             aria-expanded={!collapsed}
             title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
+            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-hover-strong hover:text-foreground lg:inline-flex"
           >
             <svg
               viewBox="0 0 24 24"
@@ -267,14 +266,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             type="button"
             onClick={onClose}
             aria-label={t("closeMenu")}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-hover-strong hover:text-foreground lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Main navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        {/* Prototipo `.nav`: 4 px arriba, 12 px a la derecha, 8 px a la
+            izquierda; cada fila `.ni` mide 36 px con radio 10 px. */}
+        <nav className="flex-1 overflow-x-hidden overflow-y-auto py-1 pr-3 pl-2">
           <ul className="flex flex-col gap-1">
             {visibleNavItems.map((item) => {
               const isActive =
@@ -304,22 +305,22 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     title={collapsed ? label : undefined}
                     className={cn(
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
-                      "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                      collapsed && "lg:justify-center lg:px-2",
+                      "relative flex h-11 items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-sm transition-colors lg:h-9",
+                      collapsed && "lg:justify-center lg:px-0",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    <span className={cn("flex-1", collapsed && "lg:hidden")}>
+                    <item.icon className="size-[19px] shrink-0" strokeWidth={1.8} />
+                    <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>
                       {label}
                     </span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
                         className={cn(
-                          "rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300",
+                          "rounded-[5px] bg-warning-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-warning",
                           collapsed && "lg:hidden",
                         )}
                       >
@@ -336,17 +337,22 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                           collapsed && "lg:absolute lg:right-2 lg:top-1.5",
                         )}
                       >
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                        {/* Naranja: es lo que espera respuesta (regla del
+                            sistema de diseno), no el color del acento. */}
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pending opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-pending" />
                       </span>
                     )}
                     {showNotificationBadge && (
                       <span
                         aria-label={t("unreadNotifications", { count: unreadNotifications })}
                         className={cn(
-                          "flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground",
+                          // Prototipo `.ni .c`: el contador va como numero
+                          // a la derecha, sin pastilla.
+                          "ml-auto shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground",
+                          isActive && "text-sidebar-accent-foreground",
                           collapsed &&
-                            "lg:absolute lg:right-1 lg:top-0.5 lg:h-4 lg:min-w-4 lg:text-[9px]",
+                            "lg:absolute lg:right-1.5 lg:top-0.5 lg:rounded-[5px] lg:bg-sidebar-accent lg:px-1 lg:text-[10px] lg:leading-4",
                         )}
                       >
                         {unreadNotifications > 9 ? "9+" : unreadNotifications}
@@ -358,7 +364,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             })}
           </ul>
 
-          <div className="my-4 border-t border-border" />
+          <div className="my-3 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
             {visibleBottomNavItems.map((item) => {
@@ -371,14 +377,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     aria-label={collapsed ? label : undefined}
                     title={collapsed ? label : undefined}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                      collapsed && "lg:justify-center lg:px-2",
+                      "flex h-11 items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-sm transition-colors lg:h-9",
+                      collapsed && "lg:justify-center lg:px-0",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <item.icon className="size-[19px] shrink-0" strokeWidth={1.8} />
                     <span className={cn(collapsed && "lg:hidden")}>{label}</span>
                   </Link>
                 </li>
@@ -388,7 +394,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </nav>
 
         {/* User section */}
-        <div className="shrink-0 border-t border-border p-3">
+        <div className="shrink-0 p-3">
           {/* Account name display — surfaced only when the account
               name differs from the user's own name (see
               `showAccountStrip`). For a default solo account the two
@@ -421,7 +427,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   const Icon = meta.icon;
                   return (
                     <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
+                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
                     >
                       <Icon className="size-3" />
                       {t(meta.labelKey as string)}
@@ -435,7 +441,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             <DropdownMenuTrigger
               title={collapsed ? (profile?.full_name ?? t("defaultUser")) : undefined}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60",
+                "flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-colors hover:bg-hover-strong focus:bg-hover-strong focus:outline-none data-popup-open:bg-hover-strong",
                 collapsed && "lg:justify-center lg:px-2",
               )}
             >
@@ -446,7 +452,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     alt={profile.full_name ?? t("defaultAvatar")}
                   />
                 ) : null}
-                <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+                <AvatarFallback className="bg-selected-strong text-sm font-semibold text-primary">
                   {profile?.full_name?.charAt(0)?.toUpperCase() ??
                     profile?.email?.charAt(0)?.toUpperCase() ??
                     "U"}
@@ -465,14 +471,13 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               align="end"
               side="top"
               sideOffset={6}
-              className="min-w-56 bg-popover text-popover-foreground ring-border"
+              className="min-w-56"
             >
               <DropdownMenuItem
                 render={
                   <Link
                     href="/settings?tab=profile"
                     onClick={onClose}
-                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                   />
                 }
               >
@@ -484,18 +489,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   <Link
                     href="/settings?tab=whatsapp"
                     onClick={onClose}
-                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                   />
                 }
               >
                 <Settings className="size-4" />
                 {t("menuSettings")}
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-border" />
-              <DropdownMenuItem
-                onClick={signOut}
-                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-              >
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={signOut}>
                 <LogOut className="size-4" />
                 {t("menuSignOut")}
               </DropdownMenuItem>

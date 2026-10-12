@@ -597,7 +597,7 @@ export function ImportModal({
           )}
         </div>
 
-        <DialogFooter className="mt-0 shrink-0 gap-2 border-t border-border/80 bg-background/50 px-6 py-4 sm:justify-end">
+        <DialogFooter className="mx-0 mt-0 mb-0 shrink-0 gap-2 border-t border-border/80 bg-muted px-6 py-4 sm:justify-end">
           <Button
             type="button"
             variant="outline"

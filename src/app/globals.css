@@ -48,6 +48,30 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  /* Rediseno (sesion A): tokens semanticos del prototipo. Son de MODO
+   * (viven en los bloques light/dark de abajo), no de acento: la
+   * seleccion celeste, el naranja de "espera respuesta" y los cinco
+   * estados (exito / aviso / peligro / info / neutro) son del sistema
+   * de diseno de Saysells y no cambian con el acento elegido. */
+  --color-selected: var(--selected);
+  --color-selected-strong: var(--selected-strong);
+  --color-hover: var(--hover);
+  --color-hover-strong: var(--hover-strong);
+  --color-pending: var(--pending);
+  --color-pending-foreground: var(--pending-foreground);
+  --color-unread: var(--unread);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+  --shadow-menu: var(--shadow-menu);
+  --shadow-card: var(--shadow-card);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -61,7 +85,8 @@
  * THEMING — two orthogonal dimensions
  *
  *   1. MODE   (light / dark)  → neutral surfaces. Selected with
- *      `document.documentElement.dataset.mode`. Defaults to dark.
+ *      `document.documentElement.dataset.mode`. Defaults to light
+ *      since the Saysells redesign (sesion A); dark stays available.
  *   2. ACCENT (violet / …)    → the primary color only. Selected
  *      with `document.documentElement.dataset.theme`.
  *
@@ -74,10 +99,15 @@
  * accent that reads the mode — saysells, whose two brand colors
  * swap roles — still writes accent tokens only.
  *
- * `:root` carries the dark-mode + saysells defaults (the app's
+ * `:root` carries the light-mode + saysells defaults (the app's
  * DEFAULT_MODE / DEFAULT_THEME) so a visitor renders correctly
  * before JS runs; the boot script in layout.tsx replays the saved
  * mode + accent before first paint.
+ *
+ * The light neutrals are the prototype's (docs/rediseno/
+ * prototipo-v1.html): shell #F4F6F8, card white, soft #F6F8FA,
+ * line #E5E9EF, ink navy #1C2B48 / #4C5A72 / #717D90. They are
+ * navy-tinted greys, so every accent reads on them.
  *
  * The three `--primary-*` extras (hover / soft / soft-2) feed
  * hovered primary buttons and tinted-primary surfaces (sidebar
@@ -89,7 +119,6 @@
 
 /* ---- MODE: neutral surfaces ---- */
 
-:root,
 html[data-mode="dark"] {
   --background: oklch(0.13 0.01 260);
   --foreground: oklch(0.985 0 0);
@@ -117,35 +146,80 @@ html[data-mode="dark"] {
   --sidebar-accent: oklch(0.22 0.01 260);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.28 0.01 260);
+  /* Semantic tokens, dark: same hues as the light set, lifted so the
+   * ink reads on the dark surfaces; the soft backgrounds are the hue
+   * at low alpha instead of a pastel, so they sit on any card. */
+  --selected: oklch(0.746 0.06 246.3 / 0.16);
+  --selected-strong: oklch(0.746 0.06 246.3 / 0.26);
+  --hover: oklch(0.25 0.01 260);
+  --hover-strong: oklch(0.29 0.01 260);
+  --pending: oklch(0.621 0.207 34.6);
+  --pending-foreground: oklch(0.985 0 0);
+  --unread: oklch(0.66 0.19 34.4);
+  --success: oklch(0.78 0.13 152);
+  --success-soft: oklch(0.569 0.129 151.3 / 0.18);
+  --warning: oklch(0.82 0.13 80);
+  --warning-soft: oklch(0.679 0.142 76.5 / 0.18);
+  --danger: oklch(0.76 0.15 27);
+  --danger-soft: oklch(0.539 0.194 26.7 / 0.18);
+  --info: oklch(0.78 0.1 252);
+  --info-soft: oklch(0.471 0.14 259.3 / 0.2);
+  --neutral: oklch(0.8 0.02 260);
+  --neutral-soft: oklch(0.5 0.04 262 / 0.22);
+  --shadow-menu: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
+:root,
 html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
-  --card-2: oklch(0.985 0.002 260);
-  --card-foreground: oklch(0.21 0.01 260);
+  /* Prototype neutrals (hex in the comment, oklch in the value). */
+  --background: oklch(0.972 0.003 247.9); /* #F4F6F8 shell */
+  --foreground: oklch(0.291 0.057 262.6); /* #1C2B48 ink */
+  --card: oklch(1 0 0); /* #FFFFFF */
+  --card-2: oklch(0.978 0.003 247.9); /* #F6F8FA soft */
+  --card-foreground: oklch(0.291 0.057 262.6);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
-  --secondary: oklch(0.967 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 260);
-  --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
-  --accent: oklch(0.96 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 260);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 260);
-  --input: oklch(0.922 0.004 260);
+  --popover-foreground: oklch(0.291 0.057 262.6);
+  --secondary: oklch(0.95 0.01 252.8); /* #EAEFF5 */
+  --secondary-foreground: oklch(0.408 0.051 262.5); /* #3B4A66 */
+  --muted: oklch(0.978 0.003 247.9); /* #F6F8FA soft */
+  --muted-foreground: oklch(0.587 0.032 259.6); /* #717D90 */
+  --accent: oklch(0.96 0.008 253.9); /* #EEF2F7 hover */
+  --accent-foreground: oklch(0.291 0.057 262.6);
+  --destructive: oklch(0.539 0.194 26.7); /* #C62828 */
+  --border: oklch(0.933 0.009 258.3); /* #E5E9EF line */
+  --input: oklch(0.933 0.009 258.3);
   --chart-2: oklch(0.6 0.1 260);
   --chart-3: oklch(0.7 0.06 260);
   --chart-4: oklch(0.8 0.04 260);
   --chart-5: oklch(0.87 0.03 260);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-accent: oklch(0.96 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 260);
-  --sidebar-border: oklch(0.922 0.004 260);
+  /* The nav sits straight on the shell, no panel of its own. */
+  --sidebar: oklch(0.972 0.003 247.9);
+  --sidebar-foreground: oklch(0.465 0.043 261.1); /* #4C5A72 */
+  --sidebar-accent: oklch(0.912 0.023 246.1); /* #D6E4F1 act */
+  --sidebar-accent-foreground: oklch(0.291 0.057 262.6);
+  --sidebar-border: oklch(0.933 0.009 258.3);
+  /* Semantic tokens, light: straight from the prototype. */
+  --selected: oklch(0.939 0.017 250.8); /* #E3ECF6 */
+  --selected-strong: oklch(0.912 0.023 246.1); /* #D6E4F1 */
+  --hover: oklch(0.96 0.008 253.9); /* #EEF2F7 */
+  --hover-strong: oklch(0.941 0.01 252.8); /* #E7ECF2, botones redondos y nav */
+  --pending: oklch(0.621 0.207 34.6); /* #E84419 */
+  --pending-foreground: oklch(0.985 0 0);
+  --unread: oklch(0.569 0.191 34.4); /* #CF3B15 */
+  --success: oklch(0.488 0.11 151.9); /* #22713F */
+  --success-soft: oklch(0.947 0.021 156.8); /* #E3F2E8 */
+  --warning: oklch(0.518 0.108 77.9); /* #8A5F00 */
+  --warning-soft: oklch(0.958 0.032 85.5); /* #FBF0D9 */
+  --danger: oklch(0.501 0.178 28.7); /* #B3261E */
+  --danger-soft: oklch(0.943 0.022 24.4); /* #FBE7E5 */
+  --info: oklch(0.471 0.14 259.3); /* #2558A8 */
+  --info-soft: oklch(0.942 0.019 252.9); /* #E3EDF9 */
+  --neutral: oklch(0.408 0.051 262.5); /* #3B4A66 */
+  --neutral-soft: oklch(0.95 0.01 252.8); /* #EAEFF5 */
+  --shadow-menu: 0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 8px rgba(16, 24, 40, 0.08);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 /* ---- ACCENT: primary color ---- */
@@ -224,8 +298,7 @@ html[data-theme="rose"] {
  * The brand navy #1C2B48 is oklch(0.291 …): as a button fill on the
  * dark surfaces it disappears, so the theme is stated twice.
  *
- * Dark (the default mode, and therefore the base block that also
- * seeds `:root`): an ELEVATED navy, oklch(0.55 0.15 263) — the navy's
+ * Dark: an ELEVATED navy, oklch(0.55 0.15 263) — the navy's
  * own hue at the lightness and chroma that make cobalt legible. It
  * takes white ink at 4.75:1. The obvious move, handing the primary to
  * the celeste #8EB1D1, is the one thing that does NOT work here:
@@ -237,8 +310,9 @@ html[data-theme="rose"] {
  * `--primary-soft` tints and the focus ring, where it sits ON a dark
  * surface instead of under dark ink (8.4:1 over card).
  *
- * Light: the brand navy itself is the primary, near-white ink,
- * 13.5:1.
+ * Light (the default mode since the redesign, and therefore the base
+ * block that also seeds `:root`): the brand navy itself is the
+ * primary, near-white ink, 13.5:1.
  *
  * `--chart-2` is the brand orange #E84419 — the palette's punctual
  * accent, which is exactly what a second data series is. Every other
@@ -251,6 +325,22 @@ html[data-theme="rose"] {
 
 :root,
 html[data-theme="saysells"] {
+  /* Light (the default mode since the redesign, so also the `:root`
+   * seed): the brand navy #1C2B48 itself, hover #26385C. */
+  --primary: oklch(0.291 0.057 262.6);
+  --primary-foreground: oklch(0.985 0 0);
+  --primary-hover: oklch(0.344 0.068 263.1);
+  --primary-soft: oklch(0.291 0.057 262.6 / 0.1);
+  --primary-soft-2: oklch(0.291 0.057 262.6 / 0.18);
+  --ring: oklch(0.291 0.057 262.6);
+  --chart-1: oklch(0.291 0.057 262.6);
+  --chart-2: oklch(0.621 0.207 34.6);
+  --sidebar-primary: oklch(0.291 0.057 262.6);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.291 0.057 262.6);
+}
+
+html[data-mode="dark"][data-theme="saysells"] {
   --primary: oklch(0.55 0.15 263);
   --primary-foreground: oklch(0.985 0 0);
   --primary-hover: oklch(0.62 0.14 263);
@@ -264,20 +354,6 @@ html[data-theme="saysells"] {
   --sidebar-ring: oklch(0.746 0.06 246.3);
 }
 
-html[data-mode="light"][data-theme="saysells"] {
-  --primary: oklch(0.291 0.057 262.6);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.36 0.062 262.6);
-  --primary-soft: oklch(0.291 0.057 262.6 / 0.1);
-  --primary-soft-2: oklch(0.291 0.057 262.6 / 0.18);
-  --ring: oklch(0.291 0.057 262.6);
-  --chart-1: oklch(0.291 0.057 262.6);
-  --chart-2: oklch(0.621 0.207 34.6);
-  --sidebar-primary: oklch(0.291 0.057 262.6);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.291 0.057 262.6);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -287,5 +363,28 @@ html[data-mode="light"][data-theme="saysells"] {
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Modales (rediseno, sesion A): el clic afuera NO cierra, sacude el
+ * modal para avisar que la salida es la cruz. La clase la pone y la
+ * saca `DialogContent` / `SheetContent` (src/components/ui). */
+@keyframes modal-shake {
+  /* Tailwind v4 centra el dialogo con la propiedad `translate`, no con
+   * `transform`, asi que esta animacion se compone con ella sin
+   * pisarla. */
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+[data-slot="dialog-content"].modal-shake,
+[data-slot="sheet-content"].modal-shake {
+  animation: modal-shake 0.32s;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-content"].modal-shake,
+  [data-slot="sheet-content"].modal-shake {
+    animation: none;
   }
 }

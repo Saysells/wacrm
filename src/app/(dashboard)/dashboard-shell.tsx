@@ -11,6 +11,14 @@ import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
 // client components can't export Next's metadata object.
+//
+// Estructura del rediseno (sesion A, prototipo `docs/rediseno/
+// prototipo-v1.html`): una grilla de dos filas — barra superior de
+// 64 px y cuerpo — y, en el cuerpo, la barra lateral apoyada
+// directamente sobre el fondo gris de la app y el contenido de cada
+// pantalla adentro de UNA tarjeta blanca de 16 px de radio, con 12 px
+// de aire abajo y a la derecha. La tarjeta es la que scrollea; el
+// cuerpo no.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -41,20 +49,24 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="grid h-screen grid-rows-[4rem_1fr] overflow-hidden bg-background">
       {/* Reports this tab's online/away presence once we know a user is
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
-      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header onOpenSidebar={() => setSidebarOpen(true)} />
-        {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {/* Above every page: writes are being rejected and here's why.
-              Renders nothing unless the account/role failed to resolve. */}
-          <AccountAccessAlert />
-          {children}
-        </main>
+      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <div className="flex min-h-0 overflow-hidden">
+        <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+        {/* La tarjeta de contenido. `min-w-0` para que una tabla ancha
+            no la ensanche; `min-h-0` para que el scroll quede adentro. */}
+        <div className="mx-3 mb-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] bg-card shadow-card lg:ml-0">
+          {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
+          <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            {/* Above every page: writes are being rejected and here's why.
+                Renders nothing unless the account/role failed to resolve. */}
+            <AccountAccessAlert />
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

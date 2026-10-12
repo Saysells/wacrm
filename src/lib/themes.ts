@@ -37,9 +37,11 @@ export const STORAGE_KEY = "wacrm.theme";
  *
  * The CSS variables live in `src/app/globals.css` under
  * `html[data-mode="..."]` blocks (neutral surfaces only). Applied
- * at runtime via `document.documentElement.dataset.mode`. Dark is
- * the historical default and stays the app's identity; light is the
- * opt-in eye-strain-friendly alternative.
+ * at runtime via `document.documentElement.dataset.mode`. Light is
+ * the default since the Saysells redesign (session A, 2026-10): the
+ * approved prototype is a light interface. Dark stays available and
+ * whoever already picked a mode keeps it (the boot script reads
+ * localStorage before first paint).
  *
  * Persisted under its own localStorage key so it composes freely
  * with the accent choice (you can run Violet-light or Violet-dark).
@@ -48,7 +50,7 @@ export const MODES = ["light", "dark"] as const;
 
 export type Mode = (typeof MODES)[number];
 
-export const DEFAULT_MODE: Mode = "dark";
+export const DEFAULT_MODE: Mode = "light";
 
 export const MODE_STORAGE_KEY = "wacrm.mode";
 
@@ -76,11 +78,11 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
     id: "saysells",
     name: "Saysells",
     tagline: "The default — brand navy and celeste.",
-    // The elevated navy: the accent's `--primary` in dark mode, which
-    // is DEFAULT_MODE. In light mode the same theme drops to the flat
-    // brand navy — saysells is the one theme whose primary depends on
-    // the mode, so a single static chip can only mirror one of the two.
-    swatch: "oklch(0.55 0.15 263)",
+    // The brand navy #1C2B48: the accent's `--primary` in light mode,
+    // which is DEFAULT_MODE. In dark mode the same theme lifts to an
+    // elevated navy — saysells is the one theme whose primary depends
+    // on the mode, so a single static chip can only mirror one of the two.
+    swatch: "oklch(0.291 0.057 262.6)",
   },
   {
     id: "violet",
