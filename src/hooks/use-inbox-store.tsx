@@ -28,6 +28,7 @@ import {
   type InboxConversation,
 } from "@/lib/inbox/inbox-conversation";
 import type { AccountRole } from "@/lib/auth/roles";
+import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
 import type { Contact, Conversation, Message, Tag } from "@/types";
 
 // ============================================================
@@ -113,7 +114,9 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
   const activeIdRef = useRef<string | null>(null);
   const hydratingRef = useRef<Set<string>>(new Set());
   const listenersRef = useRef<Set<(conv: Conversation) => void>>(new Set());
-  const fetchingRef = useRef(false);
+  // Número de pedido de la carga: gana la respuesta más nueva. Ver
+  // load-sequence.ts por qué no hay un guard de "una sola en vuelo".
+  const loadSeqRef = useRef(createLoadSequence());
 
   const setActiveConversationId = useCallback((id: string | null) => {
     activeIdRef.current = id;
@@ -141,14 +144,15 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ---- carga inicial / resync -------------------------------------
+  // Cada corrida pide SIEMPRE y se aplica solo la respuesta más nueva.
+  // Las dependencias cambian más de una vez al arrancar (el perfil se
+  // pide dos veces); con el guard viejo de "una sola consulta en vuelo"
+  // más el cancelled del cleanup, la respuesta en vuelo se descartaba
+  // y la corrida nueva no pedía: la lista quedaba cargando para siempre.
   useEffect(() => {
     if (profileLoading) return;
-    // Una sola consulta en vuelo: un resync que llega mientras otra
-    // corre se descarta (la que corre ya trae lo nuevo).
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
+    const requestId = beginLoad(loadSeqRef.current);
     const supabase = createClient();
-    let cancelled = false;
 
     (async () => {
       let query = supabase
@@ -168,8 +172,8 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
       if (orFilter) query = query.or(orFilter);
 
       const { data, error } = await query;
-      fetchingRef.current = false;
-      if (cancelled) return;
+      // Otra corrida pidió después: su respuesta es la que vale.
+      if (!shouldApply(loadSeqRef.current, requestId)) return;
       if (error) {
         logSupabaseError("Failed to fetch conversations:", error);
         setLoading(false);
@@ -181,10 +185,6 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
       setConversations(rows.map(normalizeInboxConversation));
       setLoading(false);
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [resyncToken, profileLoading, accountRole, permissionOverrides, userId]);
 
   // ---- etiquetas de la cuenta --------------------------------------

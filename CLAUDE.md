@@ -1311,6 +1311,14 @@ vista vacía. Ancho 350 px.
   errores, 39 warnings: uno menos que la base), tests (los 3 rojos de
   `currency.test.ts`), validador y build; y la sintaxis de la consulta
   con embebidos contra PostgREST real (sin sesión, 200).
+- **Arreglo 2026-10-12 (antes de publicar)**: la lista quedaba cargando
+  para siempre en 6 de 8 cargas. El efecto de carga del store tenía un
+  guard de "una sola consulta en vuelo" más el `cancelled` del cleanup;
+  como el perfil se pide dos veces al arrancar, la respuesta en vuelo
+  se descartaba y la corrida nueva no pedía. Regla: **cada corrida pide
+  siempre y gana la respuesta más nueva** por número de pedido
+  (`src/lib/inbox/load-sequence.ts`, con test); nunca un guard que pueda
+  descartar una respuesta sin que otro pedido la reemplace.
 - Los colores de los chips de estado son la tinta de `GROUP_COLORS`
   sobre su tinte al 15 %, no los pares pastel exactos del prototipo.
 - El panel de contacto abierto/plegado pasó a un store externo
