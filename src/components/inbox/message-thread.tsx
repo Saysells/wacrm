@@ -104,7 +104,14 @@ interface MessageThreadProps {
   onMessagesLoaded: (messages: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
-  onStatusChange: (conversationId: string, status: ConversationStatus) => void;
+  /**
+   * Cambia el estado de la conversación abierta (el UPDATE de siempre
+   * lo hace la página, sesión E: la tecla E y el botón cierran por el
+   * mismo camino). Devuelve si la base aceptó el cambio.
+   */
+  onSetStatus: (status: ConversationStatus) => Promise<boolean>;
+  /** Cerrar con el aviso "Deshacer" (página). */
+  onCloseConversation: () => void;
   onAssignChange: (
     conversationId: string,
     assignedAgentId: string | null,
@@ -211,7 +218,8 @@ export function MessageThread({
   onMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
-  onStatusChange,
+  onSetStatus,
+  onCloseConversation,
   onAssignChange,
   onBack,
   resyncToken = 0,
@@ -632,41 +640,16 @@ export function MessageThread({
     [conversation, onNewMessage, onUpdateMessage, t],
   );
 
-  // Estado de la conversación: el mismo UPDATE de siempre. Cerrar y
-  // reabrir son los dos botones del encabezado; abierta / pendiente
-  // quedaron en "Más". Devuelve si la base aceptó el cambio.
+  // Estado de la conversación: lo escribe la página (`onSetStatus`).
+  // Cerrar y reabrir son los dos botones del encabezado; abierta /
+  // pendiente quedaron en "Más".
   const handleStatusChange = useCallback(
     async (status: ConversationStatus): Promise<boolean> => {
       if (!conversation) return false;
-
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ status })
-        .eq("id", conversation.id);
-      if (error) {
-        console.error("Failed to update conversation status:", error);
-        toast.error(t("statusUpdateFailed"));
-        return false;
-      }
-
-      onStatusChange(conversation.id, status);
-      return true;
+      return onSetStatus(status);
     },
-    [conversation, onStatusChange, t]
+    [conversation, onSetStatus],
   );
-
-  const handleCloseConversation = useCallback(async () => {
-    if (!(await handleStatusChange("closed"))) return;
-    toast(t("closed"), {
-      action: {
-        label: t("undo"),
-        onClick: () => {
-          void handleStatusChange("open");
-        },
-      },
-    });
-  }, [handleStatusChange, t]);
 
   const handleReopenConversation = useCallback(async () => {
     if (!(await handleStatusChange("open"))) return;
@@ -874,18 +857,18 @@ export function MessageThread({
     [conversation, user?.id, t],
   );
 
-  // Vacío del prototipo (`.nosel`), sin la línea de J y K: los atajos
-  // son de la sesión E.
+  // Vacío del prototipo (`.nosel`), con la línea de J y K (sesión E).
   if (!conversation || !contact) {
     return (
       <div className="flex flex-1 items-center justify-center bg-card">
-        <div className="px-7 py-12 text-center">
+        <div className="px-7 py-12 text-center text-sm leading-relaxed text-muted-foreground">
           <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-selected text-primary">
             <MessagesSquare className="size-[26px]" strokeWidth={1.8} />
           </div>
-          <b className="mt-3 block text-base font-semibold text-foreground">
+          <b className="mt-3 mb-1 block text-base font-semibold text-foreground">
             {t("selectConversation")}
           </b>
+          {t("selectConversationHint")}
         </div>
       </div>
     );
@@ -975,7 +958,7 @@ export function MessageThread({
           {!isClosed && (
             <button
               type="button"
-              onClick={handleCloseConversation}
+              onClick={onCloseConversation}
               aria-label={t("close")}
               title={t("close")}
               className={ICON_BUTTON_CLASS}

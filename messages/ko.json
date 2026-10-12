@@ -67,7 +67,8 @@
     "menuSettings": "설정",
     "menuSignOut": "로그아웃",
     "modeLight": "라이트 모드",
-    "modeDark": "다크 모드"
+    "modeDark": "다크 모드",
+    "shortcuts": "키보드 단축키"
   },
   "AccountAccess": {
     "unlinkedTitle": "이 사용자가 계정에 연결되어 있지 않음",
@@ -146,7 +147,8 @@
       "openConversationFailed": "해당 대화를 열지 못했습니다.",
       "whatsappNotConnected": "WhatsApp®이 연결되어 있지 않습니다. 설정으로 이동해 계정을 연결하세요.",
       "takeNextNone": "미배정 문의가 없습니다.",
-      "takeNextFailed": "대화를 받을 수 없습니다."
+      "takeNextFailed": "대화를 받을 수 없습니다.",
+      "tookConversation": "{name}님과의 대화를 맡았습니다."
     },
     "newMessage": {
       "title": "새 메시지",
@@ -269,7 +271,8 @@
       "callButton": "{closer} · {when}",
       "rescheduleCall": "통화 다시 예약",
       "tomorrow": "내일",
-      "createProposal": "제안서 만들기"
+      "createProposal": "제안서 만들기",
+      "selectConversationHint": "J와 K로 목록을 이동하세요."
     },
     "composer": {
       "templates": "템플릿",
@@ -2010,5 +2013,18 @@
       "reindexTooltip": "모든 문서를 다시 임베딩합니다 (예: 임베딩 키 추가 후)",
       "loading": "불러오는 중…"
     }
+  },
+  "Shortcuts": {
+    "title": "키보드 단축키",
+    "description": "입력 중이 아닐 때 글자 키만으로 동작합니다.",
+    "next": "다음 대화",
+    "prev": "이전 대화",
+    "take": "대화 맡기 (또는 다음 미배정 대화)",
+    "schedule": "통화 예약",
+    "close": "대화 닫기",
+    "slash": "작성창에서 빠른 답장",
+    "note": "내부 메모",
+    "escape": "메뉴와 패널 닫기",
+    "help": "이 단축키 보기"
   }
 }

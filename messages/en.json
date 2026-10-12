@@ -67,7 +67,8 @@
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
     "modeLight": "Light mode",
-    "modeDark": "Dark mode"
+    "modeDark": "Dark mode",
+    "shortcuts": "Keyboard shortcuts"
   },
   "AccountAccess": {
     "unlinkedTitle": "This user is not linked to an account",
@@ -146,7 +147,8 @@
       "openConversationFailed": "Could not open that conversation.",
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
       "takeNextNone": "No unassigned inquiries.",
-      "takeNextFailed": "Could not take the conversation."
+      "takeNextFailed": "Could not take the conversation.",
+      "tookConversation": "You took the conversation with {name}."
     },
     "newMessage": {
       "title": "New message",
@@ -269,7 +271,8 @@
       "callButton": "{closer} · {when}",
       "rescheduleCall": "Reschedule call",
       "tomorrow": "Tomorrow",
-      "createProposal": "Create proposal"
+      "createProposal": "Create proposal",
+      "selectConversationHint": "Use J and K to move through the list."
     },
     "composer": {
       "templates": "Templates",
@@ -2010,5 +2013,18 @@
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
     }
+  },
+  "Shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Single letters work when you are not typing.",
+    "next": "Next conversation",
+    "prev": "Previous conversation",
+    "take": "Take the conversation (or the next unassigned one)",
+    "schedule": "Schedule a call",
+    "close": "Close conversation",
+    "slash": "Quick replies in the composer",
+    "note": "Internal note",
+    "escape": "Close menus and panels",
+    "help": "Show these shortcuts"
   }
 }

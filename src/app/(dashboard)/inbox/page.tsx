@@ -30,6 +30,9 @@ import {
   type Vista,
 } from "@/lib/inbox/vistas";
 import { showsProposalAction } from "@/lib/inbox/closer";
+import { isTypingTarget, neighborId, shortcutFor } from "@/lib/inbox/shortcuts";
+import { sendComposerCommand } from "@/lib/inbox/composer-commands";
+import { openShortcutsHelp } from "@/hooks/use-shortcuts-help";
 import { requestFromAction, type ScheduleRequest } from "@/lib/inbox/agendar";
 import { effectiveSideTab, tabAfterOpeningConversation } from "@/lib/inbox/side-panel";
 import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
@@ -588,17 +591,57 @@ function InboxPageInner() {
     []
   );
 
-  const handleStatusChange = useCallback(
-    (conversationId: string, status: ConversationStatus) => {
+  // Estado de la conversación (sesión E): el UPDATE de `status` de
+  // siempre, ahora en la página, para que el botón del hilo y la tecla E
+  // cierren por el mismo camino. Devuelve si la base aceptó el cambio.
+  const setConversationStatus = useCallback(
+    async (conversationId: string, status: ConversationStatus): Promise<boolean> => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ status })
+        .eq("id", conversationId);
+      if (error) {
+        console.error("Failed to update conversation status:", error);
+        toast.error(tThread("statusUpdateFailed"));
+        return false;
+      }
       patch((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
       );
-      if (activeConversation?.id === conversationId) {
-        setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
-      }
+      setActiveConversation((prev) =>
+        prev && prev.id === conversationId ? { ...prev, status } : prev,
+      );
+      return true;
     },
-    [activeConversation, patch]
+    [patch, tThread],
   );
+
+  /** Cerrar con "Deshacer" (prototipo `closeConv`): el botón del hilo y la tecla E. */
+  const closeConversation = useCallback(
+    async (conversationId: string) => {
+      if (!(await setConversationStatus(conversationId, "closed"))) return;
+      toast(tThread("closed"), {
+        action: {
+          label: tThread("undo"),
+          onClick: () => {
+            void setConversationStatus(conversationId, "open");
+          },
+        },
+      });
+    },
+    [setConversationStatus, tThread],
+  );
+
+  const activeConversationId = activeConversation?.id ?? null;
+  const handleSetActiveStatus = useCallback(
+    (status: ConversationStatus) =>
+      activeConversationId ? setConversationStatus(activeConversationId, status) : Promise.resolve(false),
+    [activeConversationId, setConversationStatus],
+  );
+  const handleCloseActive = useCallback(() => {
+    if (activeConversationId) void closeConversation(activeConversationId);
+  }, [activeConversationId, closeConversation]);
 
   const handleAssignChange = useCallback(
     (conversationId: string, assignedAgentId: string | null) => {
@@ -619,6 +662,104 @@ function InboxPageInner() {
     },
     [activeConversation, patch]
   );
+
+  /**
+   * Tecla A con la conversación abierta sin tomar: la misma asignación
+   * que el Setter de la ficha (UPDATE de `assigned_agent_id`). Si ya
+   * tiene dueño, Tomar siguiente.
+   */
+  const takeActiveConversation = useCallback(async () => {
+    const active = activeConversation;
+    if (!userId || !active || active.assigned_agent_id) {
+      void handleTakeNext();
+      return;
+    }
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("conversations")
+      .update({ assigned_agent_id: userId })
+      .eq("id", active.id);
+    if (error) {
+      console.error("Failed to take conversation:", error);
+      toast.error(t("takeNextFailed"));
+      return;
+    }
+    handleAssignChange(active.id, userId);
+    toast(t("tookConversation", { name: active.contact?.name || active.contact?.phone || "" }));
+  }, [activeConversation, userId, handleTakeNext, handleAssignChange, t]);
+
+  // ---- atajos de teclado (sesión E, prototipo `keydown`) -------------
+  // Un solo manejador para toda la Bandeja. Qué hace cada tecla lo
+  // decide `shortcutFor` (puro, con pruebas) con tres medidas del DOM:
+  // si el foco está en un campo, si hay un modal, menú o popover abierto
+  // (base-ui los monta con role="dialog" / "menu" / "listbox" solo
+  // mientras están abiertos) y si hay un modificador apretado.
+  const visibleIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    visibleIdsRef.current = visibleConversations.map((c) => c.id);
+  }, [visibleConversations]);
+  const openByIdRef = useRef(openConversationById);
+  useEffect(() => {
+    openByIdRef.current = openConversationById;
+  }, [openConversationById]);
+  const actionsRef = useRef({
+    take: takeActiveConversation,
+    schedule: handleScheduleFromHeader,
+    close: handleCloseActive,
+  });
+  useEffect(() => {
+    actionsRef.current = {
+      take: takeActiveConversation,
+      schedule: handleScheduleFromHeader,
+      close: handleCloseActive,
+    };
+  }, [takeActiveConversation, handleScheduleFromHeader, handleCloseActive]);
+
+  const activeIsClosed = activeConversation?.status === "closed";
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      const action = shortcutFor(e.key, {
+        typing: isTypingTarget(target?.tagName, !!target?.isContentEditable),
+        overlayOpen:
+          document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]') !== null,
+        modifier: e.metaKey || e.ctrlKey || e.altKey,
+        canAct: canTakeNext,
+      });
+      if (!action) return;
+      e.preventDefault();
+      switch (action) {
+        case "next":
+        case "prev": {
+          const id = neighborId(visibleIdsRef.current, activeConversationId, action === "next" ? 1 : -1);
+          if (id) void openByIdRef.current(id);
+          return;
+        }
+        case "take":
+          void actionsRef.current.take();
+          return;
+        case "schedule":
+          // Sin etiquetas con fecha no hay nada que agendar; cerrada, tampoco.
+          if (canSchedule && activeConversationId && !activeIsClosed) actionsRef.current.schedule();
+          return;
+        case "close":
+          if (activeConversationId && !activeIsClosed) actionsRef.current.close();
+          return;
+        case "note":
+          if (activeConversationId) sendComposerCommand(activeConversationId, "note");
+          return;
+        case "slash":
+          if (activeConversationId) sendComposerCommand(activeConversationId, "slash");
+          return;
+        case "help":
+          openShortcutsHelp();
+          return;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canTakeNext, canSchedule, activeConversationId, activeIsClosed]);
 
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
@@ -691,7 +832,8 @@ function InboxPageInner() {
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}
             onUpdateMessage={handleUpdateMessage}
-            onStatusChange={handleStatusChange}
+            onSetStatus={handleSetActiveStatus}
+            onCloseConversation={handleCloseActive}
             onAssignChange={handleAssignChange}
             onBack={handleCloseConversation}
             resyncToken={resyncToken}

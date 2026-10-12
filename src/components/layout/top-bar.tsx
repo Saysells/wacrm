@@ -9,6 +9,7 @@ import {
   Bell,
   Check,
   ChevronDown,
+  CircleQuestionMark,
   FilePen,
   Globe,
   Grip,
@@ -30,6 +31,7 @@ import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
+import { openShortcutsHelp } from "@/hooks/use-shortcuts-help";
 import { APP_NAME } from "@/lib/app-name";
 import { homePathFor } from "@/lib/auth/nav";
 import {
@@ -288,6 +290,19 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
       </form>
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {/* "Atajos de teclado" (sesión E), antes de la campana, en todas
+            las pantallas. En esta versión de lucide el CircleHelp del
+            prototipo se llama CircleQuestionMark. */}
+        <button
+          type="button"
+          onClick={openShortcutsHelp}
+          aria-label={t("shortcuts")}
+          title={t("shortcuts")}
+          className={ICON_BUTTON}
+        >
+          <CircleQuestionMark className="size-5" />
+        </button>
+
         {/* Campana con el contador de no leídas que ya existe. */}
         <Link
           href="/notifications"

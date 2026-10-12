@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { SideRail } from "@/components/layout/side-rail";
+import { ShortcutsDialog } from "@/components/layout/shortcuts-dialog";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { InboxStoreProvider } from "@/hooks/use-inbox-store";
@@ -79,6 +80,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             Solo escritorio; en mobile el panel no existe. */}
         <SideRail />
       </div>
+      {/* "Atajos de teclado": lo abren ? en la Bandeja y el botón de la
+          barra superior (sesión E). */}
+      <ShortcutsDialog />
     </div>
   );
 }

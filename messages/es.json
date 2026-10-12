@@ -67,7 +67,8 @@
     "menuSettings": "Configuración",
     "menuSignOut": "Cerrar sesión",
     "modeLight": "Modo claro",
-    "modeDark": "Modo oscuro"
+    "modeDark": "Modo oscuro",
+    "shortcuts": "Atajos de teclado"
   },
   "AccountAccess": {
     "unlinkedTitle": "Este usuario no está vinculado a ninguna cuenta",
@@ -146,7 +147,8 @@
       "openConversationFailed": "No se pudo abrir esa conversación.",
       "whatsappNotConnected": "WhatsApp® no está conectado. Andá a Configuración para conectar tu cuenta.",
       "takeNextNone": "No hay consultas sin tomar.",
-      "takeNextFailed": "No se pudo tomar la conversación."
+      "takeNextFailed": "No se pudo tomar la conversación.",
+      "tookConversation": "Tomaste la conversación de {name}."
     },
     "newMessage": {
       "title": "Nuevo mensaje",
@@ -269,7 +271,8 @@
       "callButton": "{closer} · {when}",
       "rescheduleCall": "Reagendar llamada",
       "tomorrow": "Mañana",
-      "createProposal": "Crear propuesta"
+      "createProposal": "Crear propuesta",
+      "selectConversationHint": "Usá J y K para moverte por la lista."
     },
     "composer": {
       "templates": "Plantillas",
@@ -2010,5 +2013,18 @@
       "reindexTooltip": "Volver a indexar todos los documentos (por ej. después de agregar una clave de embeddings)",
       "loading": "Cargando…"
     }
+  },
+  "Shortcuts": {
+    "title": "Atajos de teclado",
+    "description": "Las letras solas funcionan cuando no estás escribiendo.",
+    "next": "Conversación siguiente",
+    "prev": "Conversación anterior",
+    "take": "Tomar la conversación (o la siguiente sin tomar)",
+    "schedule": "Agendar llamada",
+    "close": "Cerrar conversación",
+    "slash": "Respuestas rápidas en el composer",
+    "note": "Nota interna",
+    "escape": "Cerrar menús y paneles",
+    "help": "Ver estos atajos"
   }
 }

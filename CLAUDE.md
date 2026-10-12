@@ -1559,3 +1559,94 @@ Qué etiqueta se aplica (`resolveScheduleTag`, decisión de Emi del
   Reagendar / No se presentó / Propuesta, "Crear propuesta"), Mis
   llamadas y los atajos (J, K, A, L, E, N, ?). Sesión F: Contactos,
   Notificaciones, Configuración y el selector.
+
+# Rediseño · sesión E (closer y teclado)
+
+Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `16bd0e7`
+(bloque 1: arreglo del store y vista de closer) y el del teclado.
+Misma regla: frontend sí, lógica no; sin SQL, sin dependencias.
+Prototipo: `ISCLOSER()`, `inView(c,'calls')`, `callRow()`, `callc` /
+`outc`, `outcome()`, `primaryAction()`, `keydown`, `openKeys()`.
+
+## Arreglo del store
+
+`hydrate` descartaba una relectura si ya había otra de esa conversación
+en vuelo (`hydratingRef`, sesión B): con dos cambios de etiqueta
+seguidos la lista quedaba con el estado del medio. Ahora
+`src/lib/inbox/hydrate-queue.ts` (puro, con pruebas): por conversación
+corre UNA lectura a la vez; la pedida durante otra queda anotada y
+corre **una sola más** apenas termina, con lo último de la base; quien
+pidió mientras tanto espera esa lectura extra. Las lecturas van en
+serie, así que la última respuesta aplicada es la de la última lectura.
+No se encontró otra guarda igual: los `cancelled` de los efectos
+(etiquetas, miembros, mensajes del hilo, ficha) descartan la respuesta
+vieja pero la corrida nueva siempre vuelve a pedir, y
+`quickRepliesFetchRef` es "pedir una vez por montaje", no una relectura.
+
+## Closer
+
+`src/lib/inbox/closer.ts` + `src/hooks/use-closer.ts`. Es closer quien
+tiene como nombre de pila (primera palabra de `profiles.full_name`, sin
+mayúsculas ni acentos: `firstNameKey`) el de una etiqueta "Agendado a
+<nombre>" de la cuenta (`closerNameOf`); si dos miembros del roster
+comparten ese nombre de pila, ninguno. USA y Star Energy no tienen
+closers; en ARG serán Ezequiel y Manuel cuando sus etiquetas reemplacen
+a las de Paola y Gustavo (datos, lo hace el chat de dirección).
+
+- **Mis llamadas** (`?vista=mis-llamadas`, solo closer, primera de la
+  lista, mismo ícono que Agendadas): las llamadas pendientes a su nombre
+  y las que no nombran closer ("Agendada" / "Reagendado", chip "Sin
+  closer"), sin cerradas, por hora y agrupadas por día ("Hoy · jueves 15
+  de octubre"; `dayLabel` de `thread.ts` suma "Mañana"). Fila
+  `callRow`: hora, avatar, nombre, "empresa o teléfono · setter X",
+  estado "Sin resultado" (ya pasó) / "En X" (< 3 h) / "Agendada".
+  Contador "N por hacer". Sin vista en la URL el closer arranca ahí
+  (`defaultVista(role, isCloser)`); las demás vistas quedan (un closer
+  puede ser admin).
+- **Tarjeta de la llamada** (`side-panel.tsx`, título "Llamada") cuando
+  la llamada abierta es suya o sin closer (`showsCallCard`): día, hora
+  con "en X" / "ya pasó", nombre · empresa, y "Después de la llamada"
+  con Realizada, Reagendar (modal de la D), No se presentó y Propuesta.
+  Cada resultado es `attachTag` de la etiqueta de estado con ese nombre
+  (`outcomeTag`; sin ella el botón no va); Propuesta abre
+  propuestas.saysells.com en otra pestaña para el equipo de Saysells,
+  antes de esperar la red. La versión hecha vive en memoria hasta
+  cambiar de hilo: al recargar vuelve la ficha común.
+- **"Crear propuesta"** como acción principal del hilo
+  (`showsProposalAction`: closer + llamada suya + equipo Saysells).
+- Los filtros del desplegable de la lista pasaron a la página: la lista
+  filtrada se calcula una vez (`filterConversations`) y es la misma que
+  recorren J y K.
+
+## Teclado
+
+`src/lib/inbox/shortcuts.ts` (puro, con pruebas: `shortcutFor`,
+`isTypingTarget`, `neighborId`, `SHORTCUT_HELP`) y un solo manejador de
+`keydown` en `inbox/page.tsx`. Nunca escribiendo en un campo, con un
+modal, menú o popover abierto (base-ui los monta con `role="dialog"` /
+`"menu"` / `"listbox"` solo mientras están abiertos) ni con Cmd, Ctrl o
+Alt. J / K mueven por la lista a la vista; A toma la abierta si está sin
+tomar (el UPDATE del Setter) o Tomar siguiente; L abre Agendar /
+Reagendar (sin etiquetas con fecha, nada); E cierra con Deshacer (el
+UPDATE de `status` salió del hilo a la página: botón y tecla cierran
+por el mismo camino, `onSetStatus` / `onCloseConversation`); N y /
+mandan una orden al cuadro de esa conversación
+(`src/lib/inbox/composer-commands.ts`, un bus como `composer-drafts`):
+Nota interna con el foco, o Responder con "/" si la ventana está
+abierta o por vencer; ? abre el modal. El viewer solo J, K y ?.
+
+Modal "Atajos de teclado" (`shortcuts-dialog.tsx`, montado en el shell,
+estado en `use-shortcuts-help.ts`): lo abren ? y el botón de la barra
+superior, antes de la campana, en todas las pantallas. En esta versión
+de lucide `CircleHelp` se llama `CircleQuestionMark`, y `FileSignature`
+no existe: Propuesta y "Crear propuesta" usan `FilePen`, como la D. El
+vacío del hilo volvió a decir "Usá J y K para moverte por la lista."
+
+## Pendientes y lo que queda para la F
+
+- **Nada se vio en un navegador**: verificado typecheck, lint (0
+  errores, 35 warnings: los de base), tests (los 3 rojos de
+  `currency.test.ts`), validador de mensajes y build.
+- Del prototipo no van: "Ver como", las líneas de evento y el resultado
+  guardado en la llamada.
+- Sesión F: Contactos, Notificaciones, Configuración y el selector.

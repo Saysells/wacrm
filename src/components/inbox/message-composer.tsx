@@ -79,6 +79,7 @@ import {
   setReplyDraft as storeReplyDraft,
   subscribeReplyDraft,
 } from "@/lib/inbox/composer-drafts";
+import { subscribeComposerCommands } from "@/lib/inbox/composer-commands";
 
 // ============================================================
 // Cuadro de mensaje de la Bandeja (rediseño, sesión C).
@@ -429,6 +430,26 @@ export function MessageComposer({
     setText("/");
     focusEnd();
   }, [setText, focusEnd]);
+
+  // Atajos de la Bandeja (sesión E): N pasa a Nota interna con el foco
+  // en el cuadro; "/" pasa a Responder con las respuestas rápidas
+  // abiertas, solo con la ventana abierta o por vencer (cerrada o sin
+  // respuesta no hay cuadro: hay plantillas). El viewer no recibe nada.
+  useEffect(
+    () =>
+      subscribeComposerCommands(conversationId, (command) => {
+        if (readOnly) return;
+        if (command === "note") {
+          setTab("note");
+          focusEnd();
+          return;
+        }
+        if (windowBlocked || windowState === null) return;
+        setTab("reply");
+        insertSlash();
+      }),
+    [conversationId, readOnly, windowBlocked, windowState, focusEnd, insertSlash],
+  );
 
   // ---- Envío ----------------------------------------------------------
 
