@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { SideRail } from "@/components/layout/side-rail";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { InboxStoreProvider } from "@/hooks/use-inbox-store";
@@ -19,7 +20,9 @@ import { InboxStoreProvider } from "@/hooks/use-inbox-store";
 // directamente sobre el fondo gris de la app y el contenido de cada
 // pantalla adentro de UNA tarjeta blanca de 16 px de radio, con 12 px
 // de aire abajo y a la derecha. La tarjeta es la que scrollea; el
-// cuerpo no.
+// cuerpo no. Desde la sesión D, a la derecha de la tarjeta va el riel
+// del panel lateral (56 px, solo en escritorio), prototipo `.body`:
+// `248px minmax(0,1fr) 56px`.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -63,7 +66,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* La tarjeta de contenido. `min-w-0` para que una tabla ancha
             no la ensanche; `min-h-0` para que el scroll quede adentro. */}
-        <div className="mx-3 mb-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] bg-card shadow-card lg:ml-0">
+        <div className="mx-3 mb-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] bg-card shadow-card lg:mx-0">
           {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
           <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {/* Above every page: writes are being rejected and here's why.
@@ -72,6 +75,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
+        {/* Riel del panel lateral: Ficha, Llamadas, Notas, Propuestas.
+            Solo escritorio; en mobile el panel no existe. */}
+        <SideRail />
       </div>
     </div>
   );

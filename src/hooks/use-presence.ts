@@ -5,6 +5,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import {
   derivePresence,
   type PresenceRow,
@@ -80,8 +81,11 @@ export function usePresence(enabled = true): UsePresenceResult {
     // Realtime has already delivered (keeping the newer last_seen_at)
     // rather than replacing the map — so an event that lands while the
     // fetch is in flight isn't clobbered by a staler snapshot row.
+    // Nombre único por instancia (ver channel-name.ts): la ficha de la
+    // Bandeja y el roster de Miembros lo montan en lugares distintos y
+    // un remontaje rápido no debe encontrarse con el canal anterior.
     const channel: RealtimeChannel = supabase
-      .channel(`presence:${accountId}`)
+      .channel(uniqueChannelName("presence"))
       .on(
         "postgres_changes",
         {

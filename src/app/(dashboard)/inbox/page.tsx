@@ -4,27 +4,31 @@ import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from "rea
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
-import type { Conversation, Message, Contact, ConversationStatus, Tag } from "@/types";
+import type { Conversation, ContactNote, Message, Contact, ConversationStatus } from "@/types";
 import { useAuth } from "@/hooks/use-auth";
 import { canSendMessages } from "@/lib/auth/roles";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useInboxStore } from "@/hooks/use-inbox-store";
 import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
-import { useContactPanelOpen } from "@/hooks/use-contact-panel-open";
+import { useSidePanel } from "@/hooks/use-side-panel";
+import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
 import { useNow } from "@/hooks/use-now";
 import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import type { InboxConversation } from "@/lib/inbox/inbox-conversation";
 import {
   defaultVista,
   escapeLike,
+  hasScheduling,
   parseVista,
   unassignedOldestFirst,
   type ListSelection,
   type Vista,
 } from "@/lib/inbox/vistas";
+import { effectiveSideTab, tabAfterOpeningConversation } from "@/lib/inbox/side-panel";
+import { beginLoad, createLoadSequence, shouldApply } from "@/lib/inbox/load-sequence";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
-import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { SidePanel } from "@/components/inbox/side-panel";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,7 +59,9 @@ export default function InboxPage() {
 // dueña del HILO abierto: la conversación activa, sus mensajes y los
 // cambios que el hilo hace (estado, asignación), que se copian al
 // store con `patch` para que la lista y los contadores no queden
-// viejos.
+// viejos. Desde la sesión D también es dueña de las NOTAS del contacto
+// abierto (las comparten el hilo y la ficha) y del panel lateral, que
+// lee la fila VIVA del store de la conversación abierta.
 //
 // Estado en la URL: `/inbox?vista=para-mi|sin-tomar|agendadas|
 // por-vencer|todas|cerradas`, `/inbox?embudo=<grupo>`, `/inbox?q=<texto>`
@@ -68,7 +74,7 @@ function InboxPageInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { user: authUser, accountRole } = useAuth();
+  const { user: authUser, accountId, accountRole } = useAuth();
   const userId = authUser?.id ?? null;
   // Tomar siguiente: mismo permiso que enviar.
   const canTakeNext = !!accountRole && canSendMessages(accountRole);
@@ -94,8 +100,14 @@ function InboxPageInner() {
    */
   const [resyncToken, setResyncToken] = useState(0);
 
-  // Panel de contacto abierto o plegado (device-scoped; #258).
-  const { open: contactPanelOpen, toggle: handleToggleContactPanel } = useContactPanelOpen();
+  // Panel lateral (riel): abierto o plegado y pestaña (sesión D). Una
+  // pestaña que la cuenta o la persona no tienen cae en la ficha.
+  const sidePanel = useSidePanel();
+  const saysells = useSaysellsSelector();
+  const panelTab = effectiveSideTab(sidePanel.tab, {
+    scheduling: hasScheduling(store.tags),
+    saysells: saysells.visible,
+  });
 
   // ---- búsqueda de la barra superior --------------------------------
   // `?q=` (llegar desde otra pantalla) siembra la búsqueda del store una
@@ -293,32 +305,94 @@ function InboxPageInner() {
     refetchStore();
   }, [refetchStore]);
 
-  /**
-   * La ficha releyo las etiquetas del contacto (al abrirlo o despues
-   * de cambiarle el estado). Se copian al contacto embebido en la
-   * lista, que las trajo con su propio fetch y si no quedaria mostrando
-   * el estado viejo. Solo la lista: tocar `activeContact` le cambiaria
-   * la identidad a la prop de la ficha y la haria releer.
-   */
   const { patch } = store;
-  const handleContactTagsChange = useCallback(
-    (contactId: string, tags: Tag[]) => {
-      patch((prev) => {
-        let changed = false;
-        const next = prev.map((c) => {
-          if (!c.contact || c.contact.id !== contactId) return c;
-          const current = (c.contact.tags ?? []).map((t) => t.id).join(",");
-          if (current === tags.map((t) => t.id).join(",")) return c;
-          changed = true;
-          return { ...c, contact: { ...c.contact, tags } };
-        });
-        return changed ? next : prev;
-      });
+
+  // La fila VIVA del store de la conversación abierta: trae el contacto
+  // con sus etiquetas y la fecha de la llamada tal como los pintan la
+  // lista y los contadores. El panel y el encabezado leen de acá, así
+  // que lo que la ficha escribe (y lo que llega por realtime) se ve en
+  // todos lados sin recargar.
+  const activeRow = useMemo(
+    () =>
+      activeConversation
+        ? (store.conversations.find((c) => c.id === activeConversation.id) ?? null)
+        : null,
+    [store.conversations, activeConversation],
+  );
+  const liveContact = activeRow?.contact ?? activeContact;
+
+  // ---- notas internas del contacto abierto ---------------------------
+  // Las comparten el hilo (línea de tiempo) y la ficha (grupo Notas):
+  // una nota cargada en cualquiera de los dos aparece en el otro sin
+  // recargar. Se piden por contacto y con `resyncToken` (Actualizar,
+  // reconexión); gana la respuesta más nueva (load-sequence.ts). Las de
+  // otras personas siguen llegando al actualizar: `contact_notes` no
+  // está en la publicación de realtime y eso es SQL.
+  const activeContactId = activeContact?.id ?? null;
+  const [notesState, setNotesState] = useState<{ contactId: string; notes: ContactNote[] } | null>(
+    null,
+  );
+  const notesSeqRef = useRef(createLoadSequence());
+  useEffect(() => {
+    if (!activeContactId) return;
+    const requestId = beginLoad(notesSeqRef.current);
+    const supabase = createClient();
+    (async () => {
+      const { data, error } = await supabase
+        .from("contact_notes")
+        .select("*")
+        .eq("contact_id", activeContactId)
+        .order("created_at", { ascending: true });
+      if (!shouldApply(notesSeqRef.current, requestId)) return;
+      if (error) {
+        console.error("Failed to fetch contact notes:", error);
+        return;
+      }
+      setNotesState({ contactId: activeContactId, notes: (data as ContactNote[]) ?? [] });
+    })();
+  }, [activeContactId, resyncToken]);
+  const notes = useMemo(
+    () => (notesState && notesState.contactId === activeContactId ? notesState.notes : []),
+    [notesState, activeContactId],
+  );
+
+  // El alta de `contact_notes` de siempre (account_id y user_id; RLS
+  // agent+). Nunca sale por WhatsApp. Devuelve si quedó guardada.
+  const tThread = useTranslations("Inbox.messageThread");
+  const handleSaveNote = useCallback(
+    async (text: string): Promise<boolean> => {
+      const trimmed = text.trim();
+      if (!activeContactId || !accountId || !trimmed) return false;
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("contact_notes")
+        .insert({
+          contact_id: activeContactId,
+          account_id: accountId,
+          user_id: userId ?? undefined,
+          note_text: trimmed,
+        })
+        .select()
+        .single();
+      if (error || !data) {
+        console.error("Failed to save note:", error);
+        toast.error(tThread("noteSaveFailed"));
+        return false;
+      }
+      const note = data as ContactNote;
+      setNotesState((prev) =>
+        prev && prev.contactId === activeContactId
+          ? { contactId: prev.contactId, notes: [...prev.notes, note] }
+          : { contactId: activeContactId, notes: [note] },
+      );
+      toast.success(tThread("noteSaved"));
+      return true;
     },
-    [patch],
+    [activeContactId, accountId, userId, tThread],
   );
 
   const { setActiveConversationId } = store;
+  const { setTab: setSidePanelTab, close: closeSidePanel } = sidePanel;
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
       // Re-clicking the already-active conversation would clear the
@@ -326,6 +400,8 @@ function InboxPageInner() {
       // when conversationId changes — so messages would stay empty until
       // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
+      // Con Llamadas o Propuestas a la vista, el panel pasa a la ficha.
+      setSidePanelTab(tabAfterOpeningConversation(sidePanel.tab));
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
@@ -345,7 +421,7 @@ function InboxPageInner() {
       // refresh lands back in the same thread. replace() keeps history clean.
       router.replace(urlWithConversation(conv.id), { scroll: false });
     },
-    [activeConversation?.id, router, urlWithConversation, patch, setActiveConversationId],
+    [activeConversation?.id, router, urlWithConversation, patch, setActiveConversationId, setSidePanelTab, sidePanel.tab],
   );
 
   /**
@@ -556,7 +632,7 @@ function InboxPageInner() {
         >
           <MessageThread
             conversation={activeConversation}
-            contact={activeContact}
+            contact={liveContact}
             messages={messages}
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}
@@ -566,20 +642,26 @@ function InboxPageInner() {
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
-            onToggleContactPanel={handleToggleContactPanel}
+            notes={notes}
+            onSaveNote={handleSaveNote}
+            memberNames={store.memberNames}
           />
         </div>
 
-        {/* Right panel: Contact sidebar — desktop only, and only when the
-            agent hasn't collapsed it via the thread-header toggle (#258).
-            On mobile it's always hidden (the `lg:block` below), so the
-            toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
-          <div className="hidden h-full lg:block">
-            <ContactSidebar
-              contact={activeContact}
-              onTagsChange={handleContactTagsChange}
+        {/* Panel lateral (sesión D): Ficha, Llamadas, Notas o Propuestas
+            según la pestaña del riel. Solo escritorio; en mobile no
+            existe. Abierto o cerrado lo decide el riel (y la cruz). */}
+        {sidePanel.open && (
+          <div className="hidden h-full lg:flex">
+            <SidePanel
+              tab={panelTab}
+              onClose={closeSidePanel}
+              conversation={activeRow}
+              notes={notes}
+              onSaveNote={handleSaveNote}
+              onAssignChange={handleAssignChange}
+              onOpenConversation={handleSelectConversation}
+              now={now}
             />
           </div>
         )}

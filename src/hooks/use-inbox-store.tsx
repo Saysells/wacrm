@@ -64,6 +64,16 @@ export interface InboxStore {
   memberNames: ReadonlyMap<string, string>;
   /** Actualiza filas en memoria (optimista). */
   patch: (updater: (prev: InboxConversation[]) => InboxConversation[]) => void;
+  /**
+   * Copia campos del contacto (etiquetas, fecha de la llamada, nombre…)
+   * a toda fila que lo tenga. Es lo que la ficha avisa después de
+   * escribir (sesión D): la lista, los contadores, la pestaña Llamadas
+   * y el encabezado del hilo leen de acá, así se actualizan sin
+   * recargar y sin esperar al realtime.
+   */
+  patchContact: (contactId: string, changes: Partial<Contact>) => void;
+  /** Suma al catálogo en memoria una etiqueta recién creada desde la ficha. */
+  addTag: (tag: Tag) => void;
   /** Trae una conversación por id con su contacto y la mete en la lista. */
   hydrate: (conversationId: string) => Promise<InboxConversation | null>;
   /** Vuelve a pedir la lista entera (reconexión, pestaña visible, botón de refrescar). */
@@ -138,6 +148,26 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const patchContact = useCallback((contactId: string, changes: Partial<Contact>) => {
+    setConversations((prev) => {
+      let changed = false;
+      const next = prev.map((c) => {
+        if (!c.contact || c.contact.id !== contactId) return c;
+        changed = true;
+        return { ...c, contact: { ...c.contact, ...changes } };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const addTag = useCallback((tag: Tag) => {
+    setTags((prev) =>
+      prev.some((t) => t.id === tag.id)
+        ? prev
+        : [...prev, tag].sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  }, []);
 
   const refetch = useCallback(() => {
     setResyncToken((n) => n + 1);
@@ -435,12 +465,14 @@ export function InboxStoreProvider({ children }: { children: ReactNode }) {
       tags,
       memberNames,
       patch,
+      patchContact,
+      addTag,
       hydrate,
       refetch,
       setActiveConversationId,
       subscribeConversationUpdates,
     }),
-    [conversations, loading, tags, memberNames, patch, hydrate, refetch, setActiveConversationId, subscribeConversationUpdates],
+    [conversations, loading, tags, memberNames, patch, patchContact, addTag, hydrate, refetch, setActiveConversationId, subscribeConversationUpdates],
   );
 
   return <InboxStoreContext.Provider value={value}>{children}</InboxStoreContext.Provider>;
@@ -452,6 +484,8 @@ const EMPTY_STORE: InboxStore = {
   tags: [],
   memberNames: new Map(),
   patch: () => {},
+  patchContact: () => {},
+  addTag: () => {},
   hydrate: async () => null,
   refetch: () => {},
   setActiveConversationId: () => {},

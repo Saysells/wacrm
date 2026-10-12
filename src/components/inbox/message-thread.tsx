@@ -4,9 +4,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useNow } from "@/hooks/use-now";
-import { usePresence } from "@/hooks/use-presence";
-import { PresenceDot } from "@/components/presence/presence-dot";
-import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
@@ -16,7 +13,6 @@ import type {
   Contact,
   ConversationStatus,
   MessageTemplate,
-  Profile,
   InteractiveMessagePayload,
 } from "@/types";
 import {
@@ -26,12 +22,9 @@ import {
   Copy,
   Ellipsis,
   MessagesSquare,
-  PanelRightClose,
-  PanelRightOpen,
   RefreshCw,
   RotateCcw,
   StickyNote,
-  UserPlus,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -42,9 +35,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MessageBubble } from "./message-bubble";
@@ -78,13 +68,15 @@ import { toast } from "sonner";
 // internas intercaladas, y abajo el cuadro de mensaje (composer).
 //
 // La lógica no cambió: los mensajes se piden y se mandan como antes
-// (`/api/whatsapp/send`), las reacciones tienen su canal, el estado y
-// la asignación son los mismos UPDATE de `conversations`. Lo que se
-// movió: la ventana de 24 h ya no es un badge de horas enteras en el
-// encabezado sino el indicador vivo del cuadro (`windowState` +
-// `useNow`, la misma regla que la lista), y pasar a abierta /
-// pendiente, asignar, actualizar y copiar el teléfono viven en el menú
-// "Más" hasta que la sesión D lleve la asignación a la ficha.
+// (`/api/whatsapp/send`), las reacciones tienen su canal, el estado es
+// el mismo UPDATE de `conversations`. Lo que se movió: la ventana de
+// 24 h ya no es un badge de horas enteras en el encabezado sino el
+// indicador vivo del cuadro (`windowState` + `useNow`, la misma regla
+// que la lista); pasar a abierta / pendiente, actualizar y copiar el
+// teléfono viven en el menú "Más". Desde la sesión D la asignación
+// (Setter) está en la ficha del panel lateral, las notas internas las
+// carga la página (las comparten el hilo y la ficha) y el botón del
+// panel del encabezado lo reemplazó el riel.
 // ============================================================
 
 interface ReplyDraft {
@@ -129,14 +121,16 @@ interface MessageThreadProps {
    */
   onRefresh?: () => void;
   /**
-   * Desktop-only contact-panel toggle. The page owns the open/closed
-   * state (it's the one that renders the sidebar), so the thread just
-   * reflects it and asks the page to flip it. Both optional so existing
-   * callers keep working; the toggle button only renders when
-   * `onToggleContactPanel` is wired up.
+   * Notas internas del contacto (`contact_notes`), de la más vieja a la
+   * más nueva. Las carga la página y las comparte con la ficha del
+   * panel: una nota cargada en cualquiera de los dos aparece en el otro
+   * sin recargar.
    */
-  contactPanelOpen?: boolean;
-  onToggleContactPanel?: () => void;
+  notes: ContactNote[];
+  /** El alta de `contact_notes` de la página. Devuelve si quedó guardada. */
+  onSaveNote: (text: string) => Promise<boolean>;
+  /** Nombre por `user_id` de los miembros de la cuenta (autor de cada nota). */
+  memberNames: ReadonlyMap<string, string>;
 }
 
 type Translator = ReturnType<typeof useTranslations>;
@@ -176,14 +170,14 @@ export function MessageThread({
   onBack,
   resyncToken = 0,
   onRefresh,
-  contactPanelOpen,
-  onToggleContactPanel,
+  notes,
+  onSaveNote,
+  memberNames,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user, accountId } = useAuth();
-  const { getPresence, getRow, now: presenceNow } = usePresence();
+  const { user } = useAuth();
   const now = useNow();
   const [loading, setLoading] = useState(false);
   // Conversación cuyos mensajes ya se cargaron: hasta que coincide con
@@ -193,9 +187,7 @@ export function MessageThread({
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
-  const [notes, setNotes] = useState<ContactNote[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   // Which attachment the media viewer is showing. Lives here rather than in
   // the bubble so the viewer can page through every image/video in the
@@ -206,29 +198,6 @@ export function MessageThread({
     conversationId: string;
     messageId: string;
   } | null>(null);
-
-  // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — the account's members. They name the assignee in "Más" and the
-  // author of each internal note.
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("*")
-      .order("full_name")
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to fetch profiles:", error);
-          return;
-        }
-        setProfiles((data as Profile[]) ?? []);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -243,7 +212,6 @@ export function MessageThread({
   });
 
   const conversationId = conversation?.id;
-  const contactId = contact?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
   const mediaMessageId =
@@ -298,35 +266,6 @@ export function MessageThread({
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
   }, [conversationId, resyncToken]);
-
-  // Notas internas del contacto (`contact_notes`): las mismas que lista
-  // la ficha, intercaladas en el hilo por fecha. Se releen con el hilo
-  // (cambio de contacto o `resyncToken`); una nota que otra persona
-  // agrega mientras tanto aparece al actualizar.
-  useEffect(() => {
-    if (!contactId) {
-      setNotes([]);
-      return;
-    }
-    const supabase = createClient();
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contactId)
-        .order("created_at", { ascending: true });
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to fetch contact notes:", error);
-        return;
-      }
-      setNotes((data as ContactNote[]) ?? []);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [contactId, resyncToken]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -760,36 +699,6 @@ export function MessageThread({
     [conversation, onNewMessage, onUpdateMessage, t],
   );
 
-  // Nota interna: el mismo alta que hace la ficha (`contact_notes` con
-  // account_id y user_id; RLS agent+). Nunca sale por WhatsApp. Devuelve
-  // si quedó guardada, para que el cuadro limpie o conserve el texto.
-  const handleSaveNote = useCallback(
-    async (text: string): Promise<boolean> => {
-      const trimmed = text.trim();
-      if (!contact || !accountId || !trimmed) return false;
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("contact_notes")
-        .insert({
-          contact_id: contact.id,
-          account_id: accountId,
-          user_id: user?.id,
-          note_text: trimmed,
-        })
-        .select()
-        .single();
-      if (error || !data) {
-        console.error("Failed to save note:", error);
-        toast.error(t("noteSaveFailed"));
-        return false;
-      }
-      setNotes((prev) => [...prev, data as ContactNote]);
-      toast.success(t("noteSaved"));
-      return true;
-    },
-    [contact, accountId, user?.id, t],
-  );
-
   // Build a quick id → Message map so reply quotes can be rendered without
   // an extra fetch — the thread already holds the full conversation.
   const messagesById = useMemo(() => {
@@ -812,13 +721,6 @@ export function MessageThread({
     }
     return map;
   }, [reactions]);
-
-  // Nombre por user_id para el autor de cada nota y el asignado.
-  const namesByUserId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of profiles) map.set(p.user_id, p.full_name);
-    return map;
-  }, [profiles]);
 
   // Mensajes y notas intercalados con sus separadores de día. `now`
   // entra para que "Hoy" pase a "Ayer" solo, a medianoche.
@@ -921,27 +823,6 @@ export function MessageThread({
     [conversation, user?.id, t],
   );
 
-  const handleAssignChange = useCallback(
-    async (agentId: string | null) => {
-      if (!conversation) return;
-
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
-
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error(t("assignFailed"));
-        return;
-      }
-
-      onAssignChange(conversation.id, agentId);
-    },
-    [conversation, onAssignChange, t],
-  );
-
   // Vacío del prototipo (`.nosel`), sin la línea de J y K: los atajos
   // son de la sesión E.
   if (!conversation || !contact) {
@@ -977,8 +858,8 @@ export function MessageThread({
     <div className="flex min-w-0 flex-1 flex-col bg-card">
       {/* Encabezado (prototipo `.th`): 72 px, avatar de 42, nombre de
           17 px y "empresa · teléfono" debajo; a la derecha la acción
-          principal (Agendar llamada es de la sesión D; hoy solo
-          "Reabrir" cuando está cerrada), cerrar y "Más". */}
+          principal (hoy solo "Reabrir" cuando está cerrada; Agendar
+          llamada llega con el bloque 2), cerrar y "Más". */}
       <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-border px-3 sm:px-4 sm:pl-6">
         {/* Back-to-list button — mobile only. Hidden on lg+ where the
             conversation list is always visible next to the thread. */}
@@ -1004,28 +885,6 @@ export function MessageThread({
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {/* Contact-panel toggle — desktop only. Lets agents reclaim the
-              sidebar's width when they just want to read and reply.
-              Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                ICON_BUTTON_CLASS,
-                "hidden lg:inline-flex",
-                contactPanelOpen && "text-primary",
-              )}
-            >
-              {contactPanelOpen ? <PanelRightClose /> : <PanelRightOpen />}
-            </button>
-          )}
-
           {isClosed ? (
             <Button variant="outline" onClick={handleReopenConversation}>
               <RotateCcw />
@@ -1044,8 +903,8 @@ export function MessageThread({
           )}
 
           {/* "Más": lo que no es la acción principal. Pasar a abierta /
-              pendiente, asignar y actualizar esperan acá a que la
-              sesión D lleve la asignación a la ficha. */}
+              pendiente, actualizar y copiar el teléfono. La asignación
+              vive en la ficha del panel lateral (sesión D). */}
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label={t("more")}
@@ -1076,58 +935,6 @@ export function MessageThread({
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <UserPlus />
-                  <span className="min-w-0 flex-1 truncate">
-                    {assignedAgentId
-                      ? (namesByUserId.get(assignedAgentId) ?? t("assigned"))
-                      : t("assignTo")}
-                  </span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-[240px]">
-                  {profiles.length === 0 ? (
-                    <DropdownMenuItem disabled>{t("noTeammates")}</DropdownMenuItem>
-                  ) : (
-                    profiles.map((p) => {
-                      const isSelected = p.user_id === assignedAgentId;
-                      const presence = getPresence(p.user_id);
-                      return (
-                        <DropdownMenuItem
-                          key={p.id}
-                          onClick={() => handleAssignChange(p.user_id)}
-                          className={cn(isSelected && "bg-selected")}
-                        >
-                          <PresenceDot
-                            status={presence}
-                            label={presenceLabel(
-                              presence,
-                              getRow(p.user_id)?.last_seen_at ?? null,
-                              presenceNow
-                            )}
-                          />
-                          <span className="min-w-0 flex-1 truncate">
-                            {p.full_name}
-                            {p.user_id === user?.id ? t("me") : ""}
-                          </span>
-                          {isSelected && <Check className="text-muted-foreground" />}
-                        </DropdownMenuItem>
-                      );
-                    })
-                  )}
-                  {assignedAgentId && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleAssignChange(null)}
-                        className="text-muted-foreground"
-                      >
-                        {t("unassign")}
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
               {onRefresh && (
                 <DropdownMenuItem onClick={onRefresh}>
                   <RefreshCw />
@@ -1186,7 +993,7 @@ export function MessageThread({
                 );
               }
               if (item.kind === "note") {
-                const author = namesByUserId.get(item.note.user_id);
+                const author = memberNames.get(item.note.user_id);
                 return (
                   <div
                     key={item.key}
@@ -1260,7 +1067,7 @@ export function MessageThread({
         onSendInteractive={handleSendInteractive}
         onSendTemplate={handleSendTemplate}
         onOpenTemplates={handleOpenTemplates}
-        onSaveNote={handleSaveNote}
+        onSaveNote={onSaveNote}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
       />
