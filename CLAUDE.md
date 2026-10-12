@@ -1548,7 +1548,7 @@ Qué etiqueta se aplica (`resolveScheduleTag`, decisión de Emi del
 ## Pendientes y lo que queda para la sesión E
 
 - **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 36 warnings: uno menos que la base), tests (los 3 rojos de
+  errores, 35 warnings: dos menos que la base), tests (los 3 rojos de
   `currency.test.ts`), validador de mensajes y build.
 - El panel y el riel son de escritorio; `(movil)` no se tocó.
 - Las notas de otras personas siguen llegando al actualizar (realtime
