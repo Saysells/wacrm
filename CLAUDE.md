@@ -1326,3 +1326,117 @@ vista vacía. Ancho 350 px.
 - Sesión C: el hilo, el composer y la ventana dentro del hilo. Sesión D:
   ficha y agendar. Sesión E: Mis llamadas y atajos. Sesión F: Contactos,
   Notificaciones, Configuración y el selector.
+
+# Rediseño · sesión C (conversación)
+
+Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `bcdea3d`
+(hilo) y el del cuadro de mensaje. Misma regla: frontend sí, lógica
+no; sin SQL, sin dependencias. Prototipo: `thread()`, `composer()`,
+`winText()`, `qrPop()`, `send()`, `sendTpl()`, `closeConv()`.
+
+## Hilo (`message-thread.tsx`, `message-bubble.tsx`)
+
+- **Encabezado** de 72 px: avatar de 42 (`avatarColors` / `initialsOf`,
+  los de la lista), nombre, "empresa · teléfono". Derecha: el panel de
+  contacto y volver (mobile) como estaban; la acción principal es
+  **"Reabrir"** solo con `status = 'closed'` (Agendar llamada es de la
+  D); cerrar (`CircleCheck`, mismo UPDATE de `status`, toast con
+  Deshacer) y el menú **"Más"**: pasar a abierta / pendiente, "Asignar
+  a…" (submenú con presencia), Actualizar y Copiar teléfono. "Marcar
+  como no leída" y "Bloquear" no existen y no van. Las líneas de evento
+  del prototipo ("Matías tomó la conversación") no tienen dónde
+  guardarse: no van.
+- **Mensajes** sobre `bg-card` (salió el fondo con dibujos). Burbuja
+  `.bb`: 14.5 px, radio 20, entrante `bg-bubble-in` (token nuevo
+  `--bubble-in`, #F0F3F7 claro / gris oscuro), saliente `bg-primary`
+  con hora y tildes adentro. Rótulos arriba (`outgoingLabel` en
+  `src/lib/inbox/thread.ts`): "Bot" con `sender_type = 'bot'`,
+  "Plantilla · nombre" con `content_type = 'template'` (el bot gana si
+  es las dos cosas). El chip "Plantilla" de adentro de la burbuja se
+  fue; la marca IA (`ai_generated`) sigue adentro.
+- **Separadores de día** y **notas internas** salen de `buildTimeline`
+  (puro, con tests): mensajes y `contact_notes` del contacto
+  intercalados por `created_at`; "Hoy", "Ayer" y "Jueves 9 de octubre"
+  (`dayLabel`; nombres de días y meses en i18n). La nota es el bloque
+  amarillo "Nota interna · autor" (autor por `profiles`, acotado por
+  RLS). **Las notas no son realtime** (`contact_notes` no está en la
+  publicación y eso es SQL): se releen con el hilo y con Actualizar;
+  una que se agrega desde la ficha aparece al actualizar.
+- **Ventana de 24 h**: la regla de la lista (`windowState` de
+  `vistas.ts` sobre `lastCustomerMessageAt(messages)`, con `useNow`).
+  Es `null` hasta que cargaron los mensajes de ESA conversación
+  (`loadedConversationId`), para que el panel de plantillas no
+  parpadee al cambiar de hilo. `Inbox.sessionTimer` desapareció del
+  i18n.
+- El composer va con **`key` por conversación**: borrador, adjunto en
+  curso y grabación son de ese hilo; al cambiar, el `unmount` hace el
+  GC del adjunto y suelta el micrófono (antes viajaban al otro hilo).
+- El vacío sin conversación es el del prototipo sin la línea de J y K
+  (sesión E).
+
+## Cuadro de mensaje (`message-composer.tsx`)
+
+- Pestañas **Responder / Nota interna**; indicador de la ventana a la
+  derecha, solo en Responder: verde "Ventana abierta · quedan X",
+  amarillo "La ventana vence en X" (< 2 h), rojo "Ventana cerrada hace
+  X" o "Sin respuesta del cliente todavía". Con menos de 2 h, el aviso
+  "Después de las HH:MM solo vas a poder escribirle con una plantilla
+  aprobada." (`hhmm(until)`).
+- **Ventana cerrada o sin respuesta** ⇒ `TemplatePanel` en lugar del
+  cuadro: lista a la izquierda, vista previa (burbuja navy) y las
+  variables a la derecha, "Enviar plantilla". Reusa `useApprovedTemplates`,
+  `collectVariableSlots` y `renderBodyPreview`, **exportados de
+  `template-picker.tsx`** (el diálogo sigue existiendo y sigue siendo
+  lo que abre el botón de plantillas con la ventana abierta, y lo usan
+  Contactos y "Nuevo mensaje"). El envío es el `handleSendTemplate`
+  del hilo. El borrador escrito no se pierde: el textarea se desmonta,
+  el estado del componente no.
+- **Borradores por conversación** en dos `Map` de módulo
+  (`replyDrafts`, `noteDrafts`), leídos al montar con la `key`.
+- El cuadro **crece con el texto** (46 a 180 px, `adjustHeight`), el
+  placeholder es "Escribí a <nombre>…  / para respuestas rápidas" (sin
+  nombre, o con el teléfono como nombre: "Escribí un mensaje…").
+- **Barra**: adjuntar (foto / video / documento), grabar audio (directo
+  al grabador), respuestas rápidas (pone "/"), plantillas (el diálogo),
+  interactivo, "Sugerir respuesta" (`/api/ai/draft`; sin IA, aviso en
+  castellano), ayuda "Enter envía · Shift + Enter, nueva línea" y el
+  botón redondo navy. **En Nota interna solo quedan la ayuda y
+  guardar**: un adjunto o una plantilla saldrían por WhatsApp y la
+  nota nunca sale. Es una decisión de esta sesión, no del prototipo
+  (que muestra los botones siempre).
+- **Nota interna**: cuadro amarillo (`warning-soft`), Enter la guarda
+  con el mismo insert de `contact_notes` que la ficha (en el hilo,
+  `handleSaveNote`), aparece en la línea de tiempo y avisa "Nota
+  guardada. Solo la ve el equipo." La pestaña está deshabilitada para
+  el viewer (RLS agent+).
+- **Respuestas rápidas con "/"**: `src/lib/inbox/quick-replies.ts`
+  (puro, con tests): `slashQuery` (empieza con "/", una línea),
+  `filterQuickReplies` (título sin la barra o contenido; título
+  primero), `moveSelection` / `clampSelection`. El panel se apoya sobre
+  el cuadro; flechas y Enter eligen, Escape lo cierra hasta la próxima
+  tecla; `mousedown` para no perder el foco. Texto ⇒ reemplaza el
+  cuadro; interactiva ⇒ abre el armador. El catálogo se pide una vez
+  por montaje (la primera "/"). **`quick-reply-picker.tsx` se borró.**
+- "Guardar como respuesta rápida" pide el nombre en un **Dialog** del
+  sistema (antes `window.prompt`); la nueva entra al catálogo en
+  memoria.
+- Viewer: textarea deshabilitado con el placeholder de solo lectura,
+  toda la barra deshabilitada, "Enviar plantilla" deshabilitado.
+- `GatedButton` dejó de usarse en el cuadro (siguen usándolo otras
+  pantallas).
+
+## Pendientes y lo que queda para la sesión D
+
+- **Nada se vio en un navegador**: verificado typecheck, lint (0
+  errores, 37 warnings: dos menos que la base), tests (los 3 rojos de
+  `currency.test.ts`), validador de mensajes y build.
+- **No hay reintento del mensaje fallido**: hoy tampoco existía (la
+  burbuja queda en "fallido"); el pedido lo nombraba como existente.
+- Las notas del hilo no se actualizan solas cuando alguien las carga
+  desde la ficha (ver arriba).
+- El toolbar flotante de cada mensaje (`message-actions.tsx`) sale a
+  `-top-3` del grupo y puede pisar el rótulo "Bot" / "Plantilla".
+- Sesión D: Agendar llamada como acción principal, el riel lateral
+  (Ficha, Llamadas, Notas, Propuestas) y llevar "Asignar a…" del menú
+  "Más" a la ficha. Sesión E: atajos (J, K, A, L, E, N, ?) y Mis
+  llamadas.

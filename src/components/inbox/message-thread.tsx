@@ -182,7 +182,7 @@ export function MessageThread({
   const t = useTranslations("Inbox.messageThread");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user } = useAuth();
+  const { user, accountId } = useAuth();
   const { getPresence, getRow, now: presenceNow } = usePresence();
   const now = useNow();
   const [loading, setLoading] = useState(false);
@@ -760,6 +760,36 @@ export function MessageThread({
     [conversation, onNewMessage, onUpdateMessage, t],
   );
 
+  // Nota interna: el mismo alta que hace la ficha (`contact_notes` con
+  // account_id y user_id; RLS agent+). Nunca sale por WhatsApp. Devuelve
+  // si quedó guardada, para que el cuadro limpie o conserve el texto.
+  const handleSaveNote = useCallback(
+    async (text: string): Promise<boolean> => {
+      const trimmed = text.trim();
+      if (!contact || !accountId || !trimmed) return false;
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("contact_notes")
+        .insert({
+          contact_id: contact.id,
+          account_id: accountId,
+          user_id: user?.id,
+          note_text: trimmed,
+        })
+        .select()
+        .single();
+      if (error || !data) {
+        console.error("Failed to save note:", error);
+        toast.error(t("noteSaveFailed"));
+        return false;
+      }
+      setNotes((prev) => [...prev, data as ContactNote]);
+      toast.success(t("noteSaved"));
+      return true;
+    },
+    [contact, accountId, user?.id, t],
+  );
+
   // Build a quick id → Message map so reply quotes can be rendered without
   // an extra fetch — the thread already holds the full conversation.
   const messagesById = useMemo(() => {
@@ -1222,11 +1252,15 @@ export function MessageThread({
       <MessageComposer
         key={conversation.id}
         conversationId={conversation.id}
-        sessionExpired={win ? win.kind === "closed" || win.kind === "none" : false}
+        contactName={contact.name}
+        contactPhone={contact.phone}
+        windowState={win}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
+        onSendTemplate={handleSendTemplate}
         onOpenTemplates={handleOpenTemplates}
+        onSaveNote={handleSaveNote}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
       />

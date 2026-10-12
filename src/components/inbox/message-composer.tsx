@@ -5,26 +5,27 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   KeyboardEvent,
 } from "react";
 import {
-  Send,
-  LayoutTemplate,
+  SendHorizontal,
+  FileText,
   Paperclip,
   Image as ImageIcon,
   Video,
-  FileText,
   Mic,
   Square,
   X,
   Loader2,
   Sparkles,
-  Plus,
   MessageSquareDashed,
+  MessageSquareText,
+  Hourglass,
+  Lock,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { GatedButton } from "@/components/ui/gated-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,10 +35,13 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -53,8 +57,39 @@ import {
   blankButtonsPayload,
 } from "@/components/interactive/interactive-builder";
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
-import type { InteractiveMessagePayload, QuickReply } from "@/types";
-import { QuickReplyPicker } from "./quick-reply-picker";
+import type { InteractiveMessagePayload, MessageTemplate, QuickReply } from "@/types";
+import {
+  collectVariableSlots,
+  renderBodyPreview,
+  useApprovedTemplates,
+  type TemplateSendValues,
+} from "./template-picker";
+import { durationParts, hhmm, type DurationParts, type WindowState } from "@/lib/inbox/vistas";
+import { firstNameOf } from "@/lib/inbox/thread";
+import {
+  clampSelection,
+  filterQuickReplies,
+  moveSelection,
+  slashQuery,
+} from "@/lib/inbox/quick-replies";
+
+// ============================================================
+// Cuadro de mensaje de la Bandeja (rediseño, sesión C).
+//
+// Prototipo `composer()`: pestañas "Responder" / "Nota interna" con el
+// indicador vivo de la ventana de 24 h a la derecha; el cuadro que
+// crece con el texto; la barra (adjuntar, grabar, respuestas rápidas,
+// plantillas, interactivo, "Sugerir respuesta", la ayuda y enviar); el
+// aviso amarillo con menos de 2 h; y, con la ventana cerrada o sin
+// respuesta del cliente, el panel de plantillas en lugar del cuadro.
+//
+// La lógica no cambió: el envío de texto, archivos, audios,
+// interactivos y plantillas sale por los mismos callbacks del hilo; la
+// IA es `/api/ai/draft`; las respuestas rápidas son las de
+// `/api/quick-replies` (ahora con "/" al principio del cuadro en vez
+// de un diálogo); la nota interna es el alta de `contact_notes` que ya
+// hacía la ficha, delegada al hilo (`onSaveNote`).
+// ============================================================
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -68,6 +103,10 @@ export const MEDIA_CAPTION_MAX = 1024;
 /** Hard cap on a single voice recording so it can't blow the upload/
  *  transcode limits — auto-stops the recorder when reached. */
 const MAX_RECORDING_SECONDS = 5 * 60;
+
+/** El cuadro crece con el texto entre estas dos alturas (prototipo: 46 px). */
+const TEXTAREA_MIN_PX = 46;
+const TEXTAREA_MAX_PX = 180;
 
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
@@ -109,18 +148,41 @@ interface MediaDraft {
   caption: string;
 }
 
+type ComposerTab = "reply" | "note";
+
 interface MessageComposerProps {
   conversationId: string;
-  sessionExpired: boolean;
+  /** Nombre y teléfono del contacto: el saludo del texto de ayuda y los títulos del panel de plantillas. */
+  contactName?: string | null;
+  contactPhone?: string | null;
+  /**
+   * Ventana de 24 h del hilo (`windowState`, la regla de la lista), o
+   * null mientras los mensajes de esta conversación no terminaron de
+   * cargar: en ese caso el cuadro no decide entre texto y plantillas.
+   */
+  windowState: WindowState | null;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
+  /** Envío de plantilla desde el panel inline (ventana cerrada o sin respuesta). */
+  onSendTemplate: (template: MessageTemplate, values: TemplateSendValues) => void;
+  /** Abre el diálogo de plantillas de siempre (con la ventana abierta). */
   onOpenTemplates: () => void;
+  /** Guarda una nota interna; devuelve si quedó guardada. */
+  onSaveNote: (text: string) => Promise<boolean>;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
 }
 
-function formatDuration(seconds: number): string {
+type Translator = ReturnType<typeof useTranslations>;
+
+function formatDuration(d: DurationParts, t: Translator): string {
+  if (d.hours > 0 && d.minutes > 0) return t("durationHm", { h: d.hours, m: d.minutes });
+  if (d.hours > 0) return t("durationH", { h: d.hours });
+  return t("durationM", { m: d.minutes });
+}
+
+function formatRecording(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
@@ -131,29 +193,74 @@ function formatDuration(seconds: number): string {
  *  Meta-accepted format means no server ffmpeg / transcode step. */
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
+/**
+ * Borradores por conversación (prototipo `S.draft[c.id]`). El cuadro se
+ * monta con `key` por conversación, así que al volver a un hilo el
+ * texto se recupera de acá; y si la ventana se cierra con un borrador
+ * escrito, el texto sigue en el estado del componente (el textarea se
+ * desmonta, el componente no).
+ */
+const replyDrafts = new Map<string, string>();
+const noteDrafts = new Map<string, string>();
+
+/** Botón redondo de 34 px de la barra del cuadro (prototipo `.ctb .ib`). */
+const BAR_BUTTON_CLASS =
+  "inline-flex size-[34px] shrink-0 items-center justify-center rounded-full text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[18px]";
+
 export function MessageComposer({
   conversationId,
-  sessionExpired,
+  contactName,
+  contactPhone,
+  windowState,
   onSend,
   onSendMedia,
   onSendInteractive,
+  onSendTemplate,
   onOpenTemplates,
+  onSaveNote,
   replyTo,
   onClearReply,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
-  const [text, setText] = useState("");
+  const [tab, setTab] = useState<ComposerTab>("reply");
+  const [text, setTextState] = useState(() => replyDrafts.get(conversationId) ?? "");
+  const [noteText, setNoteTextState] = useState(() => noteDrafts.get(conversationId) ?? "");
   const [sending, setSending] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Interactive-message builder dialog + quick-reply picker.
+  const setText = useCallback(
+    (value: string) => {
+      replyDrafts.set(conversationId, value);
+      setTextState(value);
+    },
+    [conversationId],
+  );
+  const setNoteText = useCallback(
+    (value: string) => {
+      noteDrafts.set(conversationId, value);
+      setNoteTextState(value);
+    },
+    [conversationId],
+  );
+
+  // Interactive-message builder dialog.
   const [interactiveOpen, setInteractiveOpen] = useState(false);
   const [interactivePayload, setInteractivePayload] =
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
-  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  // Modal "Guardar como respuesta rápida" (reemplaza al window.prompt).
+  const [quickReplyNameOpen, setQuickReplyNameOpen] = useState(false);
+  const [quickReplyName, setQuickReplyName] = useState("");
+
+  // Respuestas rápidas: se piden una vez, la primera vez que se escribe
+  // "/", y quedan en memoria mientras el cuadro viva.
+  const [quickReplies, setQuickReplies] = useState<QuickReply[] | null>(null);
+  const quickRepliesFetchRef = useRef(false);
+  const [qrIndex, setQrIndex] = useState(0);
+  const [qrDismissed, setQrDismissed] = useState(false);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -184,13 +291,20 @@ export function MessageComposer({
   const cancelledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Viewers (read-only role) can browse the inbox but never send.
-  // For solo users this is always true — single-owner accounts pass
-  // every capability — so the disabled branch is a no-op there.
+  // Viewers (read-only role) can browse the inbox but never send — nor
+  // write notes (RLS de contact_notes: agent+). For solo users this is
+  // always true — single-owner accounts pass every capability.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
+
+  // Ventana: cerrada o sin respuesta del cliente ⇒ solo plantillas.
+  const windowBlocked =
+    windowState !== null && (windowState.kind === "closed" || windowState.kind === "none");
+  const showTemplatePanel = tab === "reply" && windowBlocked;
   // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired;
+  const inputsDisabled = readOnly || windowBlocked;
+
+  const firstName = firstNameOf(contactName, contactPhone);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -212,53 +326,178 @@ export function MessageComposer({
     };
   }, [clearTimer, removeStaged]);
 
+  // El cuadro crece con el texto (prototipo: arranca en 46 px) hasta un
+  // tope y después scrollea.
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    // Max 4 lines (~96px)
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, TEXTAREA_MIN_PX), TEXTAREA_MAX_PX)}px`;
   }, []);
+
+  // Recalcular al cambiar de pestaña o al volver del panel de plantillas:
+  // el textarea se vuelve a montar con el borrador guardado.
+  useEffect(() => {
+    adjustHeight();
+  }, [adjustHeight, tab, showTemplatePanel, text, noteText]);
+
+  const focusEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      adjustHeight();
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  }, [adjustHeight]);
+
+  // ---- Respuestas rápidas con "/" --------------------------------------
+
+  const slash = tab === "reply" && !readOnly ? slashQuery(text) : null;
+  const qrOpen = slash !== null && !qrDismissed;
+
+  useEffect(() => {
+    if (!qrOpen || quickRepliesFetchRef.current) return;
+    quickRepliesFetchRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/quick-replies", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        setQuickReplies(res.ok ? ((data.quick_replies as QuickReply[]) ?? []) : []);
+      } catch {
+        setQuickReplies([]);
+      }
+    })();
+  }, [qrOpen]);
+
+  const qrItems = useMemo(
+    () => (quickReplies && slash !== null ? filterQuickReplies(quickReplies, slash) : []),
+    [quickReplies, slash],
+  );
+  const qrSelected = clampSelection(qrIndex, qrItems.length);
+
+  const openInteractiveBuilder = useCallback(
+    (seed?: InteractiveMessagePayload) => {
+      setInteractivePayload(seed ?? blankButtonsPayload());
+      setInteractiveOpen(true);
+    },
+    [],
+  );
+
+  // A picked quick reply: text replaces the "/búsqueda" del cuadro;
+  // interactive opens the builder pre-filled so the agent can tweak
+  // before sending.
+  const handlePickQuickReply = useCallback(
+    (qr: QuickReply) => {
+      setQrIndex(0);
+      if (qr.kind === "interactive" && qr.interactive_payload) {
+        setText("");
+        openInteractiveBuilder(qr.interactive_payload);
+        return;
+      }
+      setText(qr.content_text ?? "");
+      focusEnd();
+    },
+    [openInteractiveBuilder, setText, focusEnd],
+  );
+
+  /** El botón de la barra: pone "/" y abre el panel. */
+  const insertSlash = useCallback(() => {
+    setQrDismissed(false);
+    setQrIndex(0);
+    setText("/");
+    focusEnd();
+  }, [setText, focusEnd]);
+
+  // ---- Envío ----------------------------------------------------------
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending || inputsDisabled) return;
 
     setSending(true);
     try {
       onSend(trimmed, replyTo?.id);
       setText("");
       if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${TEXTAREA_MIN_PX}px`;
       }
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, inputsDisabled, onSend, replyTo?.id, setText]);
+
+  const handleSaveNote = useCallback(async () => {
+    const trimmed = noteText.trim();
+    if (!trimmed || savingNote || readOnly) return;
+    setSavingNote(true);
+    try {
+      const ok = await onSaveNote(trimmed);
+      if (ok) {
+        setNoteText("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = `${TEXTAREA_MIN_PX}px`;
+        }
+      }
+    } finally {
+      setSavingNote(false);
+    }
+  }, [noteText, savingNote, readOnly, onSaveNote, setNoteText]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (qrOpen) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setQrIndex((i) => moveSelection(clampSelection(i, qrItems.length), 1, qrItems.length));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setQrIndex((i) => moveSelection(clampSelection(i, qrItems.length), -1, qrItems.length));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setQrDismissed(true);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          const pick = qrItems[qrSelected];
+          if (pick) handlePickQuickReply(pick);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        handleSend();
+        if (tab === "note") void handleSaveNote();
+        else void handleSend();
       }
     },
-    [handleSend]
+    [qrOpen, qrItems, qrSelected, handlePickQuickReply, tab, handleSaveNote, handleSend],
   );
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setText(e.target.value);
+      if (tab === "note") {
+        setNoteText(e.target.value);
+      } else {
+        setText(e.target.value);
+        setQrDismissed(false);
+        setQrIndex(0);
+      }
       adjustHeight();
     },
-    [adjustHeight]
+    [tab, setText, setNoteText, adjustHeight],
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
   // composer for the agent to edit + send. Read-only server-side —
   // nothing is sent until the agent hits Send.
   const handleDraft = useCallback(async () => {
-    if (drafting) return;
+    if (drafting || inputsDisabled) return;
     setDrafting(true);
     try {
       const res = await fetch("/api/ai/draft", {
@@ -269,44 +508,29 @@ export function MessageComposer({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === "ai_not_configured") {
-          toast.error("AI isn't set up yet — enable it in Settings → AI Assistant.");
+          toast.error(t("aiNotConfigured"));
         } else {
-          toast.error(data.error ?? "Couldn't draft a reply.");
+          toast.error(data.error ?? t("aiDraftFailed"));
         }
         return;
       }
       const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
       if (!draftText) {
-        toast.error("The assistant didn't return a reply.");
+        toast.error(t("aiEmpty"));
         return;
       }
       setText(draftText);
       // Let the textarea grow to fit and drop the cursor at the end so
       // the agent can tweak immediately.
-      requestAnimationFrame(() => {
-        adjustHeight();
-        const el = textareaRef.current;
-        if (el) {
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
-        }
-      });
+      focusEnd();
     } catch {
-      toast.error("Couldn't reach the AI assistant.");
+      toast.error(t("aiUnreachable"));
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, inputsDisabled, conversationId, setText, focusEnd, t]);
 
   // ---- Interactive message + quick replies --------------------------
-
-  const openInteractiveBuilder = useCallback(
-    (seed?: InteractiveMessagePayload) => {
-      setInteractivePayload(seed ?? blankButtonsPayload());
-      setInteractiveOpen(true);
-    },
-    [],
-  );
 
   const sendInteractive = useCallback(() => {
     const result = validateInteractivePayload(interactivePayload);
@@ -319,17 +543,21 @@ export function MessageComposer({
     onClearReply?.();
   }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply]);
 
-  // Persist the current builder payload as a reusable interactive snippet.
-  const saveAsQuickReply = useCallback(async () => {
+  // Paso 1: validar y pedir el nombre en un modal del sistema de diseño.
+  const askQuickReplyName = useCallback(() => {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
       toast.error(result.error);
       return;
     }
-    const title = window
-      .prompt(t("quickReplyNamePrompt"))
-      ?.trim();
-    if (!title) return;
+    setQuickReplyName("");
+    setQuickReplyNameOpen(true);
+  }, [interactivePayload]);
+
+  // Paso 2: persist the current builder payload as a reusable interactive snippet.
+  const saveAsQuickReply = useCallback(async () => {
+    const title = quickReplyName.trim();
+    if (!title || savingQuickReply) return;
     setSavingQuickReply(true);
     try {
       const res = await fetch("/api/quick-replies", {
@@ -346,40 +574,16 @@ export function MessageComposer({
         toast.error(data.error ?? t("quickReplySaveError"));
         return;
       }
+      // El catálogo en memoria se entera sin volver a pedir.
+      setQuickReplies((prev) => (prev ? [data as QuickReply, ...prev] : prev));
+      setQuickReplyNameOpen(false);
       toast.success(t("quickReplySaved"));
     } catch {
       toast.error(t("quickReplySaveError"));
     } finally {
       setSavingQuickReply(false);
     }
-  }, [interactivePayload, t]);
-
-  // A picked quick reply: text fills the composer; interactive opens the
-  // builder pre-filled so the agent can tweak before sending.
-  const handlePickQuickReply = useCallback(
-    (qr: QuickReply) => {
-      setQuickReplyOpen(false);
-      if (qr.kind === "interactive" && qr.interactive_payload) {
-        openInteractiveBuilder(qr.interactive_payload);
-        return;
-      }
-      const body = qr.content_text ?? "";
-      // Separate the snippet from any existing draft with a newline so the
-      // words don't run together ("Thanks" + "we'll…" → "Thankswe'll…").
-      setText((prev) =>
-        prev && !/\s$/.test(prev) ? `${prev}\n${body}` : `${prev}${body}`,
-      );
-      requestAnimationFrame(() => {
-        adjustHeight();
-        const el = textareaRef.current;
-        if (el) {
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
-        }
-      });
-    },
-    [openInteractiveBuilder, adjustHeight],
-  );
+  }, [quickReplyName, savingQuickReply, interactivePayload, t]);
 
   // Upload a captured file to chat-media and stage it as a draft.
   const stageUpload = useCallback(
@@ -390,9 +594,10 @@ export function MessageComposer({
       const max = MEDIA_MAX_BYTES_BY_KIND[kind];
       if (file.size > max) {
         toast.error(
-          `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — ${kind} limit is ${Math.round(
-            max / 1024 / 1024,
-          )} MB.`,
+          t("fileTooLarge", {
+            size: (file.size / 1024 / 1024).toFixed(1),
+            max: Math.round(max / 1024 / 1024),
+          }),
         );
         return;
       }
@@ -403,12 +608,12 @@ export function MessageComposer({
         removeStaged(draftRef.current?.path);
         setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, t],
   );
 
   const handlePicked = useCallback(
@@ -431,7 +636,7 @@ export function MessageComposer({
       });
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
-        toast.error("Recording is too long (over 16 MB).");
+        toast.error(t("recordingTooLong"));
         return;
       }
       setBusy(true);
@@ -440,18 +645,18 @@ export function MessageComposer({
         removeStaged(draftRef.current?.path);
         setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, t],
   );
 
   const startRecording = useCallback(async () => {
     if (inputsDisabled || busy || recording) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
-      toast.error("Voice recording isn't supported in this browser.");
+      toast.error(t("recordingUnsupported"));
       return;
     }
     try {
@@ -478,9 +683,9 @@ export function MessageComposer({
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
-      toast.error("Microphone access denied or unavailable.");
+      toast.error(t("micDenied"));
     }
-  }, [inputsDisabled, busy, recording, finalizeRecording]);
+  }, [inputsDisabled, busy, recording, finalizeRecording, t]);
 
   const stopRecording = useCallback(() => {
     clearTimer();
@@ -533,243 +738,328 @@ export function MessageComposer({
     setDraft((d) => (d ? { ...d, caption } : d));
   }, []);
 
+  // Plantilla desde el panel inline: el envío es el del hilo; el aviso
+  // recuerda que la ventana no se abre con la plantilla sino con la
+  // respuesta del cliente.
+  const handleSendTemplateFromPanel = useCallback(
+    (template: MessageTemplate, values: TemplateSendValues) => {
+      onSendTemplate(template, values);
+      toast(t("templateSent"));
+    },
+    [onSendTemplate, t],
+  );
+
   // ---- Render --------------------------------------------------------
 
+  const isNote = tab === "note";
+  const currentText = isNote ? noteText : text;
+  const placeholder = readOnly
+    ? t("readOnlyPlaceholder")
+    : isNote
+      ? t("placeholderNote")
+      : firstName
+        ? t("placeholderReply", { name: firstName })
+        : t("placeholderReplyNoName");
+  const canSubmit = isNote ? !!noteText.trim() && !savingNote : !!text.trim() && !sending;
+
   return (
-    <div className="border-t border-border bg-card p-3">
-      {replyTo && (
-        <div className="mb-2">
-          <ReplyQuote
-            authorLabel={replyTo.authorLabel}
-            preview={replyTo.preview}
-            onDismiss={onClearReply}
-          />
-        </div>
-      )}
-      {sessionExpired && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">
-            {t("sessionExpiredHint")}
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs text-amber-400 hover:text-amber-300"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="mr-1 h-3 w-3" />
-            {t("templates")}
-          </Button>
+    <div className="relative shrink-0 px-4 pb-4 pt-1.5 sm:px-6">
+      {/* Panel de respuestas rápidas (prototipo `.qr`): se apoya sobre el
+          cuadro mientras el texto empiece con "/". */}
+      {qrOpen && (
+        <div className="absolute inset-x-4 bottom-full z-20 -mb-1 overflow-hidden rounded-[14px] border border-border bg-popover shadow-menu sm:inset-x-6">
+          <div className="px-3.5 pb-1 pt-2.5 text-xs font-semibold text-muted-foreground">
+            {t("quickReplies")}
+          </div>
+          <div className="max-h-64 overflow-y-auto pb-1">
+            {quickReplies === null ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : quickReplies.length === 0 ? (
+              <p className="px-3.5 py-2.5 text-[13px] text-muted-foreground">{t("quickRepliesEmpty")}</p>
+            ) : qrItems.length === 0 ? (
+              <p className="px-3.5 py-2.5 text-[13px] text-muted-foreground">{t("quickRepliesNoMatch")}</p>
+            ) : (
+              qrItems.map((qr, i) => (
+                <button
+                  key={qr.id}
+                  type="button"
+                  // mousedown en vez de click: el click le sacaría el foco al
+                  // textarea antes de llegar.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handlePickQuickReply(qr);
+                  }}
+                  onMouseEnter={() => setQrIndex(i)}
+                  className={cn(
+                    "flex w-full items-baseline gap-3 px-3.5 py-[9px] text-left",
+                    i === qrSelected && "bg-selected",
+                  )}
+                >
+                  <b className="w-[110px] shrink-0 truncate text-[13.5px] font-semibold text-foreground">
+                    {qr.kind === "interactive" && <Zap className="mr-1 inline size-3 text-primary" />}
+                    {qr.title}
+                  </b>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-secondary-foreground">
+                    {qr.kind === "interactive"
+                      ? t("interactiveMessage")
+                      : (qr.content_text ?? "").replace(/\n/g, " ")}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
 
-      {/* Hidden file inputs driven by the attach menu. */}
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept={PICKER_ACCEPT.image}
-        className="hidden"
-        onChange={(e) => {
-          handlePicked("image", e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
-      <input
-        ref={videoInputRef}
-        type="file"
-        accept={PICKER_ACCEPT.video}
-        className="hidden"
-        onChange={(e) => {
-          handlePicked("video", e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
-      <input
-        ref={documentInputRef}
-        type="file"
-        accept={PICKER_ACCEPT.document}
-        className="hidden"
-        onChange={(e) => {
-          handlePicked("document", e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
+      {/* Pestañas + ventana (prototipo `.cbar`). */}
+      <div className="flex items-center gap-[18px] px-1.5 pb-2 text-[13px]">
+        <button
+          type="button"
+          onClick={() => setTab("reply")}
+          className={cn(
+            "border-b-2 pb-1 font-medium transition-colors",
+            !isNote ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t("tabReply")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("note")}
+          disabled={readOnly}
+          title={readOnly ? t("readOnlyTitle") : undefined}
+          className={cn(
+            "border-b-2 pb-1 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            isNote ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t("tabNote")}
+        </button>
+        {!isNote && windowState && <WindowIndicator state={windowState} t={t} />}
+      </div>
 
-      {draft ? (
-        <MediaDraftPreview
-          draft={draft}
-          busy={busy}
+      {showTemplatePanel ? (
+        <TemplatePanel
+          kind={windowState?.kind === "none" ? "none" : "closed"}
+          firstName={firstName}
           readOnly={readOnly}
-          onCaptionChange={setCaption}
-          onDiscard={discardDraft}
-          onSend={sendDraft}
+          onSend={handleSendTemplateFromPanel}
           t={t}
         />
-      ) : recording ? (
-        // Recording bar — replaces the composer while the mic is live.
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2.5">
-          <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
-          <span className="flex-1 text-sm text-foreground">
-            {t("recording", { current: formatDuration(recordSeconds), max: formatDuration(MAX_RECORDING_SECONDS) })}
-          </span>
-          <button
-            type="button"
-            onClick={cancelRecording}
-            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground"
-          >
-            {t("cancel")}
-          </button>
-          <Button
-            size="sm"
-            onClick={stopRecording}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90"
-            title={t("stopAndAttach")}
-          >
-            <Square className="h-4 w-4" />
-          </Button>
-        </div>
       ) : (
-        <div className="flex items-end gap-2">
-          {/* Attach menu — photo / video / document / voice. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={inputsDisabled || busy}
-              title={
-                readOnly
-                  ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("attachMedia")
-              }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Paperclip className="h-4 w-4" />
-              )}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
-                <ImageIcon className="mr-2 h-4 w-4" />
-                {t("photo")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
-                <Video className="mr-2 h-4 w-4" />
-                {t("video")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
-                <FileText className="mr-2 h-4 w-4" />
-                {t("document")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <>
+          {!isNote && replyTo && (
+            <div className="mb-2">
+              <ReplyQuote
+                authorLabel={replyTo.authorLabel}
+                preview={replyTo.preview}
+                onDismiss={onClearReply}
+              />
+            </div>
+          )}
 
-          {/* + menu — interactive messages + quick replies. Gated on the
-              24h window like free-form text (interactive requires it). */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={inputsDisabled}
-              title={
-                readOnly
-                  ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("moreActions")
-              }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Plus className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
-                <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQuickReplyOpen(true)}>
-                <Zap className="mr-2 h-4 w-4" />
-                {t("quickReplies")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {!isNote && windowState?.kind === "expiring" && (
+            <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-warning-soft px-3.5 py-2.5 text-[13.5px] text-warning">
+              <Hourglass className="size-4 shrink-0" />
+              {t("expiringWarning", { time: hhmm(windowState.until) })}
+            </div>
+          )}
 
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            title={readOnly ? undefined : t("sendTemplate")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </GatedButton>
-
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            disabled={drafting}
-            title={readOnly ? undefined : t("draftWithAI")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
-            onClick={handleDraft}
-          >
-            {drafting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-          </GatedButton>
-
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              readOnly
-                ? t("readOnlyPlaceholder")
-                : sessionExpired
-                  ? t("sessionExpiredPlaceholder")
-                  : t("typeMessagePlaceholder")
-            }
-            disabled={sessionExpired || readOnly}
-            rows={1}
-            // Textarea keeps its own inline title — the GatedButton
-            // wrapping pattern doesn't apply to non-button inputs.
-            // The placeholder text also surfaces the read-only state.
-            title={readOnly ? t("readOnlyTitle") : undefined}
-            className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
-            )}
+          {/* Hidden file inputs driven by the attach menu. */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept={PICKER_ACCEPT.image}
+            className="hidden"
+            onChange={(e) => {
+              handlePicked("image", e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept={PICKER_ACCEPT.video}
+            className="hidden"
+            onChange={(e) => {
+              handlePicked("video", e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept={PICKER_ACCEPT.document}
+            className="hidden"
+            onChange={(e) => {
+              handlePicked("document", e.target.files?.[0]);
+              e.target.value = "";
+            }}
           />
 
-          <GatedButton
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
-            onClick={handleSend}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </GatedButton>
-        </div>
-      )}
+          {!isNote && draft ? (
+            <MediaDraftPreview
+              draft={draft}
+              busy={busy}
+              readOnly={readOnly}
+              onCaptionChange={setCaption}
+              onDiscard={discardDraft}
+              onSend={sendDraft}
+              t={t}
+            />
+          ) : !isNote && recording ? (
+            // Recording bar — replaces the composer while the mic is live.
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted px-4 py-2.5">
+              <span className="flex size-2.5 shrink-0 animate-pulse rounded-full bg-danger" />
+              <span className="flex-1 text-sm text-foreground">
+                {t("recording", {
+                  current: formatRecording(recordSeconds),
+                  max: formatRecording(MAX_RECORDING_SECONDS),
+                })}
+              </span>
+              <Button variant="ghost" size="sm" onClick={cancelRecording}>
+                {t("cancel")}
+              </Button>
+              <Button size="icon-sm" onClick={stopRecording} title={t("stopAndAttach")}>
+                <Square />
+              </Button>
+            </div>
+          ) : (
+            // El cuadro (prototipo `.cbox`): gris, se vuelve blanco con el
+            // foco; amarillo en la nota interna.
+            <div
+              className={cn(
+                "rounded-2xl border px-3 pb-2 pl-4 pt-2.5 transition-colors focus-within:bg-card",
+                isNote
+                  ? "border-warning/30 bg-warning-soft/50 focus-within:border-warning/50"
+                  : "border-border bg-muted focus-within:border-[#9FB6CF]",
+                readOnly && "opacity-70",
+              )}
+            >
+              <textarea
+                ref={textareaRef}
+                value={currentText}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                disabled={readOnly}
+                rows={1}
+                // Textarea keeps its own inline title — the placeholder
+                // text also surfaces the read-only state.
+                title={readOnly ? t("readOnlyTitle") : undefined}
+                style={{ height: TEXTAREA_MIN_PX }}
+                className="block w-full resize-none bg-transparent text-[14.5px] leading-[1.4] text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+              />
 
-      {/* Hint sits outside the flex row so its height doesn't push
-          `items-end` buttons below the textarea. Indented to line up
-          under the textarea left edge. */}
-      {!draft && !recording && (
-        <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          {t("draftHint")}
-        </p>
+              {/* Barra (prototipo `.ctb`). En la nota interna solo quedan
+                  la ayuda y guardar: un adjunto o una plantilla saldrían
+                  por WhatsApp, y la nota nunca sale. */}
+              <div className="mt-1 flex items-center gap-1 text-secondary-foreground">
+                {!isNote && (
+                  <>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        disabled={inputsDisabled || busy}
+                        title={readOnly ? t("readOnlyTitle") : t("attach")}
+                        aria-label={t("attach")}
+                        className={cn(BAR_BUTTON_CLASS, "aria-expanded:bg-selected-strong aria-expanded:text-primary")}
+                      >
+                        {busy ? <Loader2 className="animate-spin" /> : <Paperclip />}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" side="top">
+                        <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
+                          <ImageIcon />
+                          {t("photo")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
+                          <Video />
+                          {t("video")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
+                          <FileText />
+                          {t("document")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <button
+                      type="button"
+                      disabled={inputsDisabled || busy}
+                      onClick={() => void startRecording()}
+                      title={readOnly ? t("readOnlyTitle") : t("recordAudio")}
+                      aria-label={t("recordAudio")}
+                      className={BAR_BUTTON_CLASS}
+                    >
+                      <Mic />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={inputsDisabled}
+                      onClick={insertSlash}
+                      title={readOnly ? t("readOnlyTitle") : t("quickReplies")}
+                      aria-label={t("quickReplies")}
+                      className={cn(BAR_BUTTON_CLASS, qrOpen && "bg-selected-strong text-primary")}
+                    >
+                      <MessageSquareText />
+                    </button>
+
+                    {/* Con la ventana abierta, el diálogo de plantillas de
+                        siempre: mandar una plantilla sigue siendo posible. */}
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      onClick={onOpenTemplates}
+                      title={readOnly ? t("readOnlyTitle") : t("templates")}
+                      aria-label={t("templates")}
+                      className={BAR_BUTTON_CLASS}
+                    >
+                      <FileText />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={inputsDisabled}
+                      onClick={() => openInteractiveBuilder()}
+                      title={readOnly ? t("readOnlyTitle") : t("interactiveMessage")}
+                      aria-label={t("interactiveMessage")}
+                      className={BAR_BUTTON_CLASS}
+                    >
+                      <MessageSquareDashed />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={inputsDisabled || drafting}
+                      onClick={() => void handleDraft()}
+                      title={readOnly ? t("readOnlyTitle") : t("suggestReply")}
+                      className="inline-flex h-[34px] items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-secondary-foreground transition-colors hover:bg-hover-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4"
+                    >
+                      {drafting ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                      <span className="hidden sm:inline">{t("suggestReply")}</span>
+                    </button>
+                  </>
+                )}
+
+                <span className="ml-auto mr-2.5 hidden whitespace-nowrap text-xs text-muted-foreground md:inline">
+                  {t("sendHint")}
+                </span>
+                <button
+                  type="button"
+                  disabled={readOnly || !canSubmit}
+                  onClick={() => (isNote ? void handleSaveNote() : void handleSend())}
+                  title={readOnly ? t("readOnlyTitle") : isNote ? t("saveNote") : t("send")}
+                  aria-label={isNote ? t("saveNote") : t("send")}
+                  className="ml-auto grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 md:ml-0 [&_svg]:size-[18px]"
+                >
+                  {savingNote ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Interactive-message builder dialog. */}
@@ -788,29 +1078,290 @@ export function MessageComposer({
             <Button
               variant="outline"
               disabled={savingQuickReply}
-              onClick={saveAsQuickReply}
+              onClick={askQuickReplyName}
             >
-              {savingQuickReply ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <Zap className="mr-1 h-4 w-4" />
-              )}
+              <Zap />
               {t("saveAsQuickReply")}
             </Button>
             <Button onClick={sendInteractive}>
-              <Send className="mr-1 h-4 w-4" />
+              <SendHorizontal />
               {t("send")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Quick-reply picker. */}
-      <QuickReplyPicker
-        open={quickReplyOpen}
-        onOpenChange={setQuickReplyOpen}
-        onPick={handlePickQuickReply}
-      />
+      {/* Nombre de la respuesta rápida nueva (antes, window.prompt). */}
+      <Dialog open={quickReplyNameOpen} onOpenChange={setQuickReplyNameOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("saveAsQuickReply")}</DialogTitle>
+            <DialogDescription>{t("quickReplyNameDescription")}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveAsQuickReply();
+            }}
+          >
+            <Label htmlFor="quick-reply-name">{t("quickReplyNameLabel")}</Label>
+            <Input
+              id="quick-reply-name"
+              autoFocus
+              value={quickReplyName}
+              onChange={(e) => setQuickReplyName(e.target.value)}
+              placeholder={t("quickReplyNamePlaceholder")}
+              maxLength={80}
+            />
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuickReplyNameOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              disabled={!quickReplyName.trim() || savingQuickReply}
+              onClick={() => void saveAsQuickReply()}
+            >
+              {savingQuickReply ? <Loader2 className="animate-spin" /> : <Zap />}
+              {t("save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Indicador de la ventana (prototipo `.win`): verde abierta, amarillo
+// por vencer, rojo cerrada o sin respuesta. Se recalcula con el reloj
+// del hilo, así que se mueve solo.
+// ------------------------------------------------------------
+
+function WindowIndicator({ state, t }: { state: WindowState; t: Translator }) {
+  let tone: string;
+  let dot: string;
+  let label: string;
+  switch (state.kind) {
+    case "open":
+      tone = "text-success";
+      dot = "bg-success";
+      label = t("windowOpen", { duration: formatDuration(durationParts(state.remainingMs), t) });
+      break;
+    case "expiring":
+      tone = "text-warning";
+      dot = "bg-warning";
+      label = t("windowExpiring", { duration: formatDuration(durationParts(state.remainingMs), t) });
+      break;
+    case "closed":
+      tone = "text-danger";
+      dot = "bg-danger";
+      label = t("windowClosed", { duration: formatDuration(durationParts(state.sinceMs), t) });
+      break;
+    default:
+      tone = "text-danger";
+      dot = "bg-danger";
+      label = t("windowNone");
+  }
+  return (
+    <span className={cn("ml-auto flex min-w-0 items-center gap-[7px] text-[12.5px] font-medium", tone)}>
+      <span className={cn("size-2 shrink-0 rounded-full", dot)} />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+// ------------------------------------------------------------
+// Panel de plantillas (prototipo `.tplc`): con la ventana cerrada o sin
+// respuesta del cliente reemplaza al cuadro. Lista a la izquierda,
+// vista previa (y las variables, si la plantilla las pide) a la
+// derecha, "Enviar plantilla". Las plantillas, las variables y el
+// envío son los mismos del diálogo `TemplatePicker`.
+// ------------------------------------------------------------
+
+function TemplatePanel({
+  kind,
+  firstName,
+  readOnly,
+  onSend,
+  t,
+}: {
+  kind: "closed" | "none";
+  firstName: string;
+  readOnly: boolean;
+  onSend: (template: MessageTemplate, values: TemplateSendValues) => void;
+  t: Translator;
+}) {
+  const tPicker = useTranslations("Inbox.templatePicker");
+  const { templates, loading } = useApprovedTemplates(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = templates.find((tpl) => tpl.id === selectedId) ?? templates[0] ?? null;
+
+  const title =
+    kind === "none"
+      ? firstName
+        ? t("panelNoneTitle", { name: firstName })
+        : t("panelNoneTitleNoName")
+      : firstName
+        ? t("panelClosedTitle", { name: firstName })
+        : t("panelClosedTitleNoName");
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div
+        className={cn(
+          "flex items-start gap-2.5 px-4 py-3 text-[13.5px]",
+          kind === "none" ? "bg-neutral-soft text-neutral" : "bg-danger-soft text-danger",
+        )}
+      >
+        <Lock className="mt-0.5 size-4 shrink-0" />
+        <div>
+          <b className="block font-semibold">{title}</b>
+          {t("panelBody")}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : templates.length === 0 ? (
+        <div className="px-4 py-6 text-center">
+          <p className="text-sm font-medium text-foreground">{tPicker("noApprovedTemplates")}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{tPicker("noApprovedTemplatesHint")}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2">
+          <div className="max-h-72 overflow-y-auto border-b border-border md:border-b-0">
+            {templates.map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => setSelectedId(tpl.id)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 border-b border-border/60 px-4 py-2.5 text-left text-[13.5px] text-foreground transition-colors hover:bg-hover",
+                  selected?.id === tpl.id && "bg-selected font-semibold hover:bg-selected",
+                )}
+              >
+                <FileText className="size-4 shrink-0 text-secondary-foreground" />
+                <span className="min-w-0 flex-1 truncate">{tpl.name}</span>
+                <small className="shrink-0 text-xs font-normal text-muted-foreground">
+                  {tpl.language ? `${tpl.category} · ${tpl.language}` : tpl.category}
+                </small>
+              </button>
+            ))}
+          </div>
+          {selected && (
+            <TemplatePane
+              key={selected.id}
+              template={selected}
+              readOnly={readOnly}
+              onSend={onSend}
+              t={t}
+              tPicker={tPicker}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Vista previa + variables de UNA plantilla; con `key` por plantilla para que los valores no se mezclen. */
+function TemplatePane({
+  template,
+  readOnly,
+  onSend,
+  t,
+  tPicker,
+}: {
+  template: MessageTemplate;
+  readOnly: boolean;
+  onSend: (template: MessageTemplate, values: TemplateSendValues) => void;
+  t: Translator;
+  tPicker: Translator;
+}) {
+  const slots = useMemo(() => collectVariableSlots(template), [template]);
+  const [params, setParams] = useState<string[]>(() => new Array(slots.bodyVars.length).fill(""));
+  const [headerText, setHeaderText] = useState("");
+  const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
+
+  const canConfirm =
+    slots.bodyVars.every((_, i) => (params[i] ?? "").trim().length > 0) &&
+    (slots.headerVarCount === 0 || headerText.trim().length > 0) &&
+    slots.urlButtonSlots.every((s) => (buttonParams[s.index] ?? "").trim().length > 0);
+
+  const confirm = () => {
+    if (!canConfirm) return;
+    const values: TemplateSendValues = { body: params };
+    if (headerText.trim()) values.headerText = headerText.trim();
+    if (Object.keys(buttonParams).length > 0) {
+      values.buttonParams = Object.fromEntries(
+        Object.entries(buttonParams).map(([k, v]) => [Number(k), v.trim()]),
+      );
+    }
+    onSend(template, values);
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 px-4 py-3 text-[13.5px] md:border-l md:border-border">
+      <span className="text-[12.5px] font-semibold text-muted-foreground">{tPicker("preview")}</span>
+      <div className="whitespace-pre-wrap break-words rounded-[20px] rounded-br-md bg-primary px-3.5 py-2 text-[13.5px] leading-[1.42] text-primary-foreground">
+        {renderBodyPreview(template.body_text, params)}
+        {template.footer_text && (
+          <p className="mt-1.5 text-xs italic text-primary-foreground/70">{template.footer_text}</p>
+        )}
+      </div>
+      {slots.headerVarCount > 0 && (
+        <Input
+          value={headerText}
+          onChange={(e) => setHeaderText(e.target.value)}
+          placeholder={tPicker("headerValuePlaceholder")}
+          className="h-9"
+        />
+      )}
+      {slots.bodyVars.map((v, i) => (
+        <Input
+          key={v}
+          value={params[i] ?? ""}
+          onChange={(e) => {
+            const next = [...params];
+            next[i] = e.target.value;
+            setParams(next);
+          }}
+          placeholder={tPicker("bodyValuePlaceholder", { val: `{{${v}}}` })}
+          className="h-9"
+        />
+      ))}
+      {slots.urlButtonSlots.map((slot) => (
+        <div key={slot.index} className="space-y-1">
+          <Input
+            value={buttonParams[slot.index] ?? ""}
+            onChange={(e) =>
+              setButtonParams((prev) => ({ ...prev, [slot.index]: e.target.value }))
+            }
+            placeholder={`${slot.text}: ${tPicker("urlSuffixValuePlaceholder")}`}
+            className="h-9"
+          />
+          <p className="break-all text-[11px] text-muted-foreground">
+            {tPicker("finalUrl", {
+              url: slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}"),
+            })}
+          </p>
+        </div>
+      ))}
+      <div className="mt-auto flex justify-end pt-1">
+        <Button
+          size="sm"
+          disabled={readOnly || !canConfirm}
+          title={readOnly ? t("readOnlyTitle") : undefined}
+          onClick={confirm}
+        >
+          <SendHorizontal />
+          {t("sendTemplate")}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -836,10 +1387,10 @@ function MediaDraftPreview({
   onCaptionChange: (caption: string) => void;
   onDiscard: () => void;
   onSend: () => void;
-  t: ReturnType<typeof useTranslations>;
+  t: Translator;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3">
+    <div className="rounded-2xl border border-border bg-muted p-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           {draft.kind === "image" && (
@@ -858,7 +1409,7 @@ function MediaDraftPreview({
           )}
           {draft.kind === "document" && (
             <div className="flex items-center gap-2 text-sm text-foreground">
-              <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <FileText className="size-5 shrink-0 text-muted-foreground" />
               <span className="truncate">{draft.filename}</span>
             </div>
           )}
@@ -867,15 +1418,15 @@ function MediaDraftPreview({
           type="button"
           onClick={onDiscard}
           aria-label={t("removeAttachment")}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="rounded-full p-1.5 text-muted-foreground hover:bg-hover-strong hover:text-foreground"
         >
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </button>
       </div>
 
       <div className="mt-2 flex items-end gap-2">
         {draft.kind !== "audio" && (
-          <input
+          <Input
             value={draft.caption}
             maxLength={MEDIA_CAPTION_MAX}
             onChange={(e) => onCaptionChange(e.target.value)}
@@ -886,22 +1437,22 @@ function MediaDraftPreview({
               }
             }}
             placeholder={t("addCaption")}
-            className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
+            className="flex-1"
           />
         )}
-        <GatedButton
-          size="sm"
-          canAct={!readOnly}
-          gateReason="send messages"
-          disabled={busy}
+        <button
+          type="button"
+          disabled={readOnly || busy}
           onClick={onSend}
+          title={readOnly ? t("readOnlyTitle") : t("send")}
+          aria-label={t("send")}
           className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
+            "grid size-[38px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[18px]",
             draft.kind === "audio" && "ml-auto",
           )}
         >
-          <Send className="h-4 w-4" />
-        </GatedButton>
+          <SendHorizontal />
+        </button>
       </div>
     </div>
   );

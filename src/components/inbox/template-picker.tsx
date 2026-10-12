@@ -36,7 +36,8 @@ interface TemplatePickerProps {
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
 }
 
-function renderBodyPreview(body: string, params: string[]): string {
+/** Cuerpo de la plantilla con las variables cargadas; las vacías quedan como `{{n}}`. */
+export function renderBodyPreview(body: string, params: string[]): string {
   return body.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
     const idx = Number(raw) - 1;
     const value = params[idx];
@@ -44,7 +45,7 @@ function renderBodyPreview(body: string, params: string[]): string {
   });
 }
 
-interface UrlButtonSlot {
+export interface UrlButtonSlot {
   index: number;
   text: string;
   url: string;
@@ -55,11 +56,13 @@ interface UrlButtonSlot {
  * variable, and per-URL-button suffixes. Collect them all so the
  * send-message path doesn't 400 on missing parameters.
  */
-function collectVariableSlots(template: MessageTemplate): {
+export interface TemplateVariableSlots {
   bodyVars: number[];
   headerVarCount: number;
   urlButtonSlots: UrlButtonSlot[];
-} {
+}
+
+export function collectVariableSlots(template: MessageTemplate): TemplateVariableSlots {
   const bodyVars = extractVariableIndices(template.body_text);
   const headerVarCount =
     template.header_type === "text" && template.header_content
@@ -74,22 +77,21 @@ function collectVariableSlots(template: MessageTemplate): {
   return { bodyVars, headerVarCount, urlButtonSlots };
 }
 
-export function TemplatePicker({
-  open,
-  onOpenChange,
-  onSelect,
-}: TemplatePickerProps) {
-  const t = useTranslations("Inbox.templatePicker");
-
+/**
+ * Plantillas APROBADAS de la cuenta, pedidas cuando `enabled` pasa a
+ * true (y de nuevo cada vez que vuelve a pasar). Las comparten el
+ * diálogo de abajo y el panel de plantillas del cuadro de mensaje
+ * (sesión C), así los dos muestran la misma lista.
+ */
+export function useApprovedTemplates(enabled: boolean): {
+  templates: MessageTemplate[];
+  loading: boolean;
+} {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<MessageTemplate | null>(null);
-  const [params, setParams] = useState<string[]>([]);
-  const [headerText, setHeaderText] = useState<string>("");
-  const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
 
   useEffect(() => {
-    if (!open) return;
+    if (!enabled) return;
 
     let cancelled = false;
     (async () => {
@@ -130,7 +132,23 @@ export function TemplatePicker({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [enabled]);
+
+  return { templates, loading };
+}
+
+export function TemplatePicker({
+  open,
+  onOpenChange,
+  onSelect,
+}: TemplatePickerProps) {
+  const t = useTranslations("Inbox.templatePicker");
+
+  const { templates, loading } = useApprovedTemplates(open);
+  const [selected, setSelected] = useState<MessageTemplate | null>(null);
+  const [params, setParams] = useState<string[]>([]);
+  const [headerText, setHeaderText] = useState<string>("");
+  const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
 
   function resetSelection() {
     setSelected(null);
@@ -221,7 +239,7 @@ export function TemplatePicker({
                   key={t.id}
                   type="button"
                   onClick={() => pickTemplate(t)}
-                  className="w-full rounded-md border border-border bg-background/50 p-3 text-left transition-colors hover:border-primary/40 hover:bg-popover"
+                  className="w-full rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-hover"
                 >
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
@@ -229,9 +247,7 @@ export function TemplatePicker({
                         <p className="truncate text-sm font-medium text-popover-foreground">
                           {t.name}
                         </p>
-                        <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
-                          {t.category}
-                        </Badge>
+                        <Badge variant="selected">{t.category}</Badge>
                         {t.language && (
                           <span className="text-[10px] uppercase text-muted-foreground">
                             {t.language}
