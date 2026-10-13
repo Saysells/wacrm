@@ -368,7 +368,7 @@ export function AiConfig() {
                     setEmbeddingsKeyEdited(true);
                   }
                 }}
-                placeholder="sk-... (OpenAI)"
+                placeholder={t('embeddingsKeyPlaceholder')}
                 disabled={disabled}
                 autoComplete="off"
               />

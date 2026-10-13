@@ -8,9 +8,14 @@ import {
   Loader2,
   X,
   ChevronDown,
-  ChevronRight,
-} from "lucide-react"
+  ChevronRight, FileText } from "lucide-react"
 import { useTranslations } from "next-intl"
+import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/ui/page-header"
+import { EmptyState } from "@/components/ui/empty-state"
+import { useNow } from "@/hooks/use-now"
+import { relativeTime } from "@/lib/inbox/vistas"
+import { formatRelative } from "@/lib/inbox/time-text"
 
 import { createClient } from "@/lib/supabase/client"
 import type {
@@ -20,7 +25,6 @@ import type {
 } from "@/types"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { formatRelative } from "@/lib/automations/trigger-meta"
 
 export default function AutomationLogsPage({
   params,
@@ -30,6 +34,13 @@ export default function AutomationLogsPage({
   const { id } = use(params)
   const router = useRouter()
   const t = useTranslations("Automations.logs")
+  const tBuilder = useTranslations("Automations.builder")
+  const tList = useTranslations("Inbox.conversationList")
+  const now = useNow()
+  // Nombre del disparador del catálogo del editor; si es uno que no
+  // conocemos, el valor crudo.
+  const triggerLabel = (ev: string) =>
+    tBuilder.has(`triggers.${ev}.label`) ? tBuilder(`triggers.${ev}.label`) : ev
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
@@ -67,7 +78,7 @@ export default function AutomationLogsPage({
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-danger">{error}</p>
         <Button variant="outline" onClick={() => router.push("/automations")}>
           {t("back")}
         </Button>
@@ -85,28 +96,26 @@ export default function AutomationLogsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => router.push("/automations")}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label={t("backAria")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{automation.name}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t("title")}</p>
-        </div>
-      </div>
+      {/* Encabezado común (rediseño, sesión F2). */}
+      <PageHeader
+        back={
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => router.push("/automations")}
+            aria-label={t("backAria")}
+            title={t("backAria")}
+          >
+            <ArrowLeft />
+          </Button>
+        }
+        title={automation.name}
+        meta={logs.length > 0 ? logs.length : undefined}
+        note={t("title")}
+      />
 
       {logs.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">
-          <p className="text-sm text-foreground">{t("emptyTitle")}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("emptyDesc")}
-          </p>
-        </div>
+        <EmptyState icon={FileText} title={t("emptyTitle")} description={t("emptyDesc")} />
       ) : (
         <ul className="space-y-2">
           {logs.map((log) => {
@@ -114,7 +123,7 @@ export default function AutomationLogsPage({
             return (
               <li
                 key={log.id}
-                className="rounded-xl border border-border bg-card"
+                className="rounded-[14px] border border-border bg-card"
               >
                 <button
                   type="button"
@@ -132,24 +141,23 @@ export default function AutomationLogsPage({
                       {log.contact?.name ?? log.contact?.phone ?? t("unknownContact")}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {log.trigger_event} · {log.steps_executed?.length ?? 0}{" "}
-                      {log.steps_executed?.length === 1 ? t("step", { count: 1 }).replace("1 ", "") : t("stepPlural", { count: log.steps_executed?.length ?? 0 }).replace(/^[0-9]+ /, "")}
+                      {triggerLabel(log.trigger_event)} · {t("stepCount", { count: log.steps_executed?.length ?? 0 })}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatRelative(log.created_at)}
+                  <div className="text-xs text-muted-foreground tabular-nums">
+                    {formatRelative(relativeTime(new Date(log.created_at).getTime(), now), tList)}
                   </div>
                 </button>
                 {isOpen && (
                   <div className="border-t border-border px-4 py-3">
                     {log.error_message && (
-                      <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                      <p className="mb-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs text-danger">
                         {log.error_message}
                       </p>
                     )}
                     <ul className="space-y-1.5">
                       {(log.steps_executed ?? []).map((r, i) => (
-                        <StepRow key={i} result={r} />
+                        <StepRow key={i} result={r} tBuilder={tBuilder} />
                       ))}
                       {(log.steps_executed ?? []).length === 0 && (
                         <li className="text-xs text-muted-foreground">{t("noSteps")}</li>
@@ -167,38 +175,28 @@ export default function AutomationLogsPage({
 }
 
 function StatusBadge({ status, t }: { status: AutomationLog["status"], t: ReturnType<typeof useTranslations> }) {
-  const classes =
-    status === "success"
-      ? "border-primary/30 bg-primary/10 text-primary"
-      : status === "partial"
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-      : "border-red-500/30 bg-red-500/10 text-red-300"
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-        classes,
-      )}
-    >
-      {t(`status.${status}`)}
-    </span>
-  )
+  // Chip de 5 px del sistema (sesión F2).
+  const variant = status === "success" ? "success" : status === "partial" ? "warning" : "danger"
+  return <Badge variant={variant}>{t(`status.${status}`)}</Badge>
 }
 
-function StepRow({ result }: { result: AutomationLogStepResult }) {
+function StepRow({ result, tBuilder }: { result: AutomationLogStepResult; tBuilder: ReturnType<typeof useTranslations> }) {
   const ok = result.status === "success"
+  const stepLabel = tBuilder.has(`steps.${result.step_type}`)
+    ? tBuilder(`steps.${result.step_type}`)
+    : result.step_type
   return (
     <li className="flex items-start gap-2 text-xs">
       <span
         className={cn(
-          "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full",
-          ok ? "bg-primary/20 text-primary" : "bg-red-500/20 text-red-400",
+          "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px]",
+          ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger",
         )}
         aria-hidden
       >
         {ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
       </span>
-      <span className="text-muted-foreground">{result.step_type}</span>
+      <span className="text-muted-foreground">{stepLabel}</span>
       {result.detail && (
         <span className="truncate text-muted-foreground">— {result.detail}</span>
       )}

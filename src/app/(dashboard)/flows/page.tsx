@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 import { useTranslations } from "next-intl";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useCan } from "@/hooks/use-can";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -32,7 +34,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 /**
  * Flows list page.
@@ -61,10 +62,11 @@ const STATUS_LABELS = (t: ReturnType<typeof useTranslations>): Record<FlowRow["s
   archived: t("statusArchived"),
 });
 
-const STATUS_COLORS: Record<FlowRow["status"], string> = {
-  draft: "border-border bg-muted text-muted-foreground",
-  active: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
-  archived: "border-border bg-muted/50 text-muted-foreground",
+// Chip de estado del sistema (rediseño, sesión F2).
+const STATUS_VARIANT: Record<FlowRow["status"], "secondary" | "success"> = {
+  draft: "secondary",
+  active: "success",
+  archived: "secondary",
 };
 
 interface TemplateSummary {
@@ -89,6 +91,7 @@ export default function FlowsPage() {
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<FlowRow | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
@@ -164,7 +167,7 @@ export default function FlowsPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? `Clone failed: ${res.status}`);
+        throw new Error(json.error ?? t("cloneError"));
       }
       const json = (await res.json()) as { flow: FlowRow };
       setCreateOpen(false);
@@ -177,9 +180,10 @@ export default function FlowsPage() {
     }
   }
 
+  // Borrar pide confirmación en un modal del sistema (sesión F2), nunca
+  // con `window.confirm`.
   async function handleDelete(flow: FlowRow) {
-    const yes = window.confirm(t("deleteConfirm", { name: flow.name }));
-    if (!yes) return;
+    setPendingDelete(null);
     try {
       const res = await fetch(`/api/flows/${flow.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
@@ -200,34 +204,39 @@ export default function FlowsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
-            <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-              {t("beta")}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("description")}
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create flows"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          {t("newFlow")}
-        </GatedButton>
-      </header>
+    <div className="space-y-6">
+      {/* Encabezado común (rediseño, sesión F2): "Beta" en chip de 5 px. */}
+      <PageHeader
+        title={t("title")}
+        meta={<Badge variant="info">{t("beta")}</Badge>}
+        note={t("description")}
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create flows"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus />
+            {t("newFlow")}
+          </GatedButton>
+        }
+      />
 
       {flows.length === 0 ? (
         <EmptyState
-          onCreate={() => setCreateOpen(true)}
-          canCreate={canCreate}
-          t={t}
+          icon={Workflow}
+          title={t("emptyTitle")}
+          description={t("emptyDesc")}
+          action={
+            <GatedButton
+              canAct={canCreate}
+              gateReason="create flows"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus />
+              {t("createFirst")}
+            </GatedButton>
+          }
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -236,7 +245,7 @@ export default function FlowsPage() {
               key={flow.id}
               flow={flow}
               onEdit={() => router.push(`/flows/${flow.id}`)}
-              onDelete={() => handleDelete(flow)}
+              onDelete={() => setPendingDelete(flow)}
               t={t}
             />
           ))}
@@ -248,17 +257,15 @@ export default function FlowsPage() {
             `sm:max-w-sm` baked into its default classes. Without the
             sm: prefix our override applies at base only and the
             sm-scoped 384px wins at every real desktop breakpoint. */}
-        <DialogContent className="sm:max-w-4xl bg-popover text-popover-foreground">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{t("createTitle")}</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              {t("createDesc")}
-            </DialogDescription>
+            <DialogDescription>{t("createDesc")}</DialogDescription>
           </DialogHeader>
 
           {templates.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              <p className="text-[12.5px] font-semibold text-muted-foreground">
                 {t("startTemplate")}
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -270,10 +277,12 @@ export default function FlowsPage() {
                       type="button"
                       onClick={() => handleUseTemplate(template.slug)}
                       disabled={creating}
-                      className="flex flex-col gap-2.5 rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted disabled:opacity-50"
+                      className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card p-4 text-left transition-[border-color,box-shadow] hover:border-[#B9C4D2] hover:shadow-card disabled:opacity-50"
                     >
-                      <Icon className="h-5 w-5 text-primary" />
-                      <span className="text-sm font-semibold text-popover-foreground">
+                      <span className="grid size-9 place-items-center rounded-lg bg-selected text-primary">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
                         {template.name}
                       </span>
                       <span className="text-xs leading-relaxed text-muted-foreground">
@@ -290,14 +299,13 @@ export default function FlowsPage() {
           )}
 
           <div className="space-y-2 border-t border-border pt-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            <p className="text-[12.5px] font-semibold text-muted-foreground">
               {t("startBlank")}
             </p>
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder={t("placeholderName")}
-              className="bg-muted"
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleCreate();
               }}
@@ -306,52 +314,41 @@ export default function FlowsPage() {
 
           <DialogFooter>
             <Button
-              variant="ghost"
+              variant="outline"
               onClick={() => setCreateOpen(false)}
               disabled={creating}
             >
               {t("cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
-              {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+              {creating && <Loader2 className="animate-spin" />}
               {t("createBlank")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
 
-function EmptyState({
-  onCreate,
-  canCreate,
-  t,
-}: {
-  onCreate: () => void;
-  canCreate: boolean;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 px-6 py-16 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-        <Workflow className="h-6 w-6 text-muted-foreground" />
-      </div>
-      <h2 className="mt-4 text-base font-medium text-foreground">
-        {t("emptyTitle")}
-      </h2>
-      <p className="mt-1 max-w-md text-sm text-muted-foreground">
-        {t("emptyDesc")}
-      </p>
-      <GatedButton
-        canAct={canCreate}
-        gateReason="create flows"
-        onClick={onCreate}
-        className="mt-5"
-      >
-        <Plus className="h-4 w-4" />
-        {t("createFirst")}
-      </GatedButton>
+      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("deleteTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("deleteConfirm", { name: pendingDelete?.name ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDelete && void handleDelete(pendingDelete)}
+            >
+              {t("delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -375,7 +372,7 @@ function FlowCard({
         ? Archive
         : PauseCircle;
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-border">
+    <div className="flex flex-col rounded-[14px] border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Workflow className="h-4 w-4 shrink-0 text-primary" />
@@ -383,14 +380,8 @@ function FlowCard({
             {flow.name}
           </h3>
         </div>
-        <Badge
-          variant="outline"
-          className={cn(
-            "shrink-0 gap-1 text-[10px]",
-            STATUS_COLORS[flow.status],
-          )}
-        >
-          <StatusIcon className="h-3 w-3" />
+        <Badge variant={STATUS_VARIANT[flow.status]}>
+          <StatusIcon />
           {STATUS_LABELS(t)[flow.status]}
         </Badge>
       </div>
@@ -415,7 +406,7 @@ function FlowCard({
           variant="ghost"
           size="sm"
           onClick={onDelete}
-          className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          className="text-danger hover:bg-danger-soft hover:text-danger"
         >
           <Trash2 className="h-3.5 w-3.5" />
           {t("delete")}

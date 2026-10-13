@@ -106,7 +106,7 @@ export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
           <div className="flex items-center gap-4 px-6 py-3.5">
             <div
               role="group"
-              aria-label="Editor view"
+              aria-label={t("editorViewAria")}
               className="inline-flex gap-0.5 rounded-lg border border-border bg-muted p-0.5"
             >
               <SegButton
@@ -140,7 +140,7 @@ export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
         )}
 
         {/* ---- stage: the active view, owning its own overflow ---- */}
-        <div className="relative mx-6 min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card-2">
+        <div className="relative mx-6 min-h-0 flex-1 overflow-hidden rounded-[14px] border border-border bg-card-2">
           {effectiveView === "canvas" ? (
             <FlowCanvas />
           ) : (
@@ -200,7 +200,7 @@ function SegButton({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors",
         active
-          ? "bg-card text-foreground shadow-sm"
+          ? "bg-selected-strong text-primary"
           : "text-muted-foreground hover:text-foreground",
       )}
     >

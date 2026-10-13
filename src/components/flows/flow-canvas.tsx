@@ -63,6 +63,7 @@ import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Sheet,
   SheetContent,
@@ -630,7 +631,7 @@ function NodeEditSheet({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="border-border bg-popover flex w-full flex-col gap-0 border-l p-0 sm:max-w-md"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
       >
         <SheetHeader className="border-border flex-row items-center gap-3 space-y-0 border-b px-5 py-4">
           <NodeIconChip type={node.node_type} size={36} iconSize={18} />
@@ -638,9 +639,7 @@ function NodeEditSheet({
             <SheetTitle className="flex items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
               <span style={{ color: c.text }}>{t(`nodes.${node.node_type}.label`)}</span>
               {isEntry && (
-                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
-                  {t('badgeEntry')}
-                </span>
+                <Badge variant="selected">{t('badgeEntry')}</Badge>
               )}
             </SheetTitle>
             <SheetDescription className="text-muted-foreground mt-0.5 text-xs">
@@ -673,7 +672,7 @@ function NodeEditSheet({
             variant="ghost"
             size="sm"
             onClick={onDelete}
-            className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            className="text-danger hover:bg-danger-soft hover:text-danger"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('deleteNode')}

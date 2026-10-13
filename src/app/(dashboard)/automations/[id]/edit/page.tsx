@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { useTranslations } from "next-intl"
+import { Button } from "@/components/ui/button"
 
 import {
   AutomationBuilder,
@@ -53,13 +54,10 @@ export default function EditAutomationPage({
   if (error) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <p className="text-sm text-red-400">{error}</p>
-        <button
-          onClick={() => router.push("/automations")}
-          className="text-sm text-primary hover:text-primary/80"
-        >
+        <p className="text-sm text-danger">{error}</p>
+        <Button variant="outline" onClick={() => router.push("/automations")}>
           {t("back")}
-        </button>
+        </Button>
       </div>
     )
   }

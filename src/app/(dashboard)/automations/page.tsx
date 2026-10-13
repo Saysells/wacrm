@@ -21,6 +21,25 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useCan } from "@/hooks/use-can"
 import { useTranslations } from "next-intl"
+import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/ui/page-header"
+import { EmptyState } from "@/components/ui/empty-state"
+import { useNow } from "@/hooks/use-now"
+import { relativeTime } from "@/lib/inbox/vistas"
+import { formatRelative } from "@/lib/inbox/time-text"
+import type { AutomationTriggerType } from "@/types"
+
+// Tono del chip por disparador (rediseño, sesión F2).
+const TRIGGER_VARIANT: Partial<Record<AutomationTriggerType, "info" | "selected" | "success" | "warning" | "secondary">> = {
+  new_message_received: "info",
+  first_inbound_message: "success",
+  keyword_match: "selected",
+  new_contact_created: "success",
+  conversation_assigned: "info",
+  tag_added: "warning",
+  time_based: "secondary",
+  interactive_reply: "selected",
+}
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { GatedButton } from "@/components/ui/gated-button"
@@ -40,9 +59,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
-import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
-import { cn } from "@/lib/utils"
+import type { TemplateSlug } from "@/lib/automations/templates"
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
   "welcome_message",
@@ -62,6 +79,10 @@ export default function AutomationsPage() {
   const router = useRouter()
   const canCreate = useCan("send-messages")
   const t = useTranslations("Automations.list")
+  const tTemplates = useTranslations("Automations.templates")
+  const tBuilder = useTranslations("Automations.builder")
+  const tList = useTranslations("Inbox.conversationList")
+  const now = useNow()
   const [automations, setAutomations] = useState<Automation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
@@ -77,7 +98,7 @@ export default function AutomationsPage() {
       if (fetchErr) throw fetchErr
       setAutomations((data ?? []) as Automation[])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automations")
+      setError(err instanceof Error ? err.message : "")
     }
   }
 
@@ -140,7 +161,7 @@ export default function AutomationsPage() {
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-danger">{error || t("loadError")}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
           {t("retry")}
         </Button>
@@ -160,42 +181,42 @@ export default function AutomationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("subtitle")}
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create automations"
-          onClick={() => router.push("/automations/new")}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t("create")}
-        </GatedButton>
-      </div>
+      {/* Encabezado común (rediseño, sesión F2). */}
+      <PageHeader
+        title={t("title")}
+        meta={automations.length > 0 ? automations.length : undefined}
+        note={t("subtitle")}
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create automations"
+            onClick={() => router.push("/automations/new")}
+          >
+            <Plus />
+            {t("create")}
+          </GatedButton>
+        }
+      />
 
       {showTemplates && (
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{t("templatesTitle")}</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
               const Icon = TEMPLATE_ICON[slug]
               return (
+                // Plantillas para arrancar (sesión F2): nombre y bajada del
+                // catálogo (`Automations.templates.<slug>`), tarjeta `.hc`.
                 <button
                   key={slug}
                   onClick={() => startFromTemplate(slug)}
-                  className="group flex flex-col items-start rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-card/80"
+                  className="group flex flex-col items-start rounded-[14px] border border-border bg-card p-4 text-left transition-[border-color,box-shadow] hover:border-[#B9C4D2] hover:shadow-card"
                 >
-                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
+                  <div className="mb-3 grid size-9 place-items-center rounded-lg bg-selected text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold text-foreground">{t.name}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  <div className="text-sm font-semibold text-foreground">{tTemplates(`${slug}.name`)}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{tTemplates(`${slug}.description`)}</p>
                 </button>
               )
             })}
@@ -204,15 +225,7 @@ export default function AutomationsPage() {
       )}
 
       {automations.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Zap className="h-6 w-6 text-primary" />
-          </div>
-          <p className="mt-3 text-sm font-medium text-foreground">{t("emptyTitle")}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("emptyDesc")}
-          </p>
-        </div>
+        <EmptyState icon={Zap} title={t("emptyTitle")} description={t("emptyDesc")} />
       ) : (
         <ul className="space-y-3">
           {automations.map((a) => (
@@ -225,6 +238,9 @@ export default function AutomationsPage() {
               onLogs={() => router.push(`/automations/${a.id}/logs`)}
               onDelete={() => setPendingDelete(a)}
               t={t}
+              tBuilder={tBuilder}
+              tList={tList}
+              now={now}
             />
           ))}
         </ul>
@@ -269,6 +285,9 @@ function AutomationCard({
   onLogs,
   onDelete,
   t,
+  tBuilder,
+  tList,
+  now,
 }: {
   automation: Automation
   onToggle: (next: boolean) => void
@@ -277,13 +296,24 @@ function AutomationCard({
   onLogs: () => void
   onDelete: () => void
   t: ReturnType<typeof useTranslations>
+  tBuilder: ReturnType<typeof useTranslations>
+  tList: ReturnType<typeof useTranslations>
+  now: number
 }) {
-  const meta = triggerMeta(automation.trigger_type)
+  // Nombre del disparador del catálogo del editor y chip de 5 px
+  // (sesión F2); la tabla del motor con sus rótulos en inglés no se toca.
+  const triggerLabel = tBuilder.has(`triggers.${automation.trigger_type}.label`)
+    ? tBuilder(`triggers.${automation.trigger_type}.label`)
+    : automation.trigger_type
+  const lastMs = automation.last_executed_at
+    ? new Date(automation.last_executed_at).getTime()
+    : NaN
+  const lastRun = Number.isNaN(lastMs) ? t("never") : formatRelative(relativeTime(lastMs, now), tList)
   return (
-    <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
+    <li className="rounded-[14px] border border-border bg-card">
       <div className="flex items-center gap-4 p-4">
         <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10"
+          className="grid size-10 flex-shrink-0 place-items-center rounded-lg bg-selected"
           aria-hidden
         >
           <Zap className="h-5 w-5 text-primary" />
@@ -299,7 +329,7 @@ function AutomationCard({
               {automation.name}
             </span>
             {automation.is_active && (
-              <span className="relative flex h-2 w-2" aria-label="active">
+              <span className="relative flex h-2 w-2" aria-label={t("activeAria")}>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
@@ -309,21 +339,14 @@ function AutomationCard({
             <p className="mt-0.5 truncate text-xs text-muted-foreground">{automation.description}</p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                meta.pillClass,
-              )}
-            >
-              {meta.label}
-            </span>
+            <Badge variant={TRIGGER_VARIANT[automation.trigger_type] ?? "secondary"}>{triggerLabel}</Badge>
             <span className="tabular-nums">
               {automation.execution_count === 1
                 ? t("runs", { count: automation.execution_count })
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
+            <span>{t("lastRun", { time: lastRun })}</span>
           </div>
         </button>
 
@@ -336,7 +359,7 @@ function AutomationCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger
-              aria-label="Open menu"
+              aria-label={t("moreAria")}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
             >
               <MoreVertical className="h-4 w-4" />

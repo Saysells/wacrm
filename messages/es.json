@@ -1130,7 +1130,11 @@
         "updateError": "No se pudo actualizar",
         "duplicateError": "No se pudo duplicar",
         "deleteError": "No se pudo eliminar"
-      }
+      },
+      "loadError": "No se pudieron cargar las automatizaciones",
+      "never": "nunca",
+      "moreAria": "Más acciones",
+      "activeAria": "Activa"
     },
     "edit": {
       "loading": "Cargando...",
@@ -1152,7 +1156,8 @@
         "failed": "fallida"
       },
       "back": "Volver",
-      "backAria": "Volver"
+      "backAria": "Volver",
+      "stepCount": "{count, plural, =1 {# paso} other {# pasos}}"
     },
     "builder": {
       "steps": {
@@ -1308,7 +1313,43 @@
         "matchWord": "Palabra completa",
         "matchWordHint": "Coincide con la palabra clave solo como palabra suelta: \"sol\" ya no se dispara con \"solamente\". Ideal para palabras clave cortas en idiomas con espacios; usá Contiene para idiomas que se escriben sin espacios.",
         "matchExact": "Exacta",
-        "closeConversationHint": "Deja la conversación con estado \"cerrada\". No necesita configuración."
+        "closeConversationHint": "Pasa la conversación a cerrada. No hay nada que configurar."
+      },
+      "untitledName": "Automatización sin título",
+      "atPath": "en {path}",
+      "schedulePlaceholder": "Expresión cron o HH:mm",
+      "kinds": {
+        "condition": "Condición",
+        "wait": "Espera",
+        "action": "Acción"
+      },
+      "moveUp": "Subir",
+      "moveDown": "Bajar",
+      "valueLabel": "Valor",
+      "preview": {
+        "noText": "todavía sin texto",
+        "noBody": "todavía sin cuerpo",
+        "pickTemplate": "elegí una plantilla",
+        "when": "cuando {subject}",
+        "noUrl": "sin URL"
+      }
+    },
+    "templates": {
+      "welcome_message": {
+        "name": "Mensaje de bienvenida",
+        "description": "Responde solo a los contactos que escriben por primera vez."
+      },
+      "out_of_office": {
+        "name": "Fuera de horario",
+        "description": "Responde solo fuera del horario de atención para que nadie quede esperando."
+      },
+      "lead_qualifier": {
+        "name": "Calificador de leads",
+        "description": "Hace una pregunta de calificación para filtrar los leads que entran."
+      },
+      "follow_up_reminder": {
+        "name": "Recordatorio de seguimiento",
+        "description": "Manda un recordatorio si el contacto no respondió en 24 horas."
       }
     }
   },
@@ -1344,7 +1385,8 @@
       "triggerKeywordNone": "Se dispara por palabra clave (ninguna definida)",
       "triggerKeyword": "Se dispara con: {keywords}",
       "triggerFirstInbound": "Se dispara con el primer mensaje entrante de un contacto",
-      "triggerManual": "Disparo manual"
+      "triggerManual": "Disparo manual",
+      "deleteTitle": "Eliminar flujo"
     },
     "edit": {
       "notFound": "No se encontró el flujo.",
@@ -1368,7 +1410,19 @@
       "statusHandedOff": "Derivada",
       "statusTimedOut": "Vencida por tiempo",
       "statusPaused": "Pausada por un agente",
-      "statusFailed": "Fallida"
+      "statusFailed": "Fallida",
+      "backToFlow": "Volver a {name}",
+      "events": {
+        "started": "Arrancó",
+        "node_entered": "Entró al nodo",
+        "message_sent": "Mensaje enviado",
+        "reply_received": "Respuesta recibida",
+        "fallback_fired": "Reintento",
+        "handoff": "Traspaso",
+        "timeout": "Vencido",
+        "error": "Error",
+        "completed": "Completado"
+      }
     },
     "builder": {
       "triggerTitle": "Disparador",
@@ -1471,7 +1525,14 @@
         "classifyExtraKeywords": "Palabras de la rama extra",
         "classifyExtraNext": "Si coincide, ir a",
         "classifyVarKeyLabel": "Guardar la respuesta en",
-        "classifyVarKeyHelp": "Opcional. Guarda el texto tal cual lo escribió el cliente."
+        "classifyVarKeyHelp": "Opcional. Guarda el texto tal cual lo escribió el cliente.",
+        "optionDefault": "Opción",
+        "optionN": "Opción {n}",
+        "replyIdPlaceholder": "id_de_respuesta",
+        "removeSection": "Quitar sección",
+        "fileTooLarge": "El archivo pesa {size} MB y el límite es 16 MB.",
+        "fileUploaded": "Archivo subido.",
+        "uploadFailed": "No se pudo subir el archivo."
       },
       "categories": {
         "messaging": "Mensajería",
@@ -1527,7 +1588,8 @@
           "label": "Fin",
           "blurb": "Termina el flujo"
         }
-      }
+      },
+      "editorViewAria": "Vista del editor"
     },
     "validation": {
       "noIssues": "Sin problemas. Listo para activar.",
@@ -1539,7 +1601,10 @@
       "fixIssues": "Corregí los problemas de abajo antes de activar.",
       "statusActivated": "Flujo activado.",
       "statusArchived": "Archivado.",
-      "statusDraft": "Guardado como borrador."
+      "statusDraft": "Guardado como borrador.",
+      "saveFailed": "No se pudo guardar",
+      "statusFailed": "No se pudo cambiar el estado",
+      "deleteFailed": "No se pudo eliminar"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {opción} other {opciones}}",
@@ -1560,6 +1625,28 @@
       "tagNone": "{mode} etiqueta (ninguna elegida)",
       "waitSeconds": "espera {seconds}s",
       "classifyWordCounts": "{positive} sí / {negative} no"
+    },
+    "header": {
+      "backToFlows": "Volver a Flujos",
+      "flowName": "Nombre del flujo",
+      "unsaved": "Hay cambios sin guardar: tocá Guardar.",
+      "edited": "Editado",
+      "runs": "Corridas",
+      "delete": "Eliminar",
+      "pause": "Pausar",
+      "fixIssuesFirst": "Arreglá los problemas de abajo antes de activar",
+      "activate": "Activar",
+      "save": "Guardar",
+      "descriptionPlaceholder": "Agregá una descripción corta (interna: los clientes no la ven)",
+      "descriptionAria": "Descripción del flujo",
+      "status": {
+        "draft": "Borrador",
+        "active": "Activo",
+        "archived": "Archivado"
+      },
+      "deleteTitle": "Eliminar flujo",
+      "deleteDesc": "¿Eliminar \"{name}\"? Las corridas activas terminan al instante. No se puede deshacer.",
+      "cancel": "Cancelar"
     }
   },
   "Settings": {
@@ -2079,7 +2166,7 @@
     },
     "aiConfig": {
       "title": "Configuración del agente",
-      "description": "Usá tu propia clave de OpenAI o Anthropic. la Bandeja llama al proveedor directamente con tu clave: sin cargos de IA por asiento, y tus datos siguen siendo tuyos. Esto alimenta las respuestas redactadas con IA en la bandeja, el bot de respuesta automática y el Playground.",
+      "description": "Usá tu propia clave de OpenAI o Anthropic. La Bandeja llama al proveedor directamente con tu clave: sin cargos de IA por asiento, y tus datos siguen siendo tuyos. Esto alimenta las respuestas redactadas con IA en la bandeja, el bot de respuesta automática y el Playground.",
       "adminOnlyConfig": "Solo administradores y propietarios pueden cambiar la configuración de IA.",
       "loadFailed": "No se pudo cargar la configuración de IA",
       "providerAndKey": "Proveedor y clave",
@@ -2115,7 +2202,8 @@
       "saveSuccess": "Asistente de IA guardado.",
       "saveFailed": "No se pudo guardar.",
       "removeSuccess": "Configuración de IA eliminada.",
-      "removeFailed": "No se pudo eliminar."
+      "removeFailed": "No se pudo eliminar.",
+      "embeddingsKeyPlaceholder": "sk-... (OpenAI)"
     },
     "aiKnowledge": {
       "loadFailed": "No se pudo cargar la base de conocimiento",
@@ -2142,7 +2230,9 @@
       "addDoc": "Agregar documento",
       "reindex": "Reindexar",
       "reindexTooltip": "Volver a indexar todos los documentos (por ej. después de agregar una clave de embeddings)",
-      "loading": "Cargando…"
+      "loading": "Cargando…",
+      "editTitle": "Editar",
+      "deleteTitle": "Eliminar"
     },
     "railAria": "Secciones de configuración",
     "quickReplies": {
@@ -2196,5 +2286,47 @@
     "inbox": "la Bandeja",
     "pickDate": "Elegí una fecha",
     "clearDate": "Sin fecha"
+  },
+  "Agents": {
+    "title": "Agentes de IA",
+    "description": "Tu agente de IA con tu propia clave: configuralo y probalo en el Playground antes de que responda a los clientes en la Bandeja.",
+    "tabs": {
+      "playground": "Playground",
+      "setup": "Configuración",
+      "usage": "Uso"
+    },
+    "playground": {
+      "title": "Playground",
+      "hint": "Probá las respuestas como si fueras un cliente",
+      "reset": "Reiniciar",
+      "emptyTitle": "Mandá un mensaje para ver cómo respondería tu agente",
+      "emptyBody": "Usa tu base de conocimiento y se comporta igual que el bot de respuesta automática, traspaso incluido.",
+      "goToSetup": "¿Todavía no lo configuraste? Ir a Configuración",
+      "handoff": "Acá traspasaría a una persona",
+      "thinking": "Pensando…",
+      "placeholder": "Escribí un mensaje como cliente…",
+      "send": "Enviar",
+      "notConfigured": "Todavía no hay un agente configurado: terminá la configuración primero.",
+      "replyFailed": "No se pudo obtener una respuesta.",
+      "unreachable": "No se pudo conectar con el agente."
+    },
+    "usage": {
+      "title": "Uso de tokens",
+      "description": "Tokens gastados con tu clave del proveedor por los borradores y el bot de respuesta automática. Solo conteos: acá no se guarda ningún mensaje.",
+      "lastDays": "Últimos {count} días",
+      "loadFailed": "No se pudo cargar el uso",
+      "emptyTitle": "Todavía no hay uso de IA en los últimos {count} días",
+      "emptyBody": "Se completa a medida que el asistente redacta y responde solo.",
+      "totalTokens": "Tokens totales",
+      "calls": "Llamadas al modelo",
+      "autoReply": "Respuesta automática",
+      "drafts": "Borradores",
+      "tokensPerDay": "Tokens por día",
+      "tokens": "Tokens",
+      "byModel": "Por modelo",
+      "tokensShort": "{value} tokens",
+      "callCount": "{count, plural, =1 {# llamada} other {# llamadas}}",
+      "partialWindow": "Se muestra una ventana parcial: hay tanto uso que acá solo se resumen los registros más recientes."
+    }
   }
 }

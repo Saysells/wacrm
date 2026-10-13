@@ -143,17 +143,17 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
     case "send_buttons":
       return {
         text: "",
-        buttons: [{ reply_id: "yes", title: "Yes", next_node_key: "" }],
+        buttons: [{ reply_id: "yes", title: "Sí", next_node_key: "" }],
       };
     case "send_list":
       return {
         text: "",
-        button_label: "View options",
+        button_label: "Ver opciones",
         sections: [
           {
             title: "",
             rows: [
-              { reply_id: "row_1", title: "Option 1", next_node_key: "" },
+              { reply_id: "row_1", title: "Opción 1", next_node_key: "" },
             ],
           },
         ],
@@ -361,12 +361,12 @@ export function FlowEditorProvider({
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? `Save failed: ${res.status}`);
+        throw new Error(json.error ?? t("saveFailed"));
       }
       setDirty(false);
       toast.success(t("saved"));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Save failed";
+      const msg = err instanceof Error ? err.message : t("saveFailed");
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -395,7 +395,7 @@ export function FlowEditorProvider({
         });
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
-          throw new Error(json.error ?? `Status update failed: ${res.status}`);
+          throw new Error(json.error ?? t("statusFailed"));
         }
         setStateRaw((s) => ({ ...s, status: next }));
         toast.success(
@@ -406,7 +406,7 @@ export function FlowEditorProvider({
               : t("statusDraft")
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Status update failed";
+        const msg = err instanceof Error ? err.message : t("statusFailed");
         toast.error(msg);
       } finally {
         setActivating(false);
@@ -416,22 +416,20 @@ export function FlowEditorProvider({
   );
 
   // ---- Delete ----
+  // La confirmación vive en la barra del editor (`header.tsx`), en un
+  // modal del sistema (sesión F2); acá solo se borra.
   const deleteFlow = useCallback(async () => {
-    const yes = window.confirm(
-      `Delete "${state.name}"? Any active runs end immediately. This can't be undone.`,
-    );
-    if (!yes) return;
     try {
       const res = await fetch(`/api/flows/${initialFlow.id}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+      if (!res.ok) throw new Error(t("deleteFailed"));
       router.push("/flows");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Delete failed";
+      const msg = err instanceof Error ? err.message : t("deleteFailed");
       toast.error(msg);
     }
-  }, [initialFlow.id, router, state.name]);
+  }, [initialFlow.id, router, t]);
 
   // ---- Node mutations ----
   const updateNode = useCallback(

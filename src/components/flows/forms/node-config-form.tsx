@@ -300,7 +300,7 @@ function SendButtonsForm({
         ...buttons,
         {
           reply_id: `btn_${buttons.length + 1}`,
-          title: "Option",
+          title: t("optionDefault"),
           next_node_key: "",
         },
       ],
@@ -346,7 +346,7 @@ function SendButtonsForm({
                       reply_id: slugify(e.target.value, `btn_${i + 1}`),
                     })
                   }
-                  placeholder="reply_id"
+                  placeholder={t("replyIdPlaceholder")}
                   className="bg-muted font-mono text-xs"
                 />
               )}
@@ -368,7 +368,7 @@ function SendButtonsForm({
                 variant="ghost"
                 size="sm"
                 onClick={() => removeButton(i)}
-                className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                className="text-danger hover:bg-danger-soft hover:text-danger"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -447,7 +447,7 @@ function SendListForm({
           rows: [
             {
               reply_id: `row_${totalRows + 1}`,
-              title: `Option ${totalRows + 1}`,
+              title: t("optionN", { n: totalRows + 1 }),
               next_node_key: "",
             },
           ],
@@ -484,7 +484,7 @@ function SendListForm({
                 ...s.rows,
                 {
                   reply_id: `row_${totalRows + 1}`,
-                  title: `Option ${totalRows + 1}`,
+                  title: t("optionN", { n: totalRows + 1 }),
                   next_node_key: "",
                 },
               ],
@@ -502,7 +502,7 @@ function SendListForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label={t("bodyText")}
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
@@ -543,8 +543,8 @@ function SendListForm({
                   variant="ghost"
                   size="sm"
                   onClick={() => removeSection(sIdx)}
-                  className="shrink-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  aria-label="Remove section"
+                  className="shrink-0 text-danger hover:bg-danger-soft hover:text-danger"
+                  aria-label={t("removeSection")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -571,7 +571,7 @@ function SendListForm({
                         ),
                       })
                     }
-                    placeholder="reply_id"
+                    placeholder={t("replyIdPlaceholder")}
                     className="bg-muted font-mono text-xs"
                   />
                 )}
@@ -597,7 +597,7 @@ function SendListForm({
                   variant="ghost"
                   size="sm"
                   onClick={() => removeRow(sIdx, rIdx)}
-                  className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  className="text-danger hover:bg-danger-soft hover:text-danger"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -703,7 +703,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -851,7 +851,7 @@ function SetTagForm({
               onValueChange={(v) => onUpdateConfig({ tag_id: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -958,9 +958,7 @@ function SendMediaForm({
   const handleFile = useCallback(
     async (file: File) => {
       if (file.size > MEDIA_MAX_BYTES) {
-        toast.error(
-          `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — limit is 16 MB.`,
-        );
+        toast.error(t("fileTooLarge", { size: (file.size / 1024 / 1024).toFixed(1) }));
         return;
       }
       setUploading(true);
@@ -974,15 +972,15 @@ function SendMediaForm({
           media_url: publicUrl,
           filename: file.name,
         });
-        toast.success("File uploaded.");
+        toast.success(t("fileUploaded"));
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Upload failed.";
+        const msg = err instanceof Error ? err.message : t("uploadFailed");
         toast.error(msg);
       } finally {
         setUploading(false);
       }
     },
-    [onUpdateConfig],
+    [onUpdateConfig, t],
   );
 
   const handleClear = () => {
@@ -1023,12 +1021,12 @@ function SendMediaForm({
         <label className="mb-1 block text-xs text-muted-foreground">{t("fileLabel")}</label>
         {cfg.media_url ? (
           <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
-            <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+            <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
             <a
               href={cfg.media_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="min-w-0 flex-1 truncate text-foreground hover:text-cyan-300"
+              className="min-w-0 flex-1 truncate text-foreground hover:text-primary"
               title={displayName || cfg.media_url}
             >
               {displayName || cfg.media_url}
@@ -1048,7 +1046,7 @@ function SendMediaForm({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-4 text-xs text-muted-foreground transition-colors hover:bg-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading ? (
               <>

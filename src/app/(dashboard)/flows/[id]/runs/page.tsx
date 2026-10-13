@@ -12,14 +12,16 @@ import {
   PlayCircle,
   PauseCircle,
   ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+  ChevronRight, History } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -59,46 +61,25 @@ interface EventRow {
   created_at: string;
 }
 
+// Chip de estado del sistema (rediseño, sesión F2); el texto sale del
+// catálogo (`statusX`), el ícono acompaña.
 const STATUS_META: Record<
   RunRow["status"],
-  { label: string; classes: string; icon: typeof Clock }
+  { variant: "success" | "secondary" | "warning" | "danger"; icon: typeof Clock }
 > = {
-  active: {
-    label: "Active",
-    classes: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
-    icon: PlayCircle,
-  },
-  completed: {
-    label: "Completed",
-    classes: "border-border bg-muted text-muted-foreground",
-    icon: CircleCheck,
-  },
-  handed_off: {
-    label: "Handed off",
-    classes: "border-amber-600/40 bg-amber-500/10 text-amber-300",
-    icon: UserPlus,
-  },
-  timed_out: {
-    label: "Timed out",
-    classes: "border-border bg-muted/60 text-muted-foreground",
-    icon: Clock,
-  },
-  paused_by_agent: {
-    label: "Paused by agent",
-    classes: "border-border bg-muted text-muted-foreground",
-    icon: PauseCircle,
-  },
-  failed: {
-    label: "Failed",
-    classes: "border-red-600/40 bg-red-500/10 text-red-300",
-    icon: CircleAlert,
-  },
+  active: { variant: "success", icon: PlayCircle },
+  completed: { variant: "secondary", icon: CircleCheck },
+  handed_off: { variant: "warning", icon: UserPlus },
+  timed_out: { variant: "secondary", icon: Clock },
+  paused_by_agent: { variant: "secondary", icon: PauseCircle },
+  failed: { variant: "danger", icon: CircleAlert },
 };
 
 export default function FlowRunsPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const t = useTranslations("Flows.logs");
+  const locale = useLocale();
   const tEdit = useTranslations("Flows.edit");
 
   const [flow, setFlow] = useState<{ id: string; name: string } | null>(null);
@@ -175,24 +156,28 @@ export default function FlowRunsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <button
-        type="button"
-        onClick={() => router.push(`/flows/${flow.id}`)}
-        className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        {flow.name}
-      </button>
-      <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t("description")}
-      </p>
+    <div className="space-y-6">
+      {/* Encabezado común (rediseño, sesión F2): volver al flujo, título,
+          contador y la bajada. */}
+      <PageHeader
+        back={
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => router.push(`/flows/${flow.id}`)}
+            aria-label={t("backToFlow", { name: flow.name })}
+            title={t("backToFlow", { name: flow.name })}
+          >
+            <ArrowLeft />
+          </Button>
+        }
+        title={t("title")}
+        meta={runs.length > 0 ? runs.length : undefined}
+        note={`${flow.name} · ${t("description")}`}
+      />
 
       {runs.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">
-          {t("emptyState")}
-        </div>
+        <EmptyState icon={History} title={t("emptyState")} />
       ) : (
         <div className="mt-6 flex flex-col gap-2">
           {runs.map((run) => (
@@ -203,6 +188,7 @@ export default function FlowRunsPage() {
               expanded={expanded.has(run.id)}
               onToggle={() => toggle(run.id)}
               t={t}
+              locale={locale}
             />
           ))}
         </div>
@@ -212,12 +198,14 @@ export default function FlowRunsPage() {
 }
 
 function RunCard({
+  locale,
   run,
   events,
   expanded,
   onToggle,
   t,
 }: {
+  locale: string;
   run: RunRow;
   events: EventRow[];
   expanded: boolean;
@@ -250,8 +238,8 @@ function RunCard({
             <span className="truncate text-sm font-medium text-foreground">
               {contactLabel}
             </span>
-            <Badge variant="outline" className={cn("gap-1", meta.classes)}>
-              <StatusIcon className="h-3 w-3" />
+            <Badge variant={meta.variant}>
+              <StatusIcon />
               {t(
                 run.status === "active"
                   ? "statusActive"
@@ -273,7 +261,7 @@ function RunCard({
             )}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{t("started", { time: format(new Date(run.started_at), "PP p") })}</span>
+            <span>{t("started", { time: new Date(run.started_at).toLocaleString(locale) })}</span>
             {run.reprompt_count > 0 && (
               <span>· {t("reprompts", { count: run.reprompt_count })}</span>
             )}
@@ -299,7 +287,7 @@ function RunCard({
                 {t("noEvents")}
               </p>
             ) : (
-              events.map((ev, ix) => <EventLine key={ix} ev={ev} />)
+              events.map((ev, ix) => <EventLine key={ix} ev={ev} t={t} />)
             )}
           </div>
         </div>
@@ -308,27 +296,29 @@ function RunCard({
   );
 }
 
+// Tonos del sistema por evento (sesión F2).
 const EVENT_COLOR: Record<string, string> = {
-  started: "text-emerald-300",
+  started: "text-success",
   node_entered: "text-muted-foreground",
-  message_sent: "text-sky-300",
+  message_sent: "text-info",
   reply_received: "text-primary",
-  fallback_fired: "text-amber-300",
-  handoff: "text-amber-300",
+  fallback_fired: "text-warning",
+  handoff: "text-warning",
   timeout: "text-muted-foreground",
-  error: "text-red-300",
-  completed: "text-emerald-300",
+  error: "text-danger",
+  completed: "text-success",
 };
 
-function EventLine({ ev }: { ev: EventRow }) {
+function EventLine({ ev, t }: { ev: EventRow; t: ReturnType<typeof useTranslations> }) {
   const cls = EVENT_COLOR[ev.event_type] ?? "text-muted-foreground";
+  const label = t.has(`events.${ev.event_type}`) ? t(`events.${ev.event_type}`) : ev.event_type;
   return (
     <div className="flex items-start gap-2 rounded-md px-2 py-1 text-xs">
       <span className="w-32 shrink-0 text-[10px] text-muted-foreground">
         {format(new Date(ev.created_at), "HH:mm:ss")}
       </span>
-      <span className={cn("w-32 shrink-0 font-mono text-[10px]", cls)}>
-        {ev.event_type}
+      <span className={cn("w-36 shrink-0 text-[11px] font-medium", cls)}>
+        {label}
       </span>
       {ev.node_key && (
         <code className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">

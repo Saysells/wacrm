@@ -1130,7 +1130,11 @@
         "updateError": "Failed to update",
         "duplicateError": "Failed to duplicate",
         "deleteError": "Failed to delete"
-      }
+      },
+      "loadError": "Failed to load automations",
+      "never": "never",
+      "moreAria": "More actions",
+      "activeAria": "Active"
     },
     "edit": {
       "loading": "Loading...",
@@ -1152,7 +1156,8 @@
         "failed": "failed"
       },
       "back": "Back",
-      "backAria": "Back"
+      "backAria": "Back",
+      "stepCount": "{count, plural, =1 {# step} other {# steps}}"
     },
     "builder": {
       "steps": {
@@ -1308,7 +1313,43 @@
         "matchWord": "Whole word",
         "matchWordHint": "Matches the keyword only as a standalone word, so \"k\" no longer fires on \"thanks\". Best for short keywords in space-separated languages; use Contains for languages written without spaces.",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
+        "closeConversationHint": "Sets the conversation to closed. Nothing to configure."
+      },
+      "untitledName": "Untitled automation",
+      "atPath": "at {path}",
+      "schedulePlaceholder": "Cron expression or HH:mm",
+      "kinds": {
+        "condition": "Condition",
+        "wait": "Wait",
+        "action": "Action"
+      },
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "valueLabel": "Value",
+      "preview": {
+        "noText": "no text yet",
+        "noBody": "no body yet",
+        "pickTemplate": "pick a template",
+        "when": "when {subject}",
+        "noUrl": "no URL"
+      }
+    },
+    "templates": {
+      "welcome_message": {
+        "name": "Welcome message",
+        "description": "Auto-replies to contacts writing for the first time."
+      },
+      "out_of_office": {
+        "name": "Out of office",
+        "description": "Auto-replies outside business hours so nobody is left waiting."
+      },
+      "lead_qualifier": {
+        "name": "Lead qualifier",
+        "description": "Asks a qualification question to filter inbound leads."
+      },
+      "follow_up_reminder": {
+        "name": "Follow-up reminder",
+        "description": "Sends a nudge if the contact has not replied within 24 hours."
       }
     }
   },
@@ -1344,7 +1385,8 @@
       "triggerKeywordNone": "Triggers on keyword (none set)",
       "triggerKeyword": "Triggers on: {keywords}",
       "triggerFirstInbound": "Triggers on a contact's first-ever inbound message",
-      "triggerManual": "Manual trigger"
+      "triggerManual": "Manual trigger",
+      "deleteTitle": "Delete flow"
     },
     "edit": {
       "notFound": "Flow not found.",
@@ -1368,7 +1410,19 @@
       "statusHandedOff": "Handed off",
       "statusTimedOut": "Timed out",
       "statusPaused": "Paused by agent",
-      "statusFailed": "Failed"
+      "statusFailed": "Failed",
+      "backToFlow": "Back to {name}",
+      "events": {
+        "started": "Started",
+        "node_entered": "Entered node",
+        "message_sent": "Message sent",
+        "reply_received": "Reply received",
+        "fallback_fired": "Fallback fired",
+        "handoff": "Handoff",
+        "timeout": "Timed out",
+        "error": "Error",
+        "completed": "Completed"
+      }
     },
     "builder": {
       "triggerTitle": "Trigger",
@@ -1471,7 +1525,14 @@
         "classifyExtraKeywords": "Words for the extra branch",
         "classifyExtraNext": "If it matches, go to",
         "classifyVarKeyLabel": "Save the reply under",
-        "classifyVarKeyHelp": "Optional. Stores the raw text the customer typed."
+        "classifyVarKeyHelp": "Optional. Stores the raw text the customer typed.",
+        "optionDefault": "Option",
+        "optionN": "Option {n}",
+        "replyIdPlaceholder": "reply_id",
+        "removeSection": "Remove section",
+        "fileTooLarge": "The file is {size} MB; the limit is 16 MB.",
+        "fileUploaded": "File uploaded.",
+        "uploadFailed": "Upload failed."
       },
       "categories": {
         "messaging": "Messaging",
@@ -1527,7 +1588,8 @@
           "label": "End",
           "blurb": "Ends the flow"
         }
-      }
+      },
+      "editorViewAria": "Editor view"
     },
     "validation": {
       "noIssues": "No issues. Ready to activate.",
@@ -1539,7 +1601,10 @@
       "fixIssues": "Fix the issues below before activating.",
       "statusActivated": "Flow activated.",
       "statusArchived": "Archived.",
-      "statusDraft": "Saved as draft."
+      "statusDraft": "Saved as draft.",
+      "saveFailed": "Save failed",
+      "statusFailed": "Status update failed",
+      "deleteFailed": "Delete failed"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {option} other {options}}",
@@ -1560,6 +1625,28 @@
       "tagNone": "{mode} tag (none picked)",
       "waitSeconds": "waits {seconds}s",
       "classifyWordCounts": "{positive} yes / {negative} no"
+    },
+    "header": {
+      "backToFlows": "Back to Flows",
+      "flowName": "Flow name",
+      "unsaved": "Unsaved changes: hit Save to persist.",
+      "edited": "Edited",
+      "runs": "Runs",
+      "delete": "Delete",
+      "pause": "Pause",
+      "fixIssuesFirst": "Fix the issues below before activating",
+      "activate": "Activate",
+      "save": "Save",
+      "descriptionPlaceholder": "Add a short description (internal: customers don't see it)",
+      "descriptionAria": "Flow description",
+      "status": {
+        "draft": "Draft",
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "deleteTitle": "Delete flow",
+      "deleteDesc": "Delete \"{name}\"? Any active runs end immediately. This can't be undone.",
+      "cancel": "Cancel"
     }
   },
   "Settings": {
@@ -2079,7 +2166,7 @@
     },
     "aiConfig": {
       "title": "Agent setup",
-      "description": "Bring your own OpenAI or Anthropic key. the Inbox calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, and the Playground.",
+      "description": "Bring your own OpenAI or Anthropic key. The Inbox calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, and the Playground.",
       "adminOnlyConfig": "Only admins and owners can change the AI configuration.",
       "loadFailed": "Failed to load AI configuration",
       "providerAndKey": "Provider & key",
@@ -2115,7 +2202,8 @@
       "saveSuccess": "AI assistant saved.",
       "saveFailed": "Failed to save.",
       "removeSuccess": "AI configuration removed.",
-      "removeFailed": "Failed to remove."
+      "removeFailed": "Failed to remove.",
+      "embeddingsKeyPlaceholder": "sk-... (OpenAI)"
     },
     "aiKnowledge": {
       "loadFailed": "Failed to load knowledge base",
@@ -2142,7 +2230,9 @@
       "addDoc": "Add document",
       "reindex": "Reindex",
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "editTitle": "Edit",
+      "deleteTitle": "Delete"
     },
     "railAria": "Settings sections",
     "quickReplies": {
@@ -2196,5 +2286,47 @@
     "inbox": "the Inbox",
     "pickDate": "Pick a date",
     "clearDate": "No date"
+  },
+  "Agents": {
+    "title": "AI Agents",
+    "description": "Your bring-your-own-key AI agent: set it up, then test it in the Playground before it replies to customers in the Inbox.",
+    "tabs": {
+      "playground": "Playground",
+      "setup": "Setup",
+      "usage": "Usage"
+    },
+    "playground": {
+      "title": "Playground",
+      "hint": "Test replies as if you were a customer",
+      "reset": "Reset",
+      "emptyTitle": "Send a message to see how your agent would reply",
+      "emptyBody": "It uses your knowledge base and behaves exactly like the auto-reply bot, handoff included.",
+      "goToSetup": "Not set up yet? Go to Setup",
+      "handoff": "Would hand off to a human here",
+      "thinking": "Thinking…",
+      "placeholder": "Type a customer message…",
+      "send": "Send",
+      "notConfigured": "No agent configured yet: finish Setup first.",
+      "replyFailed": "Couldn't get a reply.",
+      "unreachable": "Couldn't reach the agent."
+    },
+    "usage": {
+      "title": "Token usage",
+      "description": "Tokens spent on your provider key by drafts and the auto-reply bot. Counts only: no message content is stored here.",
+      "lastDays": "Last {count} days",
+      "loadFailed": "Failed to load usage",
+      "emptyTitle": "No AI usage in the last {count} days yet",
+      "emptyBody": "This fills in as the assistant drafts and auto-replies.",
+      "totalTokens": "Total tokens",
+      "calls": "Model calls",
+      "autoReply": "Auto-reply",
+      "drafts": "Drafts",
+      "tokensPerDay": "Tokens per day",
+      "tokens": "Tokens",
+      "byModel": "By model",
+      "tokensShort": "{value} tok",
+      "callCount": "{count, plural, =1 {# call} other {# calls}}",
+      "partialWindow": "Showing a partial window: usage is high enough that only the most recent records are summarized here."
+    }
   }
 }

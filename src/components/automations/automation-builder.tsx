@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { SimpleSelect } from "@/components/ui/simple-select"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,7 +118,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   update_contact_field: { label: "update_contact_field", icon: PencilLine, border: "border-l-primary" },
   create_deal: { label: "create_deal", icon: Briefcase, border: "border-l-primary" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
-  condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
+  condition: { label: "condition", icon: GitBranch, border: "border-l-warning" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
   close_conversation: { label: "close_conversation", icon: CircleSlash, border: "border-l-primary" },
 }
@@ -314,8 +315,6 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   )
 }
 
-const SELECT_CLASS =
-  "w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
 
 /** Tag dropdown by name + color, storing the tag's id. Falls back to a
  *  raw id input when no tags exist yet. */
@@ -347,23 +346,19 @@ function TagSelect({
         style={{ backgroundColor: selected?.color ?? "transparent" }}
         aria-hidden
       />
-      <select
+      {/* Select del sistema (sesión F2). Preserve a saved tag that's since
+          been deleted so editing an existing automation doesn't silently
+          drop it. */}
+      <SimpleSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={SELECT_CLASS}
-      >
-        <option value="">{t("tags.select")}</option>
-        {tags.map((tg) => (
-          <option key={tg.id} value={tg.id}>
-            {tg.name}
-          </option>
-        ))}
-        {/* Preserve a saved tag that's since been deleted so editing an
-            existing automation doesn't silently drop it. */}
-        {value && !selected && (
-          <option value={value}>{t("tags.unknown", { id: value })}</option>
-        )}
-      </select>
+        onChange={onChange}
+        size="sm"
+        options={[
+          { value: "", label: t("tags.select") },
+          ...tags.map((tg) => ({ value: tg.id, label: tg.name })),
+          ...(value && !selected ? [{ value, label: t("tags.unknown", { id: value }) }] : []),
+        ]}
+      />
     </div>
   )
 }
@@ -386,27 +381,24 @@ function ContactFieldSelect({
   const knownCustom =
     customValue && customFields.some((f) => `custom:${f.id}` === customValue)
   return (
-    <select
+    <SimpleSelect
       value={value || "name"}
-      onChange={(e) => onChange(e.target.value)}
-      className={SELECT_CLASS}
-    >
-      <option value="name">{t("fields.name")}</option>
-      <option value="email">{t("fields.email")}</option>
-      <option value="company">{t("fields.company")}</option>
-      {customFields.length > 0 && (
-        <optgroup label={t("fields.customFields")}>
-          {customFields.map((f) => (
-            <option key={f.id} value={`custom:${f.id}`}>
-              {f.field_name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {customValue && !knownCustom && (
-        <option value={customValue}>{t("fields.unknown", { id: customValue })}</option>
-      )}
-    </select>
+      onChange={onChange}
+      size="sm"
+      options={[
+        { value: "name", label: t("fields.name") },
+        { value: "email", label: t("fields.email") },
+        { value: "company", label: t("fields.company") },
+        ...customFields.map((f) => ({
+          value: `custom:${f.id}`,
+          label: f.field_name,
+          group: t("fields.customFields"),
+        })),
+        ...(customValue && !knownCustom
+          ? [{ value: customValue, label: t("fields.unknown", { id: customValue }) }]
+          : []),
+      ]}
+    />
   )
 }
 
@@ -434,21 +426,16 @@ function AgentSelect({
   }
   const selected = members.find((m) => m.user_id === value)
   return (
-    <select
+    <SimpleSelect
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={SELECT_CLASS}
-    >
-      <option value="">{t("agents.select")}</option>
-      {members.map((m) => (
-        <option key={m.user_id} value={m.user_id}>
-          {m.full_name || m.email || m.user_id}
-        </option>
-      ))}
-      {value && !selected && (
-        <option value={value}>{t("agents.unknown", { id: value })}</option>
-      )}
-    </select>
+      onChange={onChange}
+      size="sm"
+      options={[
+        { value: "", label: t("agents.select") },
+        ...members.map((m) => ({ value: m.user_id, label: m.full_name || m.email || m.user_id })),
+        ...(value && !selected ? [{ value, label: t("agents.unknown", { id: value }) }] : []),
+      ]}
+    />
   )
 }
 
@@ -499,10 +486,10 @@ function DealPipelineFields({
   return (
     <>
       <FieldBlock label={t("pipelines.pipelineLabel")}>
-        <select
+        <SimpleSelect
           value={pipelineId}
-          onChange={(e) => {
-            const nextPipelineId = e.target.value
+          size="sm"
+          onChange={(nextPipelineId) => {
             const firstStage = stages.find(
               (s) => s.pipeline_id === nextPipelineId
             )
@@ -511,40 +498,32 @@ function DealPipelineFields({
               stage_id: firstStage?.id ?? "",
             })
           }}
-          className={SELECT_CLASS}
-        >
-          <option value="">{t("pipelines.selectPipeline")}</option>
-          {pipelines.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-          {pipelineId && !selectedPipeline && (
-            <option value={pipelineId}>{t("pipelines.unknownPipeline", { id: pipelineId })}</option>
-          )}
-        </select>
+          options={[
+            { value: "", label: t("pipelines.selectPipeline") },
+            ...pipelines.map((p) => ({ value: p.id, label: p.name })),
+            ...(pipelineId && !selectedPipeline
+              ? [{ value: pipelineId, label: t("pipelines.unknownPipeline", { id: pipelineId }) }]
+              : []),
+          ]}
+        />
       </FieldBlock>
       <FieldBlock label={t("pipelines.stageLabel")}>
-        <select
+        <SimpleSelect
           value={stageId}
-          onChange={(e) =>
-            onChange({ pipeline_id: pipelineId, stage_id: e.target.value })
-          }
-          className={SELECT_CLASS}
+          size="sm"
+          onChange={(v) => onChange({ pipeline_id: pipelineId, stage_id: v })}
           disabled={!pipelineId || stageOptions.length === 0}
-        >
-          <option value="">
-            {pipelineId ? t("pipelines.selectStage") : t("pipelines.selectPipelineFirst")}
-          </option>
-          {stageOptions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-          {stageId && pipelineId && !selectedStage && (
-            <option value={stageId}>{t("pipelines.unknownStage", { id: stageId })}</option>
-          )}
-        </select>
+          options={[
+            {
+              value: "",
+              label: pipelineId ? t("pipelines.selectStage") : t("pipelines.selectPipelineFirst"),
+            },
+            ...stageOptions.map((st) => ({ value: st.id, label: st.name })),
+            ...(stageId && pipelineId && !selectedStage
+              ? [{ value: stageId, label: t("pipelines.unknownStage", { id: stageId }) }]
+              : []),
+          ]}
+        />
       </FieldBlock>
     </>
   )
@@ -601,29 +580,32 @@ function SendTemplateFields({
 
   return (
     <FieldBlock label={t("templates.templateLabel")}>
-      <select
+      <SimpleSelect
         value={current}
-        onChange={(e) => {
-          const [name, lang] = e.target.value.split("::")
+        size="sm"
+        onChange={(v) => {
+          const [name, lang] = v.split("::")
           onChange({ template_name: name ?? "", language: lang ?? "" })
         }}
-        className={SELECT_CLASS}
-      >
-        <option value="">{t("templates.select")}</option>
-        {templates.map((tmpl) => {
-          const lang = tmpl.language ?? "en_US"
-          return (
-            <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
-              {tmpl.name} ({lang})
-            </option>
-          )
-        })}
-        {current && !hasMatch && (
-          <option value={current}>
-            {t("templates.unknown", { name: templateName, lang: language || t("templates.unknownLang") })}
-          </option>
-        )}
-      </select>
+        options={[
+          { value: "", label: t("templates.select") },
+          ...templates.map((tmpl) => {
+            const lang = tmpl.language ?? "en_US"
+            return { value: toValue(tmpl.name, lang), label: `${tmpl.name} (${lang})` }
+          }),
+          ...(current && !hasMatch
+            ? [
+                {
+                  value: current,
+                  label: t("templates.unknown", {
+                    name: templateName,
+                    lang: language || t("templates.unknownLang"),
+                  }),
+                },
+              ]
+            : []),
+        ]}
+      />
     </FieldBlock>
   )
 }
@@ -673,7 +655,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     setSaving(true)
     try {
       const payload = {
-        name: state.name || "Untitled automation",
+        name: state.name || t("untitledName"),
         description: state.description || null,
         trigger_type: state.trigger_type,
         trigger_config: state.trigger_config,
@@ -702,7 +684,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           body?.issues?.[0]
         if (firstIssue?.message) {
           toast.error(firstIssue.message, {
-            description: firstIssue.path ? `at ${firstIssue.path}` : undefined,
+            description: firstIssue.path ? t("atPath", { path: firstIssue.path }) : undefined,
           })
         } else {
           toast.error(body?.error ?? t("toasts.saveFailed"))
@@ -723,20 +705,22 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       {/* Top bar. At sub-sm widths the "Active" label is hidden and the
           switch moves to the right of the save button, so the name input
           gets maximum width. */}
-      <header className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-card/80 px-3 py-3 sm:gap-3 sm:px-4">
-        <button
-          type="button"
+      {/* Barra del editor (rediseño, sesión F2): controles de 34 px. */}
+      <header className="flex h-[60px] flex-shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:gap-3 sm:px-5">
+        <Button
+          variant="outline"
+          size="icon-sm"
           onClick={() => router.push("/automations")}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           aria-label={t("backToAutomations")}
+          title={t("backToAutomations")}
         >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+          <ArrowLeft />
+        </Button>
         <input
           value={state.name}
           onChange={(e) => patchTop("name", e.target.value)}
           placeholder={t("untitled")}
-          className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-1 text-sm font-semibold text-foreground placeholder:text-muted-foreground focus:bg-muted focus:outline-none sm:text-base"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-[15px] font-semibold text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-hover focus:border-[#9FB6CF] focus:bg-transparent sm:text-[17px]"
         />
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="hidden sm:inline">{t("active")}</span>
@@ -746,12 +730,8 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             aria-label={t("activeAria")}
           />
         </div>
-        <Button
-          onClick={save}
-          disabled={saving}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        <Button onClick={save} disabled={saving} size="sm">
+          {saving ? <Loader2 className="animate-spin" /> : null}
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>
@@ -808,17 +788,17 @@ function TriggerCard({
     // Card width: full on mobile, fixed 320px on sm+. The canvas wrapper
     // (max-w-2xl + px-4) keeps this tidy on tablet/desktop.
     <div className="z-10 w-full max-w-[320px] sm:w-80">
-      <div className="rounded-lg border border-border border-l-4 border-l-blue-500 bg-card shadow-lg">
+      <div className="rounded-xl border border-border border-l-4 border-l-primary bg-card shadow-card">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="flex w-full items-center gap-3 px-4 py-3 text-left"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500/10 text-blue-400">
+          <div className="grid size-8 place-items-center rounded-md bg-selected text-primary">
             <Zap className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] uppercase tracking-wide text-blue-300">{t("trigger")}</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-primary">{t("trigger")}</div>
             <div className="truncate text-sm font-medium text-foreground">
               {t(`triggers.${type}.label`)}
             </div>
@@ -833,17 +813,12 @@ function TriggerCard({
               <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 {t("triggerType")}
               </label>
-              <select
+              <SimpleSelect
                 value={type}
-                onChange={(e) => onTypeChange(e.target.value as AutomationTriggerType)}
-                className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              >
-                {TRIGGER_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {t(`triggers.${o.value}.label`)}
-                  </option>
-                ))}
-              </select>
+                size="sm"
+                onChange={(v) => onTypeChange(v as AutomationTriggerType)}
+                options={TRIGGER_OPTIONS.map((o) => ({ value: o.value, label: t(`triggers.${o.value}.label`) }))}
+              />
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {t(`triggers.${type}.hint`)}
               </p>
@@ -861,7 +836,7 @@ function TriggerCard({
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Tag
+                  {t("config.tagLabel")}
                 </label>
                 <TagSelect
                   value={(config.tag_id as string) ?? ""}
@@ -876,7 +851,7 @@ function TriggerCard({
                   {t("schedule")}
                 </label>
                 <Input
-                  placeholder="Cron expression or HH:mm"
+                  placeholder={t("schedulePlaceholder")}
                   value={(config.schedule as string) ?? ""}
                   onChange={(e) =>
                     onConfigChange({ ...config, schedule: e.target.value })
@@ -958,20 +933,18 @@ function KeywordMatchConfig({
         <label className="mb-1 block text-xs font-medium text-muted-foreground">
           {t("config.matchType")}
         </label>
-        <select
+        <SimpleSelect
           value={config?.match_type ?? "contains"}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              match_type: e.target.value as "exact" | "contains" | "word",
-            })
+          size="sm"
+          onChange={(v) =>
+            onChange({ ...config, match_type: v as "exact" | "contains" | "word" })
           }
-          className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:outline-none"
-        >
-          <option value="contains">{t("config.matchContains")}</option>
-          <option value="word">{t("config.matchWord")}</option>
-          <option value="exact">{t("config.matchExact")}</option>
-        </select>
+          options={[
+            { value: "contains", label: t("config.matchContains") },
+            { value: "word", label: t("config.matchWord") },
+            { value: "exact", label: t("config.matchExact") },
+          ]}
+        />
         {/* Only worth explaining for `word` — "contains" and "exact" read
             for themselves, and this is the one that changes which messages
             fire an automation in a way that isn't obvious. */}
@@ -1133,10 +1106,10 @@ function StepRenderer({
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {isCondition ? "Condition" : step.step_type === "wait" ? "Wait" : "Action"}
+                {isCondition ? t("kinds.condition") : step.step_type === "wait" ? t("kinds.wait") : t("kinds.action")}
               </div>
               <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
-              <div className="truncate text-[11px] text-muted-foreground">{previewFor(step)}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{previewFor(step, t)}</div>
             </div>
             <ChevronDown
               className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-180")}
@@ -1154,7 +1127,7 @@ function StepRenderer({
                     variant="ghost"
                     size="icon"
                     disabled={index === 0}
-                    aria-label="Move up"
+                    aria-label={t("moveUp")}
                     onClick={() => props.moveStepAt(path, -1)}
                   >
                     <ArrowUp className="h-4 w-4" />
@@ -1163,7 +1136,7 @@ function StepRenderer({
                     variant="ghost"
                     size="icon"
                     disabled={index === total - 1}
-                    aria-label="Move down"
+                    aria-label={t("moveDown")}
                     onClick={() => props.moveStepAt(path, 1)}
                   >
                     <ArrowDown className="h-4 w-4" />
@@ -1224,7 +1197,7 @@ function ConditionBranches({
             scope={{ kind: "branch", parentCid: step.cid, branch: "yes" }}
           />
         </BranchColumn>
-        <BranchColumn label={t("branches.no")} color="text-rose-400">
+        <BranchColumn label={t("branches.no")} color="text-danger">
           <StepList
             {...props}
             steps={no}
@@ -1261,7 +1234,7 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
       <div className="h-4 w-[2px] bg-border" aria-hidden />
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-border bg-background text-muted-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary data-[popup-open]:border-primary data-[popup-open]:bg-primary/20 data-[popup-open]:text-primary"
+          className="grid size-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:bg-selected hover:text-primary data-[popup-open]:border-primary data-[popup-open]:bg-selected-strong data-[popup-open]:text-primary"
           aria-label={t("addStep")}
         >
           <Plus className="h-4 w-4" />
@@ -1350,14 +1323,15 @@ function StepEditor({
       return (
         <>
           <FieldBlock label={t("config.modeLabel")}>
-            <select
+            <SimpleSelect
               value={(cfg.mode as string) ?? "round_robin"}
-              onChange={(e) => set({ mode: e.target.value })}
-              className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
-            >
-              <option value="round_robin">{t("config.modes.round_robin")}</option>
-              <option value="specific">{t("config.modes.specific")}</option>
-            </select>
+              size="sm"
+              onChange={(v) => set({ mode: v })}
+              options={[
+                { value: "round_robin", label: t("config.modes.round_robin") },
+                { value: "specific", label: t("config.modes.specific") },
+              ]}
+            />
           </FieldBlock>
           {cfg.mode === "specific" && (
             <FieldBlock label={t("config.agentLabel")}>
@@ -1429,15 +1403,16 @@ function StepEditor({
             />
           </FieldBlock>
           <FieldBlock label={t("config.unitLabel")}>
-            <select
+            <SimpleSelect
               value={(cfg.unit as string) ?? "hours"}
-              onChange={(e) => set({ unit: e.target.value })}
-              className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
-            >
-              <option value="minutes">{t("config.units.minutes")}</option>
-              <option value="hours">{t("config.units.hours")}</option>
-              <option value="days">{t("config.units.days")}</option>
-            </select>
+              size="sm"
+              onChange={(v) => set({ unit: v })}
+              options={[
+                { value: "minutes", label: t("config.units.minutes") },
+                { value: "hours", label: t("config.units.hours") },
+                { value: "days", label: t("config.units.days") },
+              ]}
+            />
           </FieldBlock>
         </div>
       )
@@ -1445,16 +1420,17 @@ function StepEditor({
       return (
         <>
           <FieldBlock label={t("config.subjectLabel")}>
-            <select
+            <SimpleSelect
               value={(cfg.subject as string) ?? "tag_presence"}
-              onChange={(e) => set({ subject: e.target.value })}
-              className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
-            >
-              <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
-              <option value="contact_field">{t("config.subjects.contact_field")}</option>
-              <option value="message_content">{t("config.subjects.message_content")}</option>
-              <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
-            </select>
+              size="sm"
+              onChange={(v) => set({ subject: v })}
+              options={[
+                { value: "tag_presence", label: t("config.subjects.tag_presence") },
+                { value: "contact_field", label: t("config.subjects.contact_field") },
+                { value: "message_content", label: t("config.subjects.message_content") },
+                { value: "time_of_day", label: t("config.subjects.time_of_day") },
+              ]}
+            />
           </FieldBlock>
           <FieldBlock label={t("config.operandLabel")}>
             <Input
@@ -1473,7 +1449,7 @@ function StepEditor({
             />
           </FieldBlock>
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
-            <FieldBlock label="Value">
+            <FieldBlock label={t("valueLabel")}>
               <Input
                 value={(cfg.value as string) ?? ""}
                 onChange={(e) => set({ value: e.target.value })}
@@ -1505,7 +1481,7 @@ function StepEditor({
     case "close_conversation":
       return (
         <p className="text-xs text-muted-foreground">
-          {t("config.closeConversationHint", { defaultValue: "Sets the conversation status to \"closed\". No configuration needed." })}
+          {t("config.closeConversationHint")}
         </p>
       )
     default:
@@ -1528,21 +1504,28 @@ function FieldBlock({
   )
 }
 
-function previewFor(step: BuilderStep): string {
+function previewFor(step: BuilderStep, t: ReturnType<typeof useTranslations>): string {
   switch (step.step_type) {
     case "send_message":
-      return (step.step_config.text as string) || "no text yet"
+      return (step.step_config.text as string) || t("preview.noText")
     case "send_buttons":
     case "send_list":
-      return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"
+      return interactivePayloadPreviewText(asInteractive(step.step_config)) || t("preview.noBody")
     case "send_template":
-      return (step.step_config.template_name as string) || "pick a template"
-    case "wait":
-      return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
-    case "condition":
-      return `when ${step.step_config.subject ?? "?"}`
+      return (step.step_config.template_name as string) || t("preview.pickTemplate")
+    case "wait": {
+      const unit = step.step_config.unit as string | undefined
+      const unitLabel = unit && t.has(`config.units.${unit}`) ? t(`config.units.${unit}`) : (unit ?? "")
+      return `${step.step_config.amount ?? "?"} ${unitLabel}`
+    }
+    case "condition": {
+      const subject = step.step_config.subject as string | undefined
+      const subjectLabel =
+        subject && t.has(`config.subjects.${subject}`) ? t(`config.subjects.${subject}`) : (subject ?? "?")
+      return t("preview.when", { subject: subjectLabel })
+    }
     case "send_webhook":
-      return (step.step_config.url as string) || "no url"
+      return (step.step_config.url as string) || t("preview.noUrl")
     default:
       return ""
   }

@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 
 import {
@@ -26,6 +27,8 @@ function NewAutomationPageInner() {
   const params = useSearchParams()
   const template = params.get("template") as TemplateSlug | null
 
+  const tTemplates = useTranslations("Automations.templates")
+
   const initial: BuilderInitial = useMemo(() => {
     if (template && AUTOMATION_TEMPLATES[template]) {
       const t = AUTOMATION_TEMPLATES[template]
@@ -39,8 +42,9 @@ function NewAutomationPageInner() {
         })),
       )
       return {
-        name: t.name,
-        description: t.description,
+        // Nombre y bajada del catálogo (sesión F2), no los de templates.ts.
+        name: tTemplates(`${template}.name`),
+        description: tTemplates(`${template}.description`),
         trigger_type: t.trigger_type,
         trigger_config: t.trigger_config as Record<string, unknown>,
         is_active: false,
@@ -55,7 +59,7 @@ function NewAutomationPageInner() {
       is_active: false,
       steps: [],
     }
-  }, [template])
+  }, [template, tTemplates])
 
   return <AutomationBuilder initial={initial} />
 }

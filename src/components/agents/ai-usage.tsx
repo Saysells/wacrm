@@ -22,7 +22,9 @@ import {
 import { Skeleton } from '@/components/dashboard/skeleton';
 import { BarChart } from '@/components/tremor/bar-chart';
 import { formatCompactNumber } from '@/lib/currency';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { useLocale, useTranslations } from 'next-intl';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface UsageResponse {
   window_days: number;
@@ -54,6 +56,8 @@ const WINDOWS = [7, 30, 90] as const;
  * `GET /api/ai/usage` route. Renders nothing for non-admins.
  */
 export function AiUsageCard() {
+  const t = useTranslations('Agents.usage');
+  const locale = useLocale();
   const { accountId, accountRole, profileLoading } = useAuth();
   const canView = accountRole ? canEditSettings(accountRole) : false;
 
@@ -70,18 +74,18 @@ export function AiUsageCard() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(json?.error ?? 'Failed to load usage');
+        toast.error(json?.error ?? t('loadFailed'));
         setData(null);
         return;
       }
       setData(json as UsageResponse);
     } catch {
-      toast.error('Failed to load usage');
+      toast.error(t('loadFailed'));
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!canView || !accountId) return;
@@ -94,9 +98,12 @@ export function AiUsageCard() {
 
   if (profileLoading || !canView) return null;
 
+  const tokensLabel = t('tokens');
   const chartData =
-    data?.daily.map((d) => ({ day: format(parseISO(d.date), 'MMM d'), Tokens: d.tokens })) ??
-    [];
+    data?.daily.map((d) => ({
+      day: parseISO(d.date).toLocaleDateString(locale, { month: 'short', day: 'numeric' }),
+      [tokensLabel]: d.tokens,
+    })) ?? [];
   const hasSpend = (data?.totals.total_tokens ?? 0) > 0;
 
   return (
@@ -105,12 +112,9 @@ export function AiUsageCard() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <BarChart3 className="h-4 w-4 text-primary" /> Token usage
+              <BarChart3 className="h-4 w-4 text-primary" /> {t('title')}
             </CardTitle>
-            <CardDescription>
-              Tokens spent on your provider key by drafts and the auto-reply
-              bot. Counts only — no message content is stored here.
-            </CardDescription>
+            <CardDescription>{t('description')}</CardDescription>
           </div>
           <Select
             value={String(days)}
@@ -122,7 +126,7 @@ export function AiUsageCard() {
             <SelectContent>
               {WINDOWS.map((w) => (
                 <SelectItem key={w} value={String(w)}>
-                  Last {w} days
+                  {t('lastDays', { count: w })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -133,25 +137,24 @@ export function AiUsageCard() {
         {loading || !data ? (
           <Skeleton className="h-[220px] w-full" />
         ) : !hasSpend ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-muted-foreground">
-            <BarChart3 className="h-8 w-8 opacity-40" />
-            <p>No AI usage in the last {data.window_days} days yet.</p>
-            <p className="text-xs">
-              This fills in as the assistant drafts and auto-replies.
-            </p>
-          </div>
+          <EmptyState
+            compact
+            icon={BarChart3}
+            title={t('emptyTitle', { count: data.window_days })}
+            description={t('emptyBody')}
+          />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Total tokens" value={formatCompactNumber(data.totals.total_tokens)} />
-              <Stat label="LLM calls" value={String(data.totals.calls)} />
+              <Stat label={t('totalTokens')} value={formatCompactNumber(data.totals.total_tokens)} />
+              <Stat label={t('calls')} value={String(data.totals.calls)} />
               <Stat
-                label="Auto-reply"
+                label={t('autoReply')}
                 value={formatCompactNumber(data.by_mode.auto_reply.tokens)}
                 icon={Bot}
               />
               <Stat
-                label="Drafts"
+                label={t('drafts')}
                 value={formatCompactNumber(data.by_mode.draft.tokens)}
                 icon={PencilLine}
               />
@@ -159,13 +162,13 @@ export function AiUsageCard() {
 
             <div>
               <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Tokens per day
+                {t('tokensPerDay')}
               </p>
               <BarChart
                 data={chartData}
                 index="day"
-                categories={['Tokens']}
-                colors={['violet']}
+                categories={[tokensLabel]}
+                colors={['navy']}
                 valueFormatter={(v) => formatCompactNumber(v)}
                 showLegend={false}
                 yAxisWidth={48}
@@ -176,9 +179,9 @@ export function AiUsageCard() {
             {data.by_model.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">
-                  By model
+                  {t('byModel')}
                 </p>
-                <ul className="divide-y divide-border rounded-md border border-border">
+                <ul className="divide-y divide-border rounded-lg border border-border">
                   {data.by_model.map((m) => (
                     <li
                       key={`${m.provider}:${m.model}`}
@@ -191,8 +194,7 @@ export function AiUsageCard() {
                         </span>
                       </span>
                       <span className="flex-shrink-0 tabular-nums text-muted-foreground">
-                        {formatCompactNumber(m.tokens)} tok · {m.calls}{' '}
-                        {m.calls === 1 ? 'call' : 'calls'}
+                        {t('tokensShort', { value: formatCompactNumber(m.tokens) })} · {t('callCount', { count: m.calls })}
                       </span>
                     </li>
                   ))}
@@ -201,10 +203,7 @@ export function AiUsageCard() {
             )}
 
             {data.truncated && (
-              <p className="text-xs text-muted-foreground">
-                Showing a partial window — usage is high enough that only the
-                most recent records are summarized here.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('partialWindow')}</p>
             )}
           </>
         )}
@@ -223,7 +222,7 @@ function Stat({
   icon?: typeof Bot;
 }) {
   return (
-    <div className="rounded-md border border-border p-3">
+    <div className="rounded-lg border border-border p-3">
       <p className="flex items-center gap-1 text-xs text-muted-foreground">
         {Icon && <Icon className="h-3 w-3" />}
         {label}

@@ -32,7 +32,7 @@ export function ValidationPanel() {
     // sticky-positioned over scrolled-behind node cards (a translucent
     // bg-emerald-500/10 would bleed through ugly).
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-emerald-600/50 bg-background p-3 text-sm font-medium text-emerald-300">
+      <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft p-3 text-sm font-medium text-success">
         <CircleCheck className="h-4 w-4 shrink-0" />
         {t("noIssues")}
       </div>
@@ -43,15 +43,15 @@ export function ValidationPanel() {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-background p-3",
-        errors.length > 0 ? "border-red-500/40" : "border-amber-500/40",
+        "rounded-xl border bg-card p-3",
+        errors.length > 0 ? "border-danger/40" : "border-warning/40",
       )}
     >
       <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
         {errors.length > 0 ? (
-          <CircleAlert className="h-4 w-4 text-red-400" />
+          <CircleAlert className="h-4 w-4 text-danger" />
         ) : (
-          <CircleAlert className="h-4 w-4 text-amber-400" />
+          <CircleAlert className="h-4 w-4 text-warning" />
         )}
         {t("summary", { errorCount: errors.length, warningCount: warnings.length })}
       </div>
@@ -80,9 +80,9 @@ export function IssueLine({
   t?: ReturnType<typeof useTranslations>;
 }) {
   const tone =
-    issue.severity === "error" ? "text-red-300" : "text-amber-300";
+    issue.severity === "error" ? "text-danger" : "text-warning";
   const iconTone =
-    issue.severity === "error" ? "text-red-400" : "text-amber-400";
+    issue.severity === "error" ? "text-danger" : "text-warning";
   const body = (
     <>
       <CircleAlert className={cn("mt-0.5 h-3 w-3 shrink-0", iconTone)} />
@@ -109,7 +109,7 @@ export function IssueLine({
           "flex w-full items-start gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors hover:bg-muted/60",
           tone,
         )}
-        aria-label={t ? t("jumpToNode", { key: issue.node_key! }) : `Jump to node ${issue.node_key}`}
+        aria-label={t ? t("jumpToNode", { key: issue.node_key! }) : issue.node_key!}
       >
         {body}
       </button>
