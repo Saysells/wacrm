@@ -135,7 +135,7 @@ import { useTranslations } from "next-intl";
 import { APP_NAME } from "@/lib/app-name";
 import { WhatsAppGlyph } from "@/components/brand/whatsapp-glyph";
 
-/** Fila del nav (prototipo `.ni`): 36 px, radio 10 px, activo celeste. */
+/** Fila del nav (prototipo `.ni`): 36 px, radio 10 px, activo celeste, sin espacio entre filas. */
 const NAV_ROW =
   "relative flex h-11 w-full items-center gap-3.5 rounded-[10px] pr-3 pl-4 text-left text-sm transition-colors lg:h-9";
 const NAV_ROW_IDLE = "text-sidebar-foreground hover:bg-hover-strong hover:text-foreground";
@@ -324,7 +324,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           )}
 
           {/* Vistas */}
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col">
             {vistasToShow.map((vista) => {
               const meta = VISTA_META[vista];
               const label = t(meta.labelKey);
@@ -380,7 +380,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 {t("funnel")}
               </div>
               <div className={cn("hidden", collapsed && "lg:my-3 lg:block lg:border-t lg:border-border")} />
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col">
                 {groups.map((group) => {
                   const isActive =
                     !searching &&
@@ -438,7 +438,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             {t("tools")}
           </div>
           <div className={cn("hidden", collapsed && "lg:my-3 lg:block lg:border-t lg:border-border")} />
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col">
             {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||

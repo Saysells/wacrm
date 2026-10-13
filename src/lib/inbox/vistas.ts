@@ -498,6 +498,30 @@ export function shortWhen(t: number, now: number): ShortWhen {
   return { kind: "other", weekday: d.getDay(), day: d.getDate(), time };
 }
 
+export type PastWhen =
+  | { kind: "today"; time: string }
+  | { kind: "yesterday"; time: string }
+  | { kind: "date"; day: number; month: number; time: string }
+  | { kind: "dateYear"; day: number; month: number; year: number };
+
+/**
+ * Para fechas PASADAS (notas, primer mensaje; sesión F1): "hoy 16:00",
+ * "ayer 10:00", "12 oct, 17:30" y, de otro año, "12 oct 2025". Lo que
+ * mira al futuro (llamadas) sigue usando `shortWhen`.
+ */
+export function pastWhen(t: number, now: number): PastWhen {
+  const days = dayDiff(t, now);
+  const time = hhmm(t);
+  if (days === 0) return { kind: "today", time };
+  if (days === 1) return { kind: "yesterday", time };
+  const d = new Date(t);
+  const year = d.getFullYear();
+  if (year !== new Date(now).getFullYear()) {
+    return { kind: "dateYear", day: d.getDate(), month: d.getMonth() + 1, year };
+  }
+  return { kind: "date", day: d.getDate(), month: d.getMonth() + 1, time };
+}
+
 export interface DurationParts {
   hours: number;
   minutes: number;

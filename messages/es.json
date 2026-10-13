@@ -70,6 +70,20 @@
     "modeDark": "Modo oscuro",
     "shortcuts": "Atajos de teclado"
   },
+  "Notifications": {
+    "title": "Notificaciones",
+    "unreadCount": "{count} sin leer",
+    "markAllRead": "Marcar todas como leídas",
+    "retry": "Reintentar",
+    "emptyTitle": "No tenés notificaciones",
+    "emptyBody": "Cuando alguien te asigne una conversación, aparece acá.",
+    "assignedBy": "{actor} te asignó la conversación con {contact}",
+    "assigned": "Te asignaron la conversación con {contact}",
+    "someContact": "un contacto",
+    "unread": "Sin leer",
+    "toastMarkFailed": "No se pudo marcar la notificación como leída",
+    "toastMarkAllFailed": "No se pudieron marcar todas como leídas"
+  },
   "AccountAccess": {
     "unlinkedTitle": "Este usuario no está vinculado a ninguna cuenta",
     "unlinkedBody": "Mientras esto no se resuelva, nada de lo que cambies se va a guardar: la base de datos rechaza toda escritura de un usuario sin cuenta ni rol. Si te invitaron a un equipo, pedile al propietario que reenvíe la invitación. En una instalación propia, verificá que la migración de arranque de la cuenta (account-bootstrap) haya corrido para este usuario.",
@@ -201,6 +215,10 @@
       "whenTomorrow": "mañana {time}",
       "whenOther": "{weekday} {day}, {time}",
       "weekdays": "dom,lun,mar,mié,jue,vie,sáb",
+      "whenYesterday": "ayer {time}",
+      "whenDate": "{day} {month}, {time}",
+      "whenDateYear": "{day} {month} {year}",
+      "monthsShort": "ene,feb,mar,abr,may,jun,jul,ago,sep,oct,nov,dic",
       "durationHm": "{h} h {m} min",
       "durationH": "{h} h",
       "durationM": "{m} min",

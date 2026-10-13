@@ -1,15 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useInboxStore } from "@/hooks/use-inbox-store";
+import { useNow } from "@/hooks/use-now";
 import type { Notification } from "@/types";
 import { Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { uniqueChannelName } from "@/lib/realtime/channel-name";
+import {
+  missingContactIds,
+  notificationText,
+  prependNotification,
+  unreadCount,
+  withContactNames,
+} from "@/lib/inbox/notificaciones";
+import { relativeTime } from "@/lib/inbox/vistas";
+import { formatRelative } from "@/lib/inbox/time-text";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+// ============================================================
+// Notificaciones (rediseño, sesión F1): encabezado como Contactos
+// (título, contador de sin leer, "Marcar todas como leídas") y filas
+// con el estilo de la lista de la Bandeja. El texto se arma en el
+// navegador (`src/lib/inbox/notificaciones.ts`): la base escribe
+// título y texto en inglés y eso no se toca. Click: la marca leída y
+// abre la conversación, como siempre.
+// ============================================================
 
 // Icon per notification type. Only one type exists today
 // (conversation_assigned) but this keeps future types a one-line add.
@@ -18,11 +39,19 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
 };
 
 export default function NotificationsPage() {
+  const t = useTranslations("Notifications");
+  const tList = useTranslations("Inbox.conversationList");
   const router = useRouter();
   const { accountId } = useAuth();
+  const { memberNames } = useInboxStore();
+  const now = useNow();
   const [notifications, setNotifications] = useState<Notification[] | null>(
     null,
   );
+  // Nombre (o teléfono) de cada contacto nombrado en la lista: una
+  // consulta a `contacts` con los ids que faltan, también para las que
+  // llegan en vivo.
+  const [contactNames, setContactNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
 
@@ -47,23 +76,42 @@ export default function NotificationsPage() {
     load();
   }, [load]);
 
+  // Los contactos que la lista nombra y todavía no conocemos. Ante un
+  // error de lectura la fila dice "un contacto" en vez de romper.
+  const missing = useMemo(
+    () => missingContactIds(notifications ?? [], contactNames),
+    [notifications, contactNames],
+  );
+  const missingKey = missing.join(",");
+  useEffect(() => {
+    if (!missingKey) return;
+    const ids = missingKey.split(",");
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("contacts").select("id, name, phone").in("id", ids);
+      if (cancelled || !data) return;
+      setContactNames((prev) => withContactNames(prev, data));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingKey]);
+
   // Realtime — new assignments appear without a refresh, and a
   // "mark all read" fired from another tab/device stays in sync here.
+  // Un canal por instancia con nombre único (`uniqueChannelName`).
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
-      .channel("notifications-page")
+      .channel(uniqueChannelName("notifications-page"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications" },
         (payload) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as Notification;
-            setNotifications((prev) => {
-              if (!prev) return [row];
-              if (prev.some((n) => n.id === row.id)) return prev;
-              return [row, ...prev];
-            });
+            setNotifications((prev) => prependNotification(prev, row));
           } else if (payload.eventType === "UPDATE") {
             const row = payload.new as Notification;
             setNotifications((prev) =>
@@ -104,11 +152,11 @@ export default function NotificationsPage() {
         .eq("id", id)
         .is("read_at", null);
       if (updateErr) {
-        toast.error("Failed to mark notification as read");
+        toast.error(t("toastMarkFailed"));
         load();
       }
     },
-    [load],
+    [load, t],
   );
 
   const handleClick = useCallback(
@@ -121,33 +169,33 @@ export default function NotificationsPage() {
     [markRead, router],
   );
 
-  const unreadIds = notifications?.filter((n) => !n.read_at).map((n) => n.id) ?? [];
+  const unread = unreadCount(notifications);
 
   const markAllRead = useCallback(async () => {
-    if (unreadIds.length === 0) return;
+    if (unread === 0) return;
     setMarkingAll(true);
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
     setNotifications(
-      (prev) => prev?.map((n) => (n.read_at ? n : { ...n, read_at: now })) ?? prev,
+      (prev) => prev?.map((n) => (n.read_at ? n : { ...n, read_at: nowIso })) ?? prev,
     );
     const supabase = createClient();
     const { error: updateErr } = await supabase
       .from("notifications")
-      .update({ read_at: now })
+      .update({ read_at: nowIso })
       .is("read_at", null);
     setMarkingAll(false);
     if (updateErr) {
-      toast.error("Failed to mark all as read");
+      toast.error(t("toastMarkAllFailed"));
       load();
     }
-  }, [unreadIds.length, load]);
+  }, [unread, load, t]);
 
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-destructive">{error}</p>
+        <p className="text-sm text-danger">{error}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Retry
+          {t("retry")}
         </Button>
       </div>
     );
@@ -156,107 +204,106 @@ export default function NotificationsPage() {
   if (notifications === null) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="size-6 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Conversations other teammates assign to you show up here.
-          </p>
+    // Ocupa la tarjeta entera (como Contactos): encabezado fijo, lista con scroll.
+    <div className="-m-4 flex h-[calc(100%+2rem)] flex-col overflow-hidden sm:-m-6 sm:h-[calc(100%+3rem)]">
+      {/* Encabezado (prototipo `.ctop`). */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-6 pt-5 pb-3.5">
+        <h1 className="text-[22px] font-semibold text-foreground">{t("title")}</h1>
+        {unread > 0 && (
+          <span className="mt-1 ml-1 text-sm tabular-nums text-muted-foreground">
+            {t("unreadCount", { count: unread })}
+          </span>
+        )}
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            disabled={unread === 0 || markingAll}
+            onClick={markAllRead}
+          >
+            {markingAll ? <Loader2 className="animate-spin" /> : <CheckCheck />}
+            {t("markAllRead")}
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={unreadIds.length === 0 || markingAll}
-          onClick={markAllRead}
-        >
-          {markingAll ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCheck className="h-4 w-4" />
-          )}
-          Mark all as read
-        </Button>
       </div>
 
       {notifications.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/40">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Bell className="h-6 w-6 text-primary" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 py-12 text-center">
+          <div className="mb-2 grid size-12 place-items-center rounded-full bg-selected text-primary">
+            <Bell className="size-6" />
           </div>
-          <p className="mt-3 text-sm font-medium text-foreground">
-            No notifications yet
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            You&apos;ll see an alert here when someone assigns you a
-            conversation.
-          </p>
+          <p className="text-[15px] font-semibold text-foreground">{t("emptyTitle")}</p>
+          <p className="max-w-sm text-[13.5px] text-muted-foreground">{t("emptyBody")}</p>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="min-h-0 flex-1 overflow-y-auto py-2">
           {notifications.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
+            const text = notificationText(n, memberNames, contactNames);
+            const contact =
+              text.kind === "raw" ? "" : (text.contact ?? t("someContact"));
+            const line =
+              text.kind === "assignedBy"
+                ? t("assignedBy", { actor: text.actor, contact })
+                : text.kind === "assigned"
+                  ? t("assigned", { contact })
+                  : text.title;
+            const createdAt = new Date(n.created_at).getTime();
+            const when = Number.isNaN(createdAt) ? "" : formatRelative(relativeTime(createdAt, now), tList);
             return (
               <li key={n.id}>
+                {/* Fila como `row()` de la lista: ícono de 42, texto, hora. */}
                 <button
                   type="button"
                   onClick={() => handleClick(n)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors",
-                    isUnread
-                      ? "border-primary/30 bg-primary/5 hover:border-primary/50"
-                      : "border-border bg-card hover:border-border/70",
-                  )}
+                  className="mx-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-xl px-3.5 py-[11px] text-left transition-colors hover:bg-hover"
                 >
-                  <div
+                  <span
+                    aria-hidden="true"
                     className={cn(
-                      "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg",
-                      isUnread ? "bg-primary/15" : "bg-muted",
+                      "grid size-[42px] shrink-0 place-items-center rounded-full",
+                      isUnread ? "bg-selected-strong text-primary" : "bg-muted text-muted-foreground",
                     )}
-                    aria-hidden
                   >
-                    <Icon
+                    <Icon className="size-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
                       className={cn(
-                        "h-5 w-5",
-                        isUnread ? "text-primary" : "text-muted-foreground",
+                        "block truncate text-[15px] text-foreground",
+                        isUnread ? "font-bold" : "font-medium",
                       )}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "truncate text-sm font-semibold",
-                          isUnread ? "text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {n.title}
+                    >
+                      {line}
+                    </span>
+                    {text.kind === "raw" && text.body && (
+                      <span className="mt-0.5 block truncate text-[13.5px] text-sidebar-foreground">
+                        {text.body}
                       </span>
-                      {isUnread && (
-                        <span
-                          aria-label="Unread"
-                          className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
-                        />
-                      )}
-                    </div>
-                    {n.body && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {n.body}
-                      </p>
                     )}
-                    <p className="mt-1 text-[11px] text-muted-foreground/70">
-                      {formatDistanceToNow(new Date(n.created_at), {
-                        addSuffix: true,
-                      })}
-                    </p>
-                  </div>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {isUnread && (
+                      <span
+                        aria-label={t("unread")}
+                        className="size-2 rounded-full bg-unread"
+                      />
+                    )}
+                    <span
+                      className={cn(
+                        "text-[12.5px] tabular-nums",
+                        isUnread ? "font-semibold text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {when}
+                    </span>
+                  </span>
                 </button>
               </li>
             );

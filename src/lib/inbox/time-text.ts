@@ -8,7 +8,7 @@
 
 import type { useTranslations } from "next-intl";
 
-import type { DurationParts, RelativeTime, ShortWhen } from "./vistas";
+import type { DurationParts, PastWhen, RelativeTime, ShortWhen } from "./vistas";
 
 /** `useTranslations("Inbox.conversationList")`. */
 export type ListTranslator = ReturnType<typeof useTranslations>;
@@ -51,6 +51,24 @@ export function formatShortWhen(when: ShortWhen, t: ListTranslator): string {
         day: when.day,
         time: when.time,
       });
+    }
+  }
+}
+
+/** "hoy 16:00", "ayer 10:00", "12 oct, 17:30", "12 oct 2025". */
+export function formatPastWhen(when: PastWhen, t: ListTranslator): string {
+  switch (when.kind) {
+    case "today":
+      return t("whenToday", { time: when.time });
+    case "yesterday":
+      return t("whenYesterday", { time: when.time });
+    case "date": {
+      const months = t("monthsShort").split(",");
+      return t("whenDate", { day: when.day, month: months[when.month - 1] ?? "", time: when.time });
+    }
+    case "dateYear": {
+      const months = t("monthsShort").split(",");
+      return t("whenDateYear", { day: when.day, month: months[when.month - 1] ?? "", year: when.year });
     }
   }
 }

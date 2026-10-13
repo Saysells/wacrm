@@ -67,11 +67,12 @@ import {
   hasScheduling,
   hhmm,
   initialsOf,
+  pastWhen,
   scheduledCall,
   shortWhen,
   type ScheduledCall,
 } from "@/lib/inbox/vistas";
-import { formatDuration, formatShortWhen } from "@/lib/inbox/time-text";
+import { formatDuration, formatPastWhen, formatShortWhen } from "@/lib/inbox/time-text";
 import { tagTint } from "@/lib/inbox/conversation-tags";
 import { cn } from "@/lib/utils";
 import type { Contact, ContactNote, Deal, Tag } from "@/types";
@@ -1050,7 +1051,7 @@ function Ficha({
         <div className={ROW}>
           <span className={ROW_KEY}>{t("firstMessage")}</span>
           <span className={cn(ROW_VALUE, "tabular-nums")}>
-            {Number.isNaN(createdAt) ? "" : formatShortWhen(shortWhen(createdAt, now), tList)}
+            {Number.isNaN(createdAt) ? "" : formatPastWhen(pastWhen(createdAt, now), tList)}
           </span>
         </div>
       </Group>
@@ -1170,7 +1171,8 @@ function NotesGroup({ notes, onSaveNote, memberNames, now, t, tList }: NotesGrou
       {notes.map((note) => {
         const at = new Date(note.created_at).getTime();
         const author = memberNames.get(note.user_id);
-        const when = Number.isNaN(at) ? "" : formatShortWhen(shortWhen(at, now), tList);
+        // Las notas son pasado: "hoy 16:00", "ayer 10:00", "12 oct, 17:30" (sesión F1).
+        const when = Number.isNaN(at) ? "" : formatPastWhen(pastWhen(at, now), tList);
         return (
           <div
             key={note.id}

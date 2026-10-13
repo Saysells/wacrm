@@ -98,7 +98,12 @@ export function MessageActions({
       <div
         data-touch-open={touchOpen || pickerOpen ? "true" : undefined}
         className={cn(
-          "absolute -top-3 z-10 flex h-7 items-center gap-0.5 rounded-full border border-border bg-popover/95 px-1 shadow-md backdrop-blur-sm transition-opacity",
+          // Apoyado en el borde de arriba del bloque (sesión F1): el
+          // rótulo "Bot" / "Plantilla · nombre" va arriba de la burbuja
+          // dentro de este mismo bloque, así que un `-top-3` lo pisaba.
+          // Con `bottom-full` el menú queda entero por encima, y el
+          // rótulo, si lo hay, a la vista.
+          "absolute bottom-full z-10 flex h-7 items-center gap-0.5 rounded-full border border-border bg-popover/95 px-1 shadow-md backdrop-blur-sm transition-opacity",
           "opacity-0 group-hover/actions:opacity-100 group-focus-within/actions:opacity-100",
           "data-[touch-open=true]:opacity-100",
           isAgent ? "right-3" : "left-3",

@@ -244,7 +244,7 @@ export function TemplatePicker({
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-medium text-popover-foreground">
+                        <p className="truncate text-sm font-medium text-popover-foreground" title={t.name}>
                           {t.name}
                         </p>
                         <Badge variant="selected">{t.category}</Badge>

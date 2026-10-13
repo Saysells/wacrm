@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import {
   ArrowUpRight,
@@ -31,6 +31,7 @@ import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { setInboxSearch, useInboxSearch } from "@/hooks/use-inbox-search";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { useSaysellsSelector } from "@/hooks/use-saysells-selector";
+import { useWhatsAppNumber } from "@/hooks/use-whatsapp-number";
 import { openShortcutsHelp } from "@/hooks/use-shortcuts-help";
 import { APP_NAME } from "@/lib/app-name";
 import { homePathFor } from "@/lib/auth/nav";
@@ -38,6 +39,7 @@ import {
   SAYSELLS_APPS,
   bandejaColor,
   bandejaInitials,
+  groupBandejas,
   isCurrentBandeja,
   type Bandeja,
   type SaysellsApp,
@@ -127,6 +129,10 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
   const unreadNotifications = useUnreadNotifications();
   const selector = useSaysellsSelector();
   const currentHost = useCurrentHost();
+  // Debajo del nombre va el número de WhatsApp (sesión F1); hasta que
+  // llega, o si no hay, el dominio como siempre.
+  const whatsappNumber = useWhatsAppNumber(selector.visible);
+  const bandejaGroups = useMemo(() => groupBandejas(selector.bandejas), [selector.bandejas]);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
@@ -212,8 +218,8 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
               <b className="block truncate text-sm font-semibold leading-tight text-foreground">
                 {APP_NAME}
               </b>
-              <span className="block truncate text-xs leading-tight text-muted-foreground">
-                {currentHost ?? ""}
+              <span className="block truncate text-xs leading-tight tabular-nums text-muted-foreground">
+                {whatsappNumber ?? currentHost ?? ""}
               </span>
             </span>
             <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
@@ -222,39 +228,44 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
             {/* DropdownMenuGroup es OBLIGATORIO: DropdownMenuLabel es el
                 Menu.GroupLabel de base-ui y tira error al renderizarse sin
                 un Menu.Group arriba; suelto, abrir el selector tiraba la
-                página entera (mismo caso del issue #336). */}
-            <DropdownMenuGroup>
-            <DropdownMenuLabel>{t("inboxesHeading")}</DropdownMenuLabel>
-            {selector.bandejas.map((bandeja) => {
-              const current = isCurrentBandeja(bandeja, currentHost);
-              const off = !bandeja.url;
-              return (
-                <DropdownMenuItem
-                  key={`${bandeja.nombre}|${bandeja.url ?? ""}`}
-                  disabled={off}
-                  onClick={() => {
-                    if (!current) goTo(bandeja);
-                  }}
-                  className={cn("gap-3", current && "bg-selected")}
-                >
-                  <BandejaBadge nombre={bandeja.nombre} size={36} />
-                  <span className="min-w-0 flex-1">
-                    <b className="block truncate font-semibold">{bandeja.nombre}</b>
-                    <span className="block truncate text-[12.5px] text-muted-foreground">
-                      {bandeja.dominio ?? t("comingSoon")}
-                    </span>
-                  </span>
-                  <span className="ml-auto shrink-0 text-muted-foreground">
-                    {current ? (
-                      <Check className="size-4" aria-label={t("current")} />
-                    ) : off ? null : (
-                      <ArrowUpRight className="size-4" />
-                    )}
-                  </span>
-                </DropdownMenuItem>
-              );
-            })}
-            </DropdownMenuGroup>
+                página entera (mismo caso del issue #336). Con grupos en la
+                variable (sesión F1, prototipo `switch`: "Saysells" y
+                "Clientes"), un grupo por rótulo en su orden; las bandejas
+                sin grupo cierran la lista bajo el rótulo de siempre. */}
+            {bandejaGroups.map((group) => (
+              <DropdownMenuGroup key={group.grupo ?? ""}>
+                <DropdownMenuLabel>{group.grupo ?? t("inboxesHeading")}</DropdownMenuLabel>
+                {group.bandejas.map((bandeja) => {
+                  const current = isCurrentBandeja(bandeja, currentHost);
+                  const off = !bandeja.url;
+                  return (
+                    <DropdownMenuItem
+                      key={`${bandeja.nombre}|${bandeja.url ?? ""}`}
+                      disabled={off}
+                      onClick={() => {
+                        if (!current) goTo(bandeja);
+                      }}
+                      className={cn("gap-3", current && "bg-selected")}
+                    >
+                      <BandejaBadge nombre={bandeja.nombre} size={36} />
+                      <span className="min-w-0 flex-1">
+                        <b className="block truncate font-semibold">{bandeja.nombre}</b>
+                        <span className="block truncate text-[12.5px] text-muted-foreground">
+                          {bandeja.dominio ?? t("comingSoon")}
+                        </span>
+                      </span>
+                      <span className="ml-auto shrink-0 text-muted-foreground">
+                        {current ? (
+                          <Check className="size-4" aria-label={t("current")} />
+                        ) : off ? null : (
+                          <ArrowUpRight className="size-4" />
+                        )}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (

@@ -70,6 +70,20 @@
     "modeDark": "Dark mode",
     "shortcuts": "Keyboard shortcuts"
   },
+  "Notifications": {
+    "title": "Notifications",
+    "unreadCount": "{count} unread",
+    "markAllRead": "Mark all as read",
+    "retry": "Retry",
+    "emptyTitle": "No notifications",
+    "emptyBody": "When someone assigns you a conversation, it shows up here.",
+    "assignedBy": "{actor} assigned you the conversation with {contact}",
+    "assigned": "You were assigned the conversation with {contact}",
+    "someContact": "a contact",
+    "unread": "Unread",
+    "toastMarkFailed": "Could not mark the notification as read",
+    "toastMarkAllFailed": "Could not mark all as read"
+  },
   "AccountAccess": {
     "unlinkedTitle": "This user is not linked to an account",
     "unlinkedBody": "Nothing you change will be saved while this is unresolved — the database rejects every write from a user with no account or role. If you were invited to a team, ask the owner to re-send the invitation. On a self-hosted install, check that the account-bootstrap migration ran for this user.",
@@ -201,6 +215,10 @@
       "whenTomorrow": "tomorrow {time}",
       "whenOther": "{weekday} {day}, {time}",
       "weekdays": "Sun,Mon,Tue,Wed,Thu,Fri,Sat",
+      "whenYesterday": "yesterday {time}",
+      "whenDate": "{day} {month}, {time}",
+      "whenDateYear": "{day} {month} {year}",
+      "monthsShort": "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
       "durationHm": "{h} h {m} min",
       "durationH": "{h} h",
       "durationM": "{m} min",

@@ -25,6 +25,7 @@ import {
   inVista,
   matchesSearchText,
   parseVista,
+  pastWhen,
   relativeTime,
   scheduledCall,
   shortWhen,
@@ -250,6 +251,13 @@ describe("tiempos", () => {
     expect(durationParts(80 * MIN)).toEqual({ hours: 1, minutes: 20 });
     expect(durationParts(2 * H)).toEqual({ hours: 2, minutes: 0 });
     expect(durationParts(10 * 1000)).toEqual({ hours: 0, minutes: 1 });
+  });
+
+  it("pastWhen(): hoy, ayer, fecha corta y fecha con año", () => {
+    expect(pastWhen(NOW - 30 * MIN, NOW)).toEqual({ kind: "today", time: "16:00" });
+    expect(pastWhen(NOW - 24 * H, NOW)).toEqual({ kind: "yesterday", time: "16:30" });
+    expect(pastWhen(NOW - 3 * 24 * H - 60 * MIN, NOW)).toEqual({ kind: "date", day: 7, month: 10, time: "15:30" });
+    expect(pastWhen(new Date(2025, 9, 12, 17, 30).getTime(), NOW)).toEqual({ kind: "dateYear", day: 12, month: 10, year: 2025 });
   });
 
   it("escapa los comodines de ilike", () => {

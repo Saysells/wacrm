@@ -4,6 +4,8 @@ import {
   BANDEJA_COLORS,
   bandejaColor,
   bandejaInitials,
+  displayNumberFrom,
+  groupBandejas,
   hostOf,
   isCurrentBandeja,
   parseBandejas,
@@ -16,22 +18,70 @@ describe("parseBandejas", () => {
     expect(
       parseBandejas("Saysells ARG|https://wpp.saysells.com,LaudoPet|"),
     ).toEqual([
-      { nombre: "Saysells ARG", url: "https://wpp.saysells.com", dominio: "wpp.saysells.com" },
-      { nombre: "LaudoPet", url: null, dominio: null },
+      { nombre: "Saysells ARG", url: "https://wpp.saysells.com", dominio: "wpp.saysells.com", grupo: null },
+      { nombre: "LaudoPet", url: null, dominio: null, grupo: null },
     ]);
   });
 
   it("tolera espacios de borde y una entrada sin pipe", () => {
     expect(parseBandejas("  Kosmo | https://kosmo.wpp.saysells.com/ , Star Energy ")).toEqual([
-      { nombre: "Kosmo", url: "https://kosmo.wpp.saysells.com", dominio: "kosmo.wpp.saysells.com" },
-      { nombre: "Star Energy", url: null, dominio: null },
+      { nombre: "Kosmo", url: "https://kosmo.wpp.saysells.com", dominio: "kosmo.wpp.saysells.com", grupo: null },
+      { nombre: "Star Energy", url: null, dominio: null, grupo: null },
     ]);
   });
 
   it("descarta entradas sin nombre y trata una URL rota como vacia", () => {
     expect(parseBandejas("|https://x.com,,Rota|wpp.saysells.com")).toEqual([
-      { nombre: "Rota", url: null, dominio: null },
+      { nombre: "Rota", url: null, dominio: null, grupo: null },
     ]);
+  });
+
+  it("lee el tercer campo como grupo (sesión F1), opcional", () => {
+    expect(parseBandejas("Saysells ARG|https://wpp.saysells.com| Saysells ,Kosmo||Clientes,LaudoPet|")).toEqual([
+      { nombre: "Saysells ARG", url: "https://wpp.saysells.com", dominio: "wpp.saysells.com", grupo: "Saysells" },
+      { nombre: "Kosmo", url: null, dominio: null, grupo: "Clientes" },
+      { nombre: "LaudoPet", url: null, dominio: null, grupo: null },
+    ]);
+  });
+});
+
+describe("groupBandejas", () => {
+  it("sin grupos, un solo bloque sin rótulo (el menú de hoy)", () => {
+    const list = parseBandejas("A|https://a.com,B|");
+    expect(groupBandejas(list)).toEqual([{ grupo: null, bandejas: list }]);
+    expect(groupBandejas([])).toEqual([{ grupo: null, bandejas: [] }]);
+  });
+
+  it("agrupa en orden de aparición, sin distinguir mayúsculas, y las sin grupo al final", () => {
+    const list = parseBandejas(
+      "Saysells ARG|https://a.com|Saysells,Kosmo|https://k.com|Clientes,Saysells USA|https://u.com|saysells,LaudoPet||Clientes,Suelta|",
+    );
+    const groups = groupBandejas(list);
+    expect(groups.map((g) => g.grupo)).toEqual(["Saysells", "Clientes", null]);
+    expect(groups[0].bandejas.map((b) => b.nombre)).toEqual(["Saysells ARG", "Saysells USA"]);
+    expect(groups[1].bandejas.map((b) => b.nombre)).toEqual(["Kosmo", "LaudoPet"]);
+    expect(groups[2].bandejas.map((b) => b.nombre)).toEqual(["Suelta"]);
+  });
+
+  it("con todas agrupadas no agrega el bloque vacío", () => {
+    const groups = groupBandejas(parseBandejas("A|https://a.com|X,B||X"));
+    expect(groups.map((g) => g.grupo)).toEqual(["X"]);
+  });
+});
+
+describe("displayNumberFrom", () => {
+  it("devuelve el número solo con connected: true y display_phone_number", () => {
+    expect(displayNumberFrom({ connected: true, phone_info: { display_phone_number: " +1 555 010 0000 " } })).toBe(
+      "+1 555 010 0000",
+    );
+  });
+
+  it("devuelve null si no está conectado, falta el número o el cuerpo es raro", () => {
+    expect(displayNumberFrom({ connected: false, reason: "no_config" })).toBeNull();
+    expect(displayNumberFrom({ connected: true, phone_info: { verified_name: "X" } })).toBeNull();
+    expect(displayNumberFrom({ connected: true, phone_info: { display_phone_number: "" } })).toBeNull();
+    expect(displayNumberFrom(null)).toBeNull();
+    expect(displayNumberFrom("texto")).toBeNull();
   });
 
   it("devuelve vacio sin variable", () => {

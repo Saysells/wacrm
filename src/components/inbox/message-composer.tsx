@@ -1316,7 +1316,9 @@ function TemplatePanel({
                 )}
               >
                 <FileText className="size-4 shrink-0 text-secondary-foreground" />
-                <span className="min-w-0 flex-1 truncate">{tpl.name}</span>
+                <span className="min-w-0 flex-1 truncate" title={tpl.name}>
+                  {tpl.name}
+                </span>
                 <small className="shrink-0 text-xs font-normal text-muted-foreground">
                   {tpl.language ? `${tpl.category} · ${tpl.language}` : tpl.category}
                 </small>
