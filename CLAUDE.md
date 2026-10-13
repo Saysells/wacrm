@@ -4,7 +4,7 @@
 
 - **Origen**: fork `Saysells/wacrm` de [ArnasDon/wacrm](https://github.com/ArnasDon/wacrm),
   commit base `6ed9191` (v0.8.x, 2026-08). Los cambios propios viven arriba de
-  ese commit en `main`.
+  ese commit en `main`; el rediseño vive en la rama `rediseno` (ver abajo).
 - **Idioma**: la beta sale en español rioplatense. `messages/es.json` es un
   espejo exacto de `messages/en.json` (mismas claves, placeholders, sintaxis
   ICU y etiquetas HTML; sin emojis). El locale NO se elige acá: lo fija el
@@ -14,26 +14,13 @@
 - **Validador de catálogos**: `node scripts/i18n-check.mjs messages/en.json
   messages/es.json` debe terminar en 0 después de cualquier cambio en los
   mensajes. Sus pruebas: `node --test scripts/*.test.mjs` (en Node 25 el
-  runner ya no acepta un directorio como argumento).
-- **Qué no se toca**: `src/`, `supabase/`, `package.json` y
-  `package-lock.json` no se modifican sin una sesión que lo pida
-  explícitamente. Cambios propios hasta ahora: `messages/es.json`,
-  `scripts/i18n-check.mjs`, `scripts/i18n-check.test.mjs`, este archivo,
-  y el trabajo de las secciones "Roles y permisos", "Bandeja" e
-  "Integración Tally" de abajo (sesiones 2026-08-31 y 2026-09-01,
-  pedidas explícitamente por Eze). También
-  `src/components/settings/tag-manager.tsx`, del que se extrajo
-  `PRESET_COLORS`, y `src/app/layout.tsx` +
-  `src/components/layout/sidebar.tsx`, de los que salió el nombre de
-  la app a `NEXT_PUBLIC_APP_NAME` (ver abajo). La sesión 2026-09-03
-  sumó `src/lib/themes.ts`, `src/app/globals.css`, `src/app/icon.tsx`,
-  `src/components/brand/whatsapp-glyph.tsx` (nuevo) y las tres
-  pantallas de `src/app/(auth)/` (ver "Marca" abajo). La sesión
-  2026-09-08 sumó `src/hooks/use-sidebar-collapsed.ts` y
-  `src/lib/inbox/conversation-tags.ts` (nuevos) más
-  `src/components/layout/sidebar.tsx` y
-  `src/components/inbox/conversation-list.tsx` (ver "Bandeja de
-  escritorio · más de una etiqueta por fila").
+  runner ya no acepta un directorio como argumento). `ko.json` se mantiene en
+  paridad de claves con `en.json`: lo exige `src/i18n/messages.test.ts`.
+- **Qué no se toca sin una sesión que lo pida explícitamente**: `supabase/`,
+  `package.json` y `package-lock.json`; el webhook, el envío y las plantillas
+  de WhatsApp del lado del servidor (`src/app/api/`); el puente con el CRM;
+  los flujos; `src/lib/auth/` (roles y permisos); la vista del celular
+  (`src/app/(movil)/`). Sin dependencias nuevas.
 - **Matías tiene dos identidades y no se mezclan**: en la Bandeja
   (esta base) es `saysellsmatias@gmail.com`, y en el CRM Saysells, que
   es **otra** base, es `matias@saysells.com`. Las migraciones de este
@@ -52,24 +39,58 @@
   destructiva. Si dos archivos comparten número, `npm run migrar` avisa: el
   segundo no va a correr nunca.
 - **`.env.local`**: no existe en el repo y no se crea a mano; lo genera el
-  instalador de la carpeta padre (`crm-whatsapp-instalador`).
+  instalador de la carpeta padre (`crm-whatsapp-instalador`). Tiene secretos:
+  no se abre, no se imprime, no se copia.
 - **Secretos**: la clave `service_role` de Supabase va SOLO en `.env.local` y
   en las variables del hosting; jamás en código, en el repo, en logs ni en un
   chat. Las variables dummy del CI (`.github/workflows/ci.yml`) se pasan
   inline en el comando cuando hace falta verificar localmente; nunca se
   escriben a un archivo.
+- **Cierre de toda sesión**: `npm run typecheck`, `npm run lint` (0 errores y
+  no más warnings que la línea base: 35), `TZ=UTC npm test` (los 3 rojos de
+  `currency.test.ts` ya estaban), el validador de mensajes y `npm run build`.
+
+Historia (quién pidió qué, archivos tocados por sesión):
+`respaldos/claude-md-historia-2026-10-12.md`, sección «Saysells · fork».
+
+# Reglas de código
+
+- **base-ui**: todo `DropdownMenuLabel` va dentro de un `DropdownMenuGroup`
+  (es el `Menu.GroupLabel` y tira error suelto: issue #336) y todo
+  `SelectLabel` dentro de un `SelectGroup`. `src/components/ui/
+  menu-label-grouping.test.ts` recorre los `.tsx` de `src/` y falla si no.
+  Revisar cada menú, popover o diálogo nuevo contra lo que pide base-ui.
+- **Realtime**: un canal por instancia, nombre único por llamada
+  (`uniqueChannelName` en `src/lib/realtime/channel-name.ts`). Nunca un
+  nombre fijo en un hook que pueda vivir en dos lugares:
+  `supabase.channel(nombre)` devuelve el canal existente y
+  `.on("postgres_changes")` tira error si ya se está uniendo.
+- **Cargas**: cada corrida pide siempre y gana la respuesta más nueva por
+  número de pedido (`src/lib/inbox/load-sequence.ts`); nunca un guard que
+  pueda descartar una respuesta sin que otro pedido la reemplace. Para
+  relecturas por conversación, `src/lib/inbox/hydrate-queue.ts`: una lectura a
+  la vez y, si se pidió otra mientras tanto, una sola más al terminar.
+- **Lógica nueva en funciones puras** de `src/lib/` con pruebas (vitest);
+  los componentes solo piden y pintan. Sin `@testing-library/react` en el
+  repo, no hay tests de DOM.
+- **Una sola forma de escribir cada tabla**: `contact_tags` solo por
+  `POST/DELETE /api/contacts/[id]/tags` (`src/lib/contacts/tag-api.ts`);
+  `tags` por insert directo con RLS (admin+); notas con el insert de
+  `contact_notes`.
+- **Sistema de diseño** (rediseño): cero emojis, íconos de lucide-react.
+  Estados y etiquetas en rectángulos de 5 px, nunca pastillas. Navy para la
+  acción principal, celeste para lo seleccionado, naranja solo para lo que
+  espera respuesta. Filtros como desplegables estilo Attio. Nada de
+  `window.prompt`, `confirm` ni `alert`: modales con cruz visible y clic
+  afuera bloqueado. Textos en español rioplatense con voseo, en
+  `messages/es.json` con espejo en `en.json` y `ko.json`.
 
 # Bandeja
 
-Sesión 2026-09-01 (pedida por Eze). Dos atajos que faltaban en la
-Bandeja. Sin SQL: `contact_tags` y las tablas de plantillas ya existían.
+## Etiquetas desde la ficha del contacto
 
-## Etiquetas directas desde el sidebar de contacto
-
-El sidebar solo LISTABA tags; poner una obligaba a ir a Contactos y
-abrir "Editar contacto". Ahora la sección Tags tiene un popover
-compacto "+ Agregar etiqueta" con las etiquetas de la cuenta que el
-contacto todavía no tiene, y cada pastilla trae una X para sacarla.
+La ficha (hoy `side-panel.tsx`) lista las etiquetas del contacto, aplica
+las que faltan con un popover y las saca con una cruz.
 
 - **Escritura**: reusa `POST/DELETE /api/contacts/[id]/tags` tal cual
   (vía `src/lib/contacts/tag-api.ts`). Ese endpoint ya valida tenencia
@@ -78,209 +99,106 @@ contacto todavía no tiene, y cada pastilla trae una X para sacarla.
   automatizaciones. **No hay una segunda forma de escribir
   `contact_tags`** y no debe haberla.
 - **Lógica**: `src/lib/inbox/contact-tags.ts` — parte pura
-  (`assignableTags`, `withTagAttached`, `withTagDetached`) separada de
-  la parte con red (`attachTag`, `detachTag`), testeable sin DOM igual
-  que `overrides-api.ts`.
-- **Decisión**: la pastilla se identifica por `tag.id`, no por el id de
-  la fila de `contact_tags`. La unique del par lo hace único dentro del
-  contacto y lo tenemos en mano sin releer la tabla después de escribir.
-- **Gate**: el control aparece solo con `canSendMessages` (agent+), el
-  mismo rol que exige el endpoint, para que un viewer no vea un botón
-  que le va a dar 403.
-
-### Crear una etiqueta desde el mismo popover (sesión 2, 2026-09-01)
-
-Debajo de la lista, un mini-formulario (nombre + los ocho
-`PRESET_COLORS` + "Crear y aplicar"). Es **un solo paso**: la fila
-queda en `tags` y la etiqueta queda aplicada al contacto abierto.
-
-- **Escritura**: insert directo a `tags` con `account_id`, `user_id`,
-  `name` y `color`, el mismo patrón que `handleCreate` de
-  `tag-manager.tsx`. La tabla tiene RLS propia, así que **no hay ni
-  debe haber** una API route dedicada. Se agrega `.select().single()`
-  porque necesitamos el id para aplicarla en el mismo paso.
-- **Aplicación**: sale por `attachTag`, el mismo camino que usar una
-  etiqueta ya existente. No hay un segundo camino a `contact_tags`.
-- **Gate distinto al de aplicar**: crear pide
-  `canEditSettings` (**admin+**), porque la RLS `tags_insert` de la
-  migración 017 pide `is_account_member(account_id, 'admin')`. Un
-  agent puede aplicar las que existen pero no inventar una nueva; si
-  el formulario estuviera gateado con `canSendMessages` el insert
-  volvería rechazado por la base.
-- **`PRESET_COLORS` extraído** a `src/lib/contacts/tag-colors.ts` (con
-  `DEFAULT_TAG_COLOR`) e importado por `tag-manager.tsx` y por el
-  sidebar: los dos lugares donde se crea una etiqueta ofrecen la misma
-  paleta y ninguno la copia. Las claves i18n de los colores se derivan
-  de `name` (`Settings.tagsAndFields.colors.*`), que el sidebar reusa
-  en vez de duplicar los ocho nombres en tres idiomas.
-- **Validación**: nombre vacío no inserta nada; nombre que ya existe en
-  la cuenta (comparación sin espacios de borde y sin mayúsculas contra
-  `accountTags`) tampoco, y avisa corto. El catálogo se actualiza en
-  memoria y ordenado por nombre, así que el próximo contacto ya la ve
-  sin recargar.
-- **Si la creación anda pero la asociación falla**, `TagCreateError`
-  viaja con `code: 'attach_failed'` y la etiqueta creada: la fila ya
-  existe en `tags`, así que entra igual al catálogo en memoria en vez
-  de perderse hasta el próximo fetch.
+  (`assignableTags`, `withTagAttached`, `withTagDetached`,
+  `groupAssignableTags`, `orderAttachedTags`) separada de la parte con red
+  (`attachTag`, `detachTag`, `createAndAttachTag`).
+- **Gate**: aplicar pide `canSendMessages` (agent+, el mismo rol del
+  endpoint). **Crear** una etiqueta desde el popover pide `canEditSettings`
+  (admin+): la RLS `tags_insert` de la migración 017 pide
+  `is_account_member(account_id, 'admin')`. Es un solo paso (insert en
+  `tags` con `.select().single()` y después `attachTag`); si la asociación
+  falla, `TagCreateError` viaja con `code: 'attach_failed'` y la etiqueta
+  creada entra igual al catálogo en memoria.
+- `PRESET_COLORS` y `DEFAULT_TAG_COLOR` viven en
+  `src/lib/contacts/tag-colors.ts` (los usan `tag-manager.tsx` y la ficha);
+  las claves i18n de los colores se derivan de `name`
+  (`Settings.tagsAndFields.colors.*`).
+- Duplicados: el chequeo de nombre es del lado del cliente contra
+  `accountTags` (no hay unique `(account_id, name)` en `tags`).
 
 ## "Nuevo mensaje" — arrancar un hilo con un número que no escribió
 
-Botón en el encabezado de la Bandeja, al lado del buscador
-(`conversation-list.tsx`), mismo gate `canSendMessages`.
+Botón de la barra lateral (`canSendMessages`); diálogo
+`src/components/inbox/new-message-dialog.tsx`.
 
 - **Regla de Meta, no nuestra**: si el número nunca escribió primero,
   el primer mensaje TIENE que ser una plantilla aprobada, nunca texto
   libre. Si en Plantillas no hay ninguna aprobada, el selector sale
   vacío: eso es lo esperado, no un bug.
-- **Ruta nueva**: `POST /api/inbox/conversations/resolve`
+- **Ruta**: `POST /api/inbox/conversations/resolve`
   (`requireRole('agent')`, bucket de rate limit propio
-  `resolve-conv:<userId>`). Dos modos en una ruta porque comparten
-  validación de teléfono y gate de tenencia: `{ phone }` **solo mira**
+  `resolve-conv:<userId>`). `{ phone }` **solo mira**
   (`findConversationByPhone`, no escribe nada) y
   `{ phone, name?, create: true }` hace find-or-create con el
   `resolveConversationByPhone` compartido con el webhook de entrada y
-  la API pública (un contacto, un hilo). La versión con API key
-  (`/api/v1/messages`) queda intacta.
-- **Por qué el lookup no crea**: escribir un número y arrepentirse no
-  debe dejar un contacto huérfano ni una conversación vacía. El
-  `create: true` sale recién al enviar.
-- **`findConversationByPhone`** (nuevo, en
-  `src/lib/whatsapp/resolve-conversation.ts`): read-only, reusa
-  `findExistingContact` y el mismo lookup oldest-first
-  (`findConversationRow`, extraído y compartido por las tres rutas:
-  lookup, find-or-create y el reintento de la carrera unique) para que
-  todos coincidan en qué significa "ya tiene hilo".
-- **Flujo cliente**: `src/lib/inbox/new-conversation.ts` —
-  `isSendablePhone` (misma regla que la ruta: `sanitizePhoneForMeta` +
-  `isValidE164`), `nextStepAfterLookup` (con hilo ⇒ abrir, sin hilo ⇒
-  plantilla), `canSendNewMessage` (sin plantilla elegida no hay envío)
-  y `startConversation` (un solo resolve, y el envío reusa ese
-  `conversation_id`; si el resolve falla no se manda nada).
-- **UI**: `src/components/inbox/new-message-dialog.tsx`. El
-  `TemplatePicker` se reusa tal cual; mientras está abierto el diálogo
-  de Nuevo mensaje se **oculta** (`open && !pickerOpen`), no se
-  desmonta, para no apilar dos modales — el estado vive en el padre.
-- **Apertura del hilo**: `handleOpenConversationId` en
-  `inbox/page.tsx` trae la fila con `CONVERSATION_SELECT` (contacto
-  joineado) si no está en la lista y la selecciona; el INSERT de
-  realtime que llegue después dedupea contra `knownConvIdsRef`.
+  la API pública (un contacto, un hilo). El lookup no crea para que
+  escribir un número y arrepentirse no deje un contacto huérfano.
+- **`findConversationByPhone`** (`src/lib/whatsapp/resolve-conversation.ts`):
+  read-only, reusa `findExistingContact` y el mismo lookup oldest-first
+  (`findConversationRow`) que find-or-create y el reintento de la carrera
+  unique.
+- **Cliente**: `src/lib/inbox/new-conversation.ts` — `isSendablePhone`
+  (`sanitizePhoneForMeta` + `isValidE164`), `nextStepAfterLookup`,
+  `canSendNewMessage` y `startConversation` (un solo resolve; si falla no
+  se manda nada). El `TemplatePicker` se reusa; mientras está abierto el
+  diálogo se **oculta**, no se desmonta.
+- El popover de etiquetas no tiene buscador; "Nuevo mensaje" no expone el
+  `name` que la ruta acepta (el contacto queda con el número como nombre).
 
-## Pendientes de esta sesión
-
-- Ninguno de los dos flujos se probó en el navegador contra Meta real;
-  los tests cubren la lógica, no el render ni el envío efectivo.
-- El popover de etiquetas no tiene buscador: con cientos de etiquetas
-  en la cuenta la lista se hace larga (scrollea, pero no filtra).
-- **No hay unique `(account_id, name)` en `tags`** (agregarla es SQL,
-  prohibido en estas sesiones). El chequeo de duplicados es del lado
-  del cliente contra `accountTags`, así que dos personas creando el
-  mismo nombre al mismo tiempo todavía pueden dejar dos filas. La
-  solución real es un índice único + un 23505 tratado como
-  "ya existe".
-- El catálogo del sidebar (`accountTags`) se refresca al cambiar de
-  contacto: una etiqueta que otra persona crea mientras tanto no
-  aparece hasta ese momento.
-- "Nuevo mensaje" no ofrece cargar un nombre para el contacto nuevo
-  (la ruta acepta `name`, la UI todavía no lo expone); el contacto
-  queda con el número como nombre, igual que los del webhook.
-- Sin `@testing-library/react` en el repo (regla de no sumar librerías),
-  los componentes nuevos no tienen test de DOM: lo verificado es la
-  lógica extraída a `src/lib/inbox/*`.
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, sección «Bandeja».
 
 # Integración Tally
 
-Sesión 2026-09-01 (pedida por Eze). Sin SQL: `custom_fields`,
-`contact_custom_values`, `tags` y `contact_tags` ya existían.
-
 El embudo real de Kosmo: anuncio en Meta → kosmo.click → formulario de
-Tally → página de gracias con botón de WhatsApp (texto prellenado) →
-número de Kosmo. El objetivo es que, cuando el lead escribe, la ficha
-ya tenga sus respuestas; y si nunca escribe, que el contacto exista
-igual, etiquetado, para escribirle después con plantilla.
+Tally → página de gracias con botón de WhatsApp → número de Kosmo. Cuando
+el lead escribe, la ficha ya tiene sus respuestas; si nunca escribe, el
+contacto existe igual, etiquetado, para escribirle con plantilla.
 
 ## Normalizador de teléfono argentino
 
-`src/lib/phone/normalize-ar.ts` — `normalizeArgentinePhone(raw)`.
-
-El formulario manda `+54 11 XXXX-XXXX` (468 de 522 envíos del export
-vienen con código de país y SIN el 9); WhatsApp entrega el `wa_id`
-como `549` + área + número. Es el mismo teléfono escrito de dos
-formas, y sin unificarlas el lead del formulario y su primer mensaje
-entrante terminan en **dos contactos**.
-
-- Lleva todo a la forma canónica de WhatsApp: saca el `0` de larga
-  distancia y el `15` (probando las tres longitudes de área: 2, 3 y 4
-  dígitos), e inserta el `9` si falta.
-- Lo que **no** se entiende como argentino sale como dígitos sin
-  tocar: el doble chequeo de largo (10) y prefijo (`11`/`2`/`3`) evita
-  convertir por accidente un doméstico de otro país. Nunca se adivina
-  un país.
-- Se usa en los **tres** caminos que crean o buscan contacto por
-  teléfono: el webhook de Meta (`processMessage`, sobre `message.from`),
-  `resolveConversationByPhone` / `findConversationByPhone` ("Nuevo
-  mensaje") y el receptor de Tally. Que los tres coincidan es
-  justamente lo que hace que sea un solo contacto.
-- **No cambia ninguna llamada a Meta**: se aplica al camino de entrada
-  y a lo que se guarda, no a cómo se envía.
-- `findExistingContact` (dedupe.ts) ya toleraba la diferencia al
-  BUSCAR (compara los últimos 8 dígitos), pero lo que se GUARDABA
-  seguía siendo lo que vino y el índice único de `phone_normalized`
-  (migración 022) es exacto. El normalizador canoniza al escribir.
+`src/lib/phone/normalize-ar.ts` — `normalizeArgentinePhone(raw)`. El
+formulario manda `+54 11 XXXX-XXXX` sin el 9; WhatsApp entrega `549` +
+área + número. Lleva todo a la forma canónica de WhatsApp: saca el `0`
+de larga distancia y el `15` (probando áreas de 2, 3 y 4 dígitos) e
+inserta el `9` si falta. Lo que no se entiende como argentino sale como
+dígitos sin tocar (doble chequeo de largo 10 y prefijo `11`/`2`/`3`);
+nunca se adivina un país. Se usa en los **tres** caminos que crean o
+buscan contacto por teléfono (webhook de Meta, "Nuevo mensaje" y el
+receptor de Tally) y **no cambia ninguna llamada a Meta**. Asume que un
+`+54` de 10 dígitos es móvil: un fijo con WhatsApp Business quedaría con
+un `9` de más.
 
 ## Receptor: `POST /api/integrations/tally`
 
 `src/app/api/integrations/tally/route.ts` +
 `src/lib/integrations/tally/{signature,payload,ingest}.ts`.
 
-- **Firma** (`signature.ts`): `Tally-Signature` =
-  `base64(HMAC-SHA256(TALLY_SIGNING_SECRET, cuerpo crudo))`. Se firma
-  sobre el **body crudo** (`await request.text()`), nunca sobre el JSON
-  reserializado — reserializar cambia el orden de las claves y los
-  espacios, y la firma no da nunca. Sin firma o firma inválida → 401 y
-  no se procesa nada. Falla cerrado si falta la variable, igual que
-  `webhook-signature.ts` de Meta.
-- **Idempotencia**: `data.responseId` se guarda como campo
-  personalizado `tally_response_id`; antes de escribir nada se
-  pregunta si ya existe un contacto con ese valor. Tally **reintenta**
-  las entregas fallidas, así que el mismo envío llega más de una vez
-  de forma normal, no excepcional. Un envío distinto del mismo
-  teléfono sí actualiza (24 teléfonos repetidos en el export: el
-  receptor actualiza, no duplica).
-- **Acceso a la base**: cliente admin del servidor (service_role), el
-  mismo que el webhook de Meta. No hay sesión — quien postea es Tally.
-- **Cuenta destino**, en este orden: `TALLY_ACCOUNT_ID` si está; si no,
-  la **única** fila de `whatsapp_config` (la misma que el webhook de
-  Meta habría matcheado por `phone_number_id`, solo que sin necesitar
-  el id para elegirla). Con 0 o ≥2 filas y sin la variable: error
-  explícito. Adivinar sería meterle los leads de un cliente a otro.
-- **Contacto**: find-or-create por el camino que ya existe
-  (`findOrCreateContact` de `@/lib/api/v1/contacts`, mismo
-  `findExistingContact` + backstop de unique que el webhook), así el
-  contacto del formulario es indistinguible de uno creado por un
-  mensaje entrante. Si ya existía, se pisa solo lo que el formulario
-  trajo con contenido (un envío sin email no borra el que estaba; el
-  nombre real del formulario sí le gana al nombre de perfil de
-  WhatsApp).
-- **Etiqueta** `origen_form`: se crea si no existe y se aplica con
-  `addContactTagAndDispatch` — el camino compartido, que valida
-  tenencia, trata el duplicado como no-op y dispara las
-  automatizaciones de `tag_added`. No hay una segunda forma de
-  escribir `contact_tags`.
+- **Firma**: `Tally-Signature` = `base64(HMAC-SHA256(TALLY_SIGNING_SECRET,
+  cuerpo crudo))`, sobre el **body crudo** (`await request.text()`), nunca
+  sobre el JSON reserializado. Sin firma o inválida → 401. Falla cerrado
+  si falta la variable.
+- **Idempotencia**: `data.responseId` se guarda como campo personalizado
+  `tally_response_id`; Tally **reintenta**, así que el mismo envío llega
+  más de una vez de forma normal. Un envío distinto del mismo teléfono
+  actualiza, no duplica.
+- **Base**: cliente admin del servidor (service_role), el mismo que el
+  webhook de Meta. **Cuenta destino**: `TALLY_ACCOUNT_ID` si está; si no,
+  la **única** fila de `whatsapp_config`; con 0 o ≥2 filas y sin la
+  variable, error explícito.
+- **Contacto**: find-or-create por `findOrCreateContact` de
+  `@/lib/api/v1/contacts`. Si ya existía, se pisa solo lo que el
+  formulario trajo con contenido. **Etiqueta** `origen_form`: se crea si
+  no existe y se aplica con `addContactTagAndDispatch`.
 - **Códigos**: 401 firma; 400 no es JSON o falta `data.responseId`;
-  422 sin teléfono usable (**no se crea nada**); 200 procesado,
-  duplicado, o `eventType` que no es `FORM_RESPONSE` (se contesta 200
-  para que Tally no reintente eternamente).
-- **Debug**: con `TALLY_DEBUG_PAYLOAD=1` se loguea UN payload crudo por
-  proceso, para confirmar el formato contra un envío real. Apagalo
-  apenas verificaste: el payload trae datos personales del lead.
+  422 sin teléfono usable (no se crea nada); 200 procesado, duplicado o
+  `eventType` que no es `FORM_RESPONSE`.
+- **Debug**: `TALLY_DEBUG_PAYLOAD=1` loguea UN payload crudo por proceso.
+  Apagarlo apenas verificado: trae datos personales.
 
 ## Mapeo de campos
 
-La clave de unión es el **label** de la pregunta, no el `key`
-(`question_XXXX`): el key cambia cuando se rehace la pregunta, el
-label es lo que la persona ve y lo que quedó en el export. Los labels
-se comparan normalizados (sin acentos, sin signos, minúscula, un solo
-espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
+La clave de unión es el **label** de la pregunta, no el `key`, comparado
+normalizado (sin acentos, sin signos, minúscula, un solo espacio).
 
 | Label (formulario) | Destino |
 | --- | --- |
@@ -297,28 +215,16 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
 | `utm_source` / `utm_medium` / `utm_campaign` / `utm_content` | campos homónimos |
 | *(derivados)* | `tally_response_id`, `tally_submitted_at` |
 
-- Se mapean **las dos versiones** del formulario (la actual y la de
-  julio 2026) contra los mismos destinos.
-- **"Nombre" está dos veces** en el formulario de Kosmo: el primero
-  (por orden en `fields[]`) es la persona, el segundo es el CUIT/DNI
-  (valores reales: `43228684`, `20-12345678-9`). Antes el segundo
-  pisaba al primero y el contacto quedaba con nombre `43228684`.
-  Además, como **guarda**, si lo que iría a `contacts.name` es solo
-  dígitos, guiones, puntos o espacios (`looksLikeIdentifier`), no se usa como
-  nombre —el contacto conserva el que tenga, o queda con el teléfono
-  si es nuevo, igual que uno del webhook— y se guarda como `cuit_dni`.
-  Mismo criterio para "Apellido". El segundo "Nombre" explícito le gana
-  a la guarda si ambos aportan un valor.
+- **"Nombre" está dos veces**: el primero (por orden en `fields[]`) es la
+  persona, el segundo es el CUIT/DNI. Como guarda, si lo que iría a
+  `contacts.name` es solo dígitos, guiones, puntos o espacios
+  (`looksLikeIdentifier`) no se usa como nombre y se guarda como
+  `cuit_dni`. Mismo criterio para "Apellido".
 - En preguntas de opción, `value` viene como **id** con el texto en
-  `options[]`: se resuelve a texto (varias opciones se juntan con
-  coma).
-- Un label que **no** está en la tabla se ignora: el catálogo de
-  campos personalizados de la cuenta no crece solo porque alguien
-  agregó una pregunta al formulario.
-- Las definiciones de `custom_fields` se crean si faltan, comparando
-  sin mayúsculas (si alguien ya creó "Provincia" a mano, no se agrega
-  un segundo "provincia"). Los valores van con `upsert` sobre la
-  unique `(contact_id, custom_field_id)` de la migración 001.
+  `options[]`: se resuelve a texto. Un label que **no** está en la tabla
+  se ignora. Las definiciones de `custom_fields` se crean si faltan
+  (comparando sin mayúsculas); los valores van con `upsert` sobre la
+  unique `(contact_id, custom_field_id)`.
 
 ## Variables de entorno
 
@@ -328,218 +234,118 @@ espacio), así que sacarle los `¿?` a una pregunta no rompe el mapeo.
 | `TALLY_ACCOUNT_ID` | solo con ≥2 cuentas | Cuenta destino de los leads. |
 | `TALLY_DEBUG_PAYLOAD` | no | `1` loguea un payload crudo. Apagar después. |
 | `NEXT_PUBLIC_APP_NAME` | no | Nombre de la app; default `CRM By Saysells`. |
-| `SELECTOR_BANDEJAS` | no | `Nombre\|URL,Nombre\|URL` (URL vacía = próximamente). Sin ella no hay selector de bandejas. Ver "Rediseño · sesión A". |
+| `SELECTOR_BANDEJAS` | no | `Nombre\|URL\|Grupo,Nombre\|URL` (URL vacía = próximamente; Grupo opcional). Sin ella no hay selector de bandejas. Ver "Rediseño". |
 | `SELECTOR_EQUIPO` | no | Mails separados por coma que ven el selector y el lanzador. Sin ella nadie los ve. |
 
-## "Datos del formulario" en la Bandeja
+## "Datos del formulario" en la ficha
 
-`src/lib/inbox/contact-form-values.ts` + sección nueva en
-`contact-sidebar.tsx`. Solo lectura: lista los
-`contact_custom_values` del contacto (nombre del campo: valor) y se
-**oculta entera** si no tiene ninguno. Editar valores sigue siendo
-cosa de Contactos → Editar contacto; duplicar esa escritura acá sería
-un segundo camino a la misma tabla.
-
-- Parte pura (`pairFieldValues`) separada de la parte con red
-  (`loadContactFormValues`), igual que `contact-tags.ts`.
-- Ante un error de lectura el loader devuelve vacío: la sección se
-  oculta sola en vez de romper el sidebar entero.
-- Se muestra el `field_name` **tal cual**, sin prettificar: es el
-  mismo string que un admin ve y edita en Configuración → Campos y
-  etiquetas, y transformarlo acá haría que el sidebar llame distinto
-  al mismo campo.
-- **Se ocultan los campos `tally_*`** (`tally_response_id`,
-  `tally_submitted_at`): son de sistema, para idempotencia y
-  trazabilidad, no para quien atiende. Es un filtro por prefijo en el
-  loader (`isSystemField`, dentro de `pairFieldValues`), sin SQL;
-  siguen visibles en Contactos → Editar contacto.
+`src/lib/inbox/contact-form-values.ts` (`pairFieldValues` puro,
+`loadContactFormValues` con red). Solo lectura: lista los
+`contact_custom_values` del contacto y se oculta si no tiene ninguno;
+ante un error de lectura devuelve vacío. Se muestra el `field_name` tal
+cual. **Se ocultan los campos `tally_*`** por prefijo (`isSystemField`);
+siguen visibles en Contactos → Editar contacto.
 
 ## Nombre de la app por variable
 
-`src/lib/app-name.ts` — `NEXT_PUBLIC_APP_NAME`, default
-`CRM By Saysells`. Lo usan `layout.tsx` (metadata: título, template y
-descripción) y el `Sidebar`. **Salió de los catálogos de i18n**
-(`Sidebar.title` ya no existe en en/es/ko): es un nombre propio, no
-una etiqueta de interfaz, así que no se traduce. `NEXT_PUBLIC_` porque
-lo usa un componente de cliente; cambiarlo en Vercel pide **redeploy**,
-no restart.
+`src/lib/app-name.ts` — `NEXT_PUBLIC_APP_NAME`, default `CRM By Saysells`.
+Lo usan `layout.tsx` (metadata) y la barra. No se traduce (`Sidebar.title`
+ya no existe en los catálogos). Cambiarlo en Vercel pide **redeploy**.
 
-## Pendientes de esta sesión
-
-- **Nada de esto se probó contra un envío real de Tally.** Los tests
-  cubren firma, mapeo, idempotencia y escritura contra un Supabase en
-  memoria; el formato exacto del payload está tomado de la
-  documentación y del export, no de una entrega observada. Para eso
-  está `TALLY_DEBUG_PAYLOAD=1` en el primer envío de prueba.
-- `data.createdAt` como fecha del envío es lo esperado pero **no está
-  verificado** contra un payload real; si no viene, `tally_submitted_at`
-  simplemente no se escribe (no rompe nada).
-- **No se importa el histórico del CSV** (522 envíos): es otra tarea.
-  El receptor solo procesa envíos nuevos.
-- El normalizador asume que un `+54` de 10 dígitos nacionales es
-  móvil y le pone el `9`. Un fijo con WhatsApp Business quedaría con
-  un `9` de más; no hay forma de distinguirlos por el número solo.
-- Los campos de sistema se ocultan en el sidebar por **prefijo de
-  nombre** (`tally_`), no por una marca en `custom_fields`. Si un
-  admin crea a mano un campo que empiece con `tally_`, también se
-  oculta en la Bandeja.
-- La guarda de `looksLikeIdentifier` es por forma (dígitos, guiones,
-  puntos, espacios). Un valor con letras nunca la dispara, así que un
-  CUIT tipeado como "CUIT 20-12345678-9" quedaría como nombre.
-- No hay unique `(account_id, field_name)` en `custom_fields`: dos
-  entregas concurrentes de responseIds distintos podrían crear dos
-  definiciones con el mismo nombre. La solución real es un índice
-  único (SQL, fuera de esta sesión).
-- Sin `@testing-library/react`, la sección nueva del sidebar no tiene
-  test de DOM: lo verificado es la lógica de
-  `src/lib/inbox/contact-form-values.ts`.
+Historia y pendientes: `respaldos/claude-md-historia-2026-10-12.md`,
+sección «Integración Tally».
 
 # API v1 · etiquetas por PATCH
 
-Sesión 2026-09-02 (pedida por Eze). Bug en `setContactTags`
-(`src/lib/api/v1/contacts.ts`): armaba el set `desired` con
-`tagIdByKey.values()`, pero `resolveImportTagIds` devuelve en ese mapa
-**todas** las etiquetas de la cuenta (carga el catálogo entero para
-matchear por nombre), no solo las pedidas. Un
-`PATCH /api/v1/contacts/{id}` con `tags: ["a"]` le ponía al contacto
-todo el catálogo que le faltaba.
+`setContactTags` (`src/lib/api/v1/contacts.ts`): `desired` se arma
+únicamente con los nombres recibidos en `tagNames`, buscados en el mapa
+de `resolveImportTagIds` con la misma normalización (`trim` + minúsculas).
+El mapa trae **todas** las etiquetas de la cuenta: es un índice de
+búsqueda, nunca la lista de lo que hay que aplicar. Guarda:
+`src/lib/api/v1/contacts.test.ts`.
 
-- **Regla**: `desired` se arma únicamente con los nombres recibidos en
-  `tagNames`, buscados en el mapa con la misma normalización que usa
-  el resolvedor (`trim` + minúsculas). El mapa es un índice de
-  búsqueda, nunca la lista de lo que hay que aplicar.
-- **Guarda**: `src/lib/api/v1/contacts.test.ts` tiene el caso (cuenta
-  con a, b, c; PATCH con `["a"]`; el contacto queda solo con a). Si se
-  vuelve a tomar `.values()` del mapa, ese test falla.
-- Mismo día: la ficha del contacto en la Bandeja relee las etiquetas
-  con `fetchContactData` después de agregar, sacar o crear-y-aplicar,
-  porque el trigger `trg_single_etapa_tag` borra en la base la
-  `etapa_*` anterior y la lista local no lo sabe. Y el `ScrollArea` de
-  la ficha lleva `min-h-0` (issue #229, mismo defecto que la lista).
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, sección «API v1».
 
 # Etiquetas de estado (`tags.grupo`)
 
-Sesión 2026-09-02 (pedida por Eze). Migración **046** (aplicada):
-`tags.grupo` es `'estado' | 'origen' | 'senal' | null` (CHECK en la
-base). Las `etapa_*` ya no existen: las 13 etiquetas de **estado**
-tienen nombre humano y siguen el embudo del setter, en este orden:
-Nuevo, En gestión, No responde, Agendado a Paola, Agendado a Gustavo,
-Agendada, No se presentó, Reagendado, Realizada, Propuesta,
+Migración **046**: `tags.grupo` es `'estado' | 'origen' | 'senal' | null`
+(CHECK en la base). Las 13 etiquetas de **estado** siguen el embudo del
+setter: Nuevo, En gestión, No responde, Agendado a Paola, Agendado a
+Gustavo, Agendada, No se presentó, Reagendado, Realizada, Propuesta,
 En negociación, Ganada, Perdido. `origen_*` y `senal_*` (bot de Kosmo)
 llevan grupo `origen` / `senal`; el resto queda en `null`.
 
 - **La regla de "una sola de estado por contacto" vive en la base**
-  (trigger `trg_single_etapa_tag`, ahora por `grupo = 'estado'`), y el
-  aviso al CRM (`trg_notify_crm_on_etapa_tag`) también. El frontend no
-  la replica: `withTagAttached` solo saca del estado local el estado
-  anterior para que la ficha no muestre dos un instante, y después
-  relee (`fetchContactData`).
+  (trigger `trg_single_etapa_tag`, por `grupo = 'estado'`), y el aviso al
+  CRM (`trg_notify_crm_on_etapa_tag`) también. El frontend no la replica:
+  `withTagAttached` saca del estado local el estado anterior y después
+  relee.
 - **Dónde se conoce el grupo**: `Tag.grupo` en `src/types/index.ts`;
   `src/lib/contacts/tag-groups.ts` (`ESTADO_FUNNEL`, `isEstadoTag`,
-  `sortByFunnel`, `findEstadoTag`); `groupAssignableTags` y
-  `orderAttachedTags` en `src/lib/inbox/contact-tags.ts`.
-- **Bandeja**: la etiqueta de estado va primera en la ficha, como
-  pastilla llena con rótulo "Estado" y **sin X** (se cambia eligiendo
-  otra; dejar sin estado se hace desde Contactos). El popover se parte
-  en "Estado" (orden de embudo) y "Otras" (alfabético). La lista de
-  conversaciones muestra el estado como chip al lado del nombre; la
-  ficha avisa a la página (`onTagsChange`) para que el chip no quede
-  viejo.
-- **Configuración → Etiquetas**: muestra el grupo, ofrece un selector
-  "Grupo" al crear, y las de estado no se borran desde la UI (botón
-  deshabilitado con tooltip).
+  `sortByFunnel`, `findEstadoTag`, `estadoRank`).
+- **Configuración → Etiquetas**: muestra el grupo, ofrece un selector al
+  crear, las de estado no se borran desde la UI, y filtra por
+  `account_id` (cualquier admin ve las 13 de estado).
 - **API v1**: cada tag de `/contacts` y `/conversations` trae `grupo`
-  (`serializeTag` en `src/lib/api/v1/contacts.ts`).
-- ~~El gestor de etiquetas de Configuración filtra por `user_id`~~:
-  desde la sesión de cierre filtra por `account_id`, como la ficha, así
-  cualquier admin ve las 13 de estado (creadas a nombre del owner).
+  (`serializeTag`).
 
-## Fecha de la llamada y realtime (sesión de cierre, 2026-09-02)
+## Fecha de la llamada y realtime
 
-Migración **047** (aplicada): `contacts.fecha_llamada` (timestamptz) y
+Migración **047**: `contacts.fecha_llamada` (timestamptz) y
 `tags.requiere_fecha` (true en Agendado a Paola, Agendado a Gustavo,
 Agendada y Reagendado). `contact_tags` y `contacts` entran en la
-publicación `supabase_realtime` (REPLICA IDENTITY FULL en
-`contact_tags`). El trigger del puente manda `fecha_llamada` al CRM
-junto con la etiqueta.
+publicación `supabase_realtime`. El trigger del puente manda
+`fecha_llamada` al CRM junto con la etiqueta.
 
 - **Primero la fecha, después la etiqueta. No es negociable.** El aviso
-  al CRM sale del INSERT en `contact_tags` y lee
-  `contacts.fecha_llamada`: si la etiqueta entrara antes, el CRM
-  recibiría la fecha vieja. `scheduleWithDate`
-  (`src/lib/inbox/fecha-llamada.ts`) guarda la fecha con un update
-  directo (RLS `contacts_update`, agent+) y recién después llama a
-  `attachTag`; si guardar falla, no aplica nada. Hay un test que fija
-  ese orden.
-- **Ficha**: al elegir una etiqueta con `requiere_fecha` se abre el
-  modal "Fecha y hora de la llamada" (`datetime-local`; sugerida mañana
-  10:00 hora local, o la del contacto si ya tiene). Cancelar no aplica
-  la etiqueta. Al lado del estado se ve la fecha corta
-  ("Jue 03/09 · 10:00") con un lápiz que solo corrige la fecha (no
-  vuelve a aplicar la etiqueta ni dispara otro aviso).
+  al CRM sale del INSERT en `contact_tags` y lee `contacts.fecha_llamada`.
+  `scheduleWithDate` (`src/lib/inbox/fecha-llamada.ts`) guarda la fecha
+  con un update directo (RLS `contacts_update`, agent+) y recién después
+  llama a `attachTag`; si guardar falla, no aplica nada. Hay un test que
+  fija ese orden. El modal de hoy es "Agendar llamada" (ver Rediseño).
 - **API v1**: `PATCH /api/v1/contacts/{id}` acepta `fecha_llamada`
-  (ISO 8601 válida, se normaliza a UTC, o null; otro tipo → 400) vía
+  (ISO 8601, se normaliza a UTC, o null; otro tipo → 400) vía
   `parseContactUpdates`; `serializeContact` la expone. Es el camino de
   vuelta CRM → Bandeja.
 - **Realtime de la ficha**: `subscribeToContactChanges`
   (`src/lib/inbox/contact-realtime.ts`) arma un canal por contacto
-  (`contact_tags` INSERT/DELETE por `contact_id`, `contacts` UPDATE por
-  `id`) y ante cualquier evento la ficha relee (`fetchContactData`).
-  Se desuscribe al desmontar o cambiar de contacto. La lista se entera
-  por `onTagsChange`, el mismo aviso que ya usaba.
-- **Pendiente sin navegador**: nada de esto se probó contra Supabase
-  real; lo verificado es la lógica pura y que la suscripción se arma
-  con los filtros correctos (mock).
+  (`contact_tags` INSERT/DELETE, `contacts` UPDATE). Desde el rediseño la
+  ficha lee la fila del store, que tiene su propio canal.
+
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, sección
+«Etiquetas de estado».
 
 # Roles y permisos
 
-Sesión 1 (2026-08-31). Decisión de Eze: el rol `agent` (vendedores) ve una
-app reducida — Bandeja, Notificaciones y Contactos — con asignación
-automática al responder, contactos ajenos ocultos y exportación bloqueada.
-Los roles ya venían del upstream (`owner`/`admin`/`agent`/`viewer` en
-`src/lib/auth/roles.ts`, migración 017); esta sesión no agregó SQL.
+Los roles vienen del upstream (`owner`/`admin`/`agent`/`viewer` en
+`src/lib/auth/roles.ts`, migración 017). Decisión de Eze: el `agent`
+(vendedores) ve una app reducida, con asignación automática al responder,
+contactos ajenos ocultos y exportación bloqueada.
 
-## Qué se construyó
-
-- **Navegación reducida** (`src/lib/auth/nav.ts`): el sidebar del agent
-  muestra solo 3 entradas; el middleware redirige a `/inbox` cualquier ruta
-  vedada (`/dashboard`, `/pipelines`, `/broadcasts`, `/automations`,
-  `/flows`, `/agents`) consultando `profiles.account_role` solo en esas
-  rutas. `/settings` queda accesible (perfil propio, vía menú de avatar)
-  pero fuera del sidebar; sus secciones de cuenta ya se gatean solas.
+- **Navegación** (`src/lib/auth/nav.ts`): `NAV_PERMISSION_BY_PREFIX` mapea
+  sección → clave; `/inbox` siempre visible y `/settings` siempre
+  accesible. La barra filtra con `showsInNav(rol, overrides, href)`; el
+  middleware bloquea la URL directa con `canAccessPath` y `homePathFor`
+  aterriza según `nav_dashboard`. La UI falla cerrada (rol sin resolver ⇒
+  menú reducido); el middleware falla abierto solo para perfiles pre-017.
 - **Asignación automática** (`src/lib/inbox/auto-assign.ts` + route de
-  envío): si un agent responde una conversación sin asignar, se la queda
-  (el contacto se deriva de la conversación: NO hay columna de asignación
-  en `contacts`). Nunca reasigna una asignada; owner/admin no capturan
-  hilos al responder. El UPDATE va con guarda `.is('assigned_agent_id',
-  null)` (carrera: gana el primero). La notificación sale gratis del
-  trigger de la migración 027 (omite autoasignación).
-- **Visibilidad** (`src/lib/auth/visibility.ts`): el agent ve
-  conversaciones sin asignar o propias (query del inbox, realtime,
-  hidratación y badge de no-leídos) y no ve contactos cuyo hilo es de otro
-  agent. Owner/admin/viewer ven todo.
-- **Export de contactos**: no existía ni botón ni endpoint. Se creó
-  `GET /api/contacts/export` (CSV RFC 4180, paginado) gateado por el nuevo
-  predicado `canExportContacts` (admin+; 403 para agent/viewer), y el botón
-  "Exportar CSV" en Contactos visible solo para admin+ (claves i18n en
-  en/es/ko).
+  envío): si un agent responde una conversación sin asignar, se la queda;
+  nunca reasigna una asignada; owner/admin no capturan. El UPDATE va con
+  guarda `.is('assigned_agent_id', null)`. La notificación sale del
+  trigger de la migración 027.
+- **Visibilidad** (`src/lib/auth/visibility.ts`): filtra por
+  `view_all_data` efectivo; el agent ve conversaciones sin asignar o
+  propias y no ve contactos cuyo hilo es de otro (la propiedad se DERIVA
+  de `conversations.assigned_agent_id`, 1:1 desde la migración 036). El
+  RLS 040/041 (`can_view_by_assignment`) aplica lo mismo en la base.
+- **Export**: `GET /api/contacts/export` (CSV RFC 4180, paginado de a
+  1000) gateado por `can_export_contacts` efectivo (`useCan('export-contacts')`).
 
-## Decisiones tomadas
-
-- La propiedad de un contacto se DERIVA de `conversations.assigned_agent_id`
-  (relación 1:1 contacto↔conversación desde la migración 036). No se agregó
-  columna a `contacts` porque requería SQL, prohibido en esta sesión.
-- UI de navegación falla cerrada (rol sin resolver ⇒ menú reducido); el
-  middleware falla abierto solo para perfiles pre-017 sin `account_role`
-  (bloquearles /dashboard les rompería toda la app).
-- El viewer conserva la vista completa (solo lectura); la reducción aplica
-  únicamente al agent. Viewer tampoco puede exportar.
-
-## Permisos granulares (sesión 2, 2026-08-31)
+## Permisos granulares
 
 Eze tilda permisos POR PERSONA; el rol solo aporta defaults. Motor SQL:
 `effective_permission(rol, overrides, clave)` + `profiles.permission_overrides`
-(migración 041, aplicada). Espejo TS: `src/lib/auth/permissions.ts`
+(migración 041). Espejo TS: `src/lib/auth/permissions.ts`
 (`PERMISSION_KEYS`, `effectivePermission`) — **espejo EXACTO del CASE de la
 041**: si cambia uno, cambia el otro en el mismo diff.
 
@@ -548,255 +354,91 @@ Las 10 claves (ninguna más; una clave nueva = migración + espejo):
 `nav_contacts`, `nav_pipelines`, `nav_broadcasts`, `nav_automations`,
 `nav_flows`, `nav_ai_agents`. Defaults: nav_notifications y nav_contacts
 true para todos; can_export_contacts owner/admin; el resto owner/admin/viewer.
-Override presente pisa el default; clave desconocida → false.
+Override presente pisa el default; clave desconocida → false. Nadie lee
+claves del JSONB a mano. `use-auth.tsx` expone `permissionOverrides`;
+`getCurrentAccount()` lo trae para rutas API; el roster
+`GET /api/account/members` lo devuelve solo a admin+. Los
+`requireRole(...)` de acciones siguen por rol a propósito.
 
-Dónde vive cada cosa:
-
-- **Resolución**: `permissions.ts` (puro). Nadie lee claves del JSONB a mano.
-- **Navegación**: `nav.ts` mapea sección → clave (`NAV_PERMISSION_BY_PREFIX`);
-  `/inbox` siempre visible/accesible y `/settings` siempre accesible (no son
-  claves). Sidebar filtra con `showsInNav(rol, overrides, href)`; el
-  middleware bloquea la URL directa con `canAccessPath` consultando
-  `profiles.account_role + permission_overrides` en toda ruta gobernada por
-  una clave; `homePathFor` aterriza según `nav_dashboard` efectivo.
-- **Visibilidad**: `visibility.ts` filtra por `view_all_data` efectivo (un
-  admin con override false queda filtrado como agent; un agent con override
-  true ve todo). El RLS 040/041 (`can_view_by_assignment`) aplica lo mismo
-  en la base.
-- **Export**: `GET /api/contacts/export` y el botón gatean por
-  `can_export_contacts` efectivo (`useCan('export-contacts')`);
-  `canExportContacts` se eliminó de `roles.ts`.
-- **Overrides en contexto**: `use-auth.tsx` expone `permissionOverrides`;
-  `getCurrentAccount()` lo trae para rutas API; el roster
-  `GET /api/account/members` lo devuelve solo a admin+ (misma regla que
-  email).
 - **Escritura de overrides**: RPC `set_member_permission_override`
-  (migración **042, generada y NO aplicada** — el RLS de profiles solo deja
-  editar el propio perfil). La UI de Miembros + endpoint
-  `PATCH /api/account/members/[userId]/permissions` quedaron en un **commit
-  local sin push** (decisión de Eze): aplicar la 042 en Supabase y recién
-  ahí `git push`.
-- **Auditoría**: `respaldos/auditoria-permisos-2026-08-31.md`. Los
-  `requireRole(...)` de acciones (enviar, settings, api-keys…) siguen por
-  rol a propósito: no son ninguna de las 10 claves.
+  (migración **042, generada y NO aplicada**). La UI de Miembros + endpoint
+  `PATCH /api/account/members/[userId]/permissions` esperan en un commit
+  local sin push: aplicar la 042 y recién ahí `git push`.
+- Con filtro de etiquetas, el total de contactos del agent puede
+  sobrecontar (la RPC `filter_contacts_by_tags` no acepta exclusiones).
 
-## Pendientes
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, sección «Roles y
+permisos».
 
-- ~~RLS~~: resuelto por las migraciones 040/041 (`can_view_by_assignment`
-  consulta `effective_permission`); los filtros de query del cliente quedan
-  como optimización y para contadores coherentes.
-- **Migración 042 sin aplicar**: hasta aplicarla, no hay forma de guardar
-  overrides desde la UI; el bloque de UI de permisos espera en un commit
-  local sin push.
-- Con filtro de etiquetas activo, el total de contactos del agent puede
-  sobrecontar (la RPC `filter_contacts_by_tags` no acepta exclusiones; la
-  página filtra el resultado).
-- La exclusión de contactos usa `.not('id','in',(...))`: con miles de
-  contactos asignados a otros, la URL puede crecer demasiado. La solución
-  real es la misma migración RLS.
-- El export pagina de a 1000 sin límite superior; para cuentas enormes
-  convendría streaming o un tope.
+# Flujos · nodos, timeout y el bot de Kosmo
 
-# Flujos · nodos nuevos, timeout y el bot de Kosmo
+Migraciones **048** (nodos + cola), **049** (reentrada + beta), **050** (el
+flujo de Kosmo), **052** y **053** (seguimiento del catálogo). El bot de
+primer contacto está en producción desde el 02/09/2026.
 
-Sesión 2026-09-02 (pedida por Eze). El motor de Flujos tenía todo para
-un bot de botones y le faltaba todo para uno de texto libre. Tres
-migraciones nuevas: **048** (nodos + cola), **049** (reentrada + beta)
-y **050** (el flujo). Ninguna aplicada — las aplica Emi con
-`npm run migrar` desde el instalador.
+## Nodos
 
-El flujo quedó en la **050 y no en la 048** como decía el pedido: el
-`CHECK` de `flow_nodes.node_type` y el flag de beta tienen que estar
-aplicados ANTES de que el flujo inserte un nodo `wait`, así que las dos
-migraciones de las que depende se llevaron los números de adelante.
-
-## Nodos nuevos
-
-- **`wait`** (`{ seconds, next_node_key }`): suspende la corrida N
-  segundos y sigue sola. **No es un `setTimeout`** y no puede serlo: el
-  proceso que atiende el webhook se apaga apenas contesta el 200 a
-  Meta. La espera se encola en `flow_pending_resumes` (migración 048,
-  misma forma que `automation_pending_executions`) y la drena el cron.
-  La corrida queda estacionada en el propio nodo `wait`, no en el
-  siguiente, para que un mensaje que llegue durante la espera se
-  reconozca como "todavía esperando" (se consume, no repregunta).
-  **Consecuencia operativa: el cron de flujos ahora conviene correrlo
-  cada minuto.** La cola no pierde nada si se atrasa, pero la
-  frecuencia del cron *es* la precisión de la espera: con el cron cada
-  10 minutos, un `wait` de 25 segundos puede tardar 10 minutos.
-
-- **`classify_reply`**: interpreta texto libre y ramifica. El criterio
-  está en `src/lib/flows/classify.ts`, puro:
-  - Compara **por palabra o frase completa**, nunca por subcadena: el
-    "no" adentro de "nono" o de "sino" no es un no.
-  - Evalúa **extra → negativo → positivo → desconocido**. El negativo
-    antes que el positivo porque quien dice que no dijo que no; el
-    extra antes que todo porque suele venir mezclado con un negativo
-    ("nunca compré, llamada no puedo, mejor por catálogo" pide la
-    lista, no es un no a secas).
-  - El desconocido **tiene su propia salida** (`unknown_next`), no cae
-    en la política de fallback: el guion decide si repregunta o
-    traspasa.
-  - Con `prompt_text` pregunta y espera; sin él clasifica el último
-    mensaje del cliente.
-
-Los dos están en el editor (formulario, canvas, validador, i18n en las
-tres lenguas). Lo que el editor **no** expone todavía es el `timeout`
-por nodo: se carga por JSONB, como el flujo de Kosmo.
-
-- **`handoff` con `next_node_key`** (sesión 2026-09-02, seguimiento):
-  el traspaso se hace igual —asignación, nota, conversación pendiente,
-  evento `handoff`— pero la corrida queda **activa** y avanza a ese
-  nodo. Sin la clave, cierra como siempre (`handed_off`). El evento se
-  registra en los dos casos. Lo pide el seguimiento del catálogo: la
-  conversación ya es de Matías y el bot todavía tiene algo que
-  preguntar 24 horas después. En el canvas el traspaso muestra handle
-  de salida **solo** cuando ya tiene destino: el terminal, que es el
-  caso normal, sigue sin ninguno. Tampoco tiene formulario: se carga
-  por JSONB, como el `timeout`.
+- **`wait`** (`{ seconds, next_node_key }`): suspende la corrida N segundos.
+  **No es un `setTimeout`**: la espera se encola en `flow_pending_resumes`
+  y la drena el cron (`/api/flows/cron`, cada minuto por pg_cron). La
+  corrida queda estacionada en el propio nodo `wait`. Capado a 1 hora
+  (`MAX_WAIT_SECONDS` en `validate.ts`); para pausas largas, el timeout.
+- **`classify_reply`**: interpreta texto libre y ramifica
+  (`src/lib/flows/classify.ts`, puro). Compara **por palabra o frase
+  completa**; evalúa **extra → negativo → positivo → desconocido**; el
+  desconocido tiene su propia salida (`unknown_next`). Con `prompt_text`
+  pregunta y espera; sin él clasifica el último mensaje del cliente.
+- **`handoff` con `next_node_key`**: traspasa igual (asignación, nota,
+  conversación pendiente, evento) pero la corrida queda **activa** y avanza
+  a ese nodo; sin la clave cierra como siempre (`handed_off`). En el canvas
+  muestra handle de salida solo con destino. Sin formulario: se carga por
+  JSONB, igual que el `timeout` por nodo.
+- **Archivos en medio del guion** viajan como `kind: 'media'` y una corrida
+  activa que recibe uno traspasa con la nota "Mandó un archivo".
 
 ## Variables del contacto
 
 `{{contact.nombre}}`, `{{contact.nombre_coma}}` (" Juan," / ","),
 `{{contact.coma_nombre}}` (", Juan" / ""), `{{contact.tipo_negocio}}`
-(minúscula, o "tu negocio"), y cualquier `{{contact.<field_name>}}` que
-coincida con un campo personalizado de la cuenta.
-
-- Las **dos formas del nombre** existen porque en el guion aparece de
-  las dos maneras ("Hola{{nombre_coma}} te escribe" y "...con el
-  asesor{{coma_nombre}}? Sí o no."). Sin la segunda no hay forma de
-  poner el nombre al final de una frase y que cierre bien sin él.
-- Un contacto que **se llama como su teléfono** (los que crea el
-  webhook de Meta) NO tiene nombre: "Hola 5491122334455" es peor que no
-  saludar.
-- La lectura es perezosa: un texto sin `{{contact.` no paga consulta.
-- `handoff.note` interpola como cualquier otro texto (`interpolate`,
-  salido de `engine.ts` a `src/lib/flows/interpolate.ts`).
+(minúscula, o "tu negocio"), y cualquier `{{contact.<field_name>}}` de un
+campo personalizado de la cuenta. Un contacto que **se llama como su
+teléfono** NO tiene nombre. La lectura es perezosa; `handoff.note`
+interpola como cualquier texto (`src/lib/flows/interpolate.ts`).
 
 ## Timeout
 
 `fallback_policy.on_timeout` = `{ action: 'tag_and_end' | 'handoff' |
 'goto', tag_id?, note?, next_node_key? }`. Default `tag_and_end` sin
-etiqueta, que es exactamente lo que hacía el barrido antes (cerrar y
-nada más), así que toda política vieja se sigue comportando igual.
-
-Cada nodo que espera puede sobreescribirlo con `timeout: { hours,
-action, tag_id?, note?, next_node_key? }`, **campo por campo**. Lo
-necesita el paso 4 del bot: quien ya dijo que quiere la llamada y solo
-no mandó el horario no es "No responde", es un traspaso.
-
-**`goto` (sesión 2026-09-02, seguimiento) es la única de las tres que
-no cierra la corrida**: al vencer, avanza a `next_node_key` y la deja
-`active`. Con eso el silencio deja de ser solo un final posible y pasa
-a poder disparar el paso siguiente del guion — 24 horas después de
-mandar el catálogo es exactamente cuando corresponde preguntar si lo
-pudo ver. Un `goto` sin destino **no es un `goto`**: se degrada a la
-acción de la política (`resolveTimeoutAction`, `resolveTimeout`) en vez
-de dejar una corrida viva apuntando a la nada. El destino es una
-arista real del grafo aunque la recorra el cron y no el cliente, así
-que el validador exige que exista y la reachability la sigue.
-
-`applyFlowTimeout` **clava primero el estado final de la corrida** con
+etiqueta. Cada nodo que espera puede sobreescribirlo con `timeout: {
+hours, action, tag_id?, note?, next_node_key? }`, campo por campo. **`goto`
+es la única que no cierra la corrida**: avanza a `next_node_key` y la deja
+`active`; un `goto` sin destino se degrada a la acción de la política
+(`resolveTimeoutAction`, `resolveTimeout`). El validador exige que el
+destino exista. `applyFlowTimeout` **clava primero el estado final** con
 la precondición `status='active'` y recién después hace los efectos
-visibles (etiqueta, conversación pendiente), para que dos pasadas
-solapadas del cron no etiqueten dos veces al mismo contacto. En el
-`goto` el claim es el propio movimiento del puntero, condicionado a que
-la corrida siga parada donde se la leyó.
+visibles, para que dos pasadas del cron no etiqueten dos veces.
 
 ## Reentrada tras "No responde"
 
-`src/lib/inbox/reentrada.ts`, llamado desde el webhook al lado de
-`reopenClosedConversation`. Un contacto marcado "No responde" que
-vuelve a escribir: se le pone "En gestión", se le saca "No responde" y
-la conversación vuelve a pendiente asignada a
-`accounts.agente_reentrada` (columna nueva; en NULL queda pendiente sin
-dueño).
+`src/lib/inbox/reentrada.ts`, desde el webhook al lado de
+`reopenClosedConversation`. Un contacto marcado "No responde" que vuelve
+a escribir: se le pone "En gestión" **antes** de sacar "No responde" (el
+trigger borra la anterior al insertar), y la conversación vuelve a
+pendiente asignada a `accounts.agente_reentrada` (en NULL queda sin
+dueño), aunque ya tuviera agente. Cuesta una consulta en el caso común.
+El bot no se reinicia: su disparador es el primer mensaje entrante.
 
-**Por qué ahí y no en una automatización**: ninguna acción existente
-sabe "sacar la etiqueta anterior Y asignar la conversación" — serían
-dos encadenadas por `tag_added`, justo el lazo que el motor limita por
-profundidad. Y no puede ser un nodo de flujo porque no hay corrida: la
-anterior murió por timeout, de eso se trata. Cuesta **una consulta** en
-el caso común. El bot no se reinicia: su disparador es el primer
-mensaje entrante y este no lo es.
-
-Se pone "En gestión" **antes** de sacar "No responde": el trigger
-`trg_single_etapa_tag` borra la anterior al insertar la nueva, y al
-revés el contacto quedaría un instante sin estado.
-
-## Archivos en medio del guion
-
-Una foto, un audio o un documento llegaban al motor como
-`{ kind: 'text', text: '' }`, así que el bot los leía como "no entendí"
-y repreguntaba. Ahora viajan como `kind: 'media'` y una corrida activa
-que recibe uno **traspasa** con la nota "Mandó un archivo".
-
-## El flujo de Kosmo (migración 050)
+## El flujo de Kosmo y el seguimiento del catálogo
 
 19 nodos: `wait` 25 s → "En gestión" → los cuatro pasos del guion. Las
-cuatro etiquetas se resuelven **por nombre dentro de la cuenta** y
-Matías **por email** (`saysellsmatias@gmail.com`); no hay un solo UUID
-pegado a mano, y hay un test que lo verifica.
+etiquetas se resuelven **por nombre dentro de la cuenta** y Matías **por
+email**; ningún UUID a mano. Idempotente y **no destructiva**: si el flujo
+existe por nombre se reemplaza su contenido conservando la fila (los
+`node_key` no cambian). **Ojo con el orden**: la 050 borra y reinserta
+TODOS los nodos, así que si se vuelve a correr hay que correr detrás la
+052 y la 053.
 
-Idempotente y **no destructiva**: si el flujo ya existe por nombre se
-reemplaza su contenido conservando la fila (se actualizan los campos,
-se borran los nodos y se reinsertan). Borrar el flujo entero se
-llevaría puestas las corridas y su historial (`flow_runs` cascadea).
-Como los `node_key` no cambian, una corrida en curso sigue funcionando
-después de correr la migración.
-
-`src/lib/flows/flujo-kosmo.test.ts` **parsea el SQL** en vez de duplicar
-el grafo en TypeScript, y verifica que toda referencia entre nodos
-cierre y que el grafo pase el validador de activación. Un
-`'positive_next', 'paso_3'` donde el nodo se llama `paso3` no lo
-detecta ni Postgres (es JSONB) ni el editor: se descubriría con un lead
-real, cuando la corrida muere a mitad del guion.
-
-## Pendientes de esta sesión
-
-- **Nada se probó contra Meta ni contra Supabase reales.** No hay
-  Postgres local: las tres migraciones no se ejecutaron nunca. Lo
-  verificado es la lógica pura, el motor contra un Supabase falso y la
-  integridad del grafo leyendo el SQL.
-- **El cron tiene que pasar a cada minuto** o el `wait` de 25 segundos
-  se va a sentir como varios minutos. Es un cambio de configuración del
-  pinger, fuera del repo.
-- El `timeout` por nodo **no tiene UI**: se carga por JSONB.
-- Un `wait` está capado a 1 hora (`MAX_WAIT_SECONDS` en `validate.ts`)
-  porque mantiene la corrida activa ocupando el índice único de
-  una-corrida-por-contacto. Para pausas largas, la herramienta es el
-  timeout.
-- La señal `senal_lead_grande` del formulario (`volumen_restock` >
-  USD 3.000) del guion **no** está: es una automatización por
-  `tag_added`, no parte del bot.
-- La reentrada asigna la conversación **aunque ya tenga agente**. Un
-  contacto en "No responde" es, por definición, uno que nadie está
-  atendiendo, pero si eso molesta el cambio es una condición.
-
-# Seguimiento del catálogo (migración 053)
-
-Sesión 2026-09-02 (pedida por Eze). El bot de primer contacto ya está
-**en producción y probado de punta a punta** (02/09: apertura,
-calificación, rama de la lista y traspaso a Matías). Lo que faltaba era
-qué pasa después con el lead que pidió el catálogo y no dijo nada más:
-la rama de la lista terminaba en el traspaso y ahí se acababa todo.
-
-Migración **053, no aplicada** — la aplica Emi con `npm run migrar`.
-Es un parche sobre el flujo que ya está cargado: idempotente
-(`ON CONFLICT (flow_id, node_key) DO UPDATE`) y no destructiva. **Ojo
-con el orden**: la 050 borra y reinserta TODOS los nodos del flujo, así
-que si alguna vez se vuelve a correr hay que correr detrás la 052 y la
-053.
-
-## El mapa de la rama de la lista
-
-Antes:
-
-```
-paso3_no (senal_prefiere_chat) → paso3_lista_msg → traspaso_lista (cierra)
-```
-
-Ahora:
+Rama de la lista:
 
 ```
 paso3_no (senal_prefiere_chat) → paso3_lista_msg
@@ -813,173 +455,31 @@ paso3_no (senal_prefiere_chat) → paso3_lista_msg
                         llamada". Terminal.
 ```
 
-- **Las tres salidas de `lista_cierre` van al mismo `end`** a
-  propósito: cualquier cosa que conteste ahí significa que hay
-  conversación, y donde hay conversación el bot se corre. Lo que ese
-  nodo aporta no es la ramificación sino el reloj.
-- **El silencio del `seguimiento` es un traspaso, no un "No
-  responde"**: a esa persona ya le mandamos el catálogo y su
-  conversación es de Matías. La política de la cuenta diría lo otro y
-  estaría mal, por eso el nodo se la sobreescribe.
-- **Si Matías contesta en cualquier momento de esas 24 horas**, la
-  corrida pasa a `paused_by_agent` (`send-message.ts`, cerca de la
-  línea 515) y el seguimiento no sale. Eso es lo buscado, no un efecto
-  colateral: hay test.
-- Las 24 horas las cuenta el barrido de `/api/flows/cron`, que corre
-  cada minuto por pg_cron. Para una espera de un día, sobra.
-- Nada hardcodeado: la cuenta sale del perfil `saysellsmatias@gmail.com`
-  y el flujo de su nombre (`Bot de primer contacto`), igual que la 050.
-- `src/lib/flows/seguimiento-catalogo.test.ts` arma el grafo leyendo
-  **las tres migraciones en orden** (050 carga, 052 saca el `espera`,
-  053 cuelga el seguimiento) y verifica que toda referencia cierre y
-  que pase el validador de activación sin una sola advertencia.
+- Si Matías contesta en esas 24 horas, la corrida pasa a `paused_by_agent`
+  (`send-message.ts`) y el seguimiento no sale (hay test). El seguimiento
+  sale una sola vez; un lead que no contesta tiene la corrida viva ~48 h
+  ocupando el índice de una-corrida-por-contacto.
+- `src/lib/flows/flujo-kosmo.test.ts` y `seguimiento-catalogo.test.ts`
+  **parsean el SQL** (050, 052, 053 en orden) y verifican que toda
+  referencia entre nodos cierre y que el grafo pase el validador.
+- La señal `senal_lead_grande` del formulario no es parte del bot: es una
+  automatización por `tag_added`.
 
-## Pendientes de esta sesión
-
-- **La 053 no se corrió nunca**: no hay Postgres local. Lo verificado
-  es la lógica pura, el motor contra un Supabase falso y la integridad
-  del grafo leyendo el SQL.
-- Ni el `next_node_key` del traspaso ni el `timeout` por nodo tienen
-  formulario en el editor: se cargan por JSONB.
-- El seguimiento sale **una sola vez**. Si el lead tampoco contesta
-  eso, es un traspaso y ahí queda; no hay una segunda insistencia.
-- Un lead que reciba el catálogo y no conteste nada tiene la corrida
-  viva ~48 horas (24 del cierre + 24 del seguimiento) ocupando el
-  índice único de una-corrida-por-contacto. En ese lapso no se le puede
-  disparar otro flujo.
-
-# Bandeja de escritorio · más de una etiqueta por fila
-
-Sesión 2026-09-08 (pedida por Eze). La lista de conversaciones mostraba
-**una** etiqueta, la de estado. Matías necesita distinguir de un vistazo
-los hilos que además tienen "WhatsApp Mati" sin abrirlos uno por uno.
-Sin SQL: `contact_tags(tags(*))` ya viene joineado en
-`CONVERSATION_SELECT`, el dato estaba y se pintaba una sola.
-
-## La barra lateral se pliega
-
-`src/hooks/use-sidebar-collapsed.ts` — `useSidebarCollapsed()`. El botón
-va **arriba, al lado del nombre de la app**, solo el ícono (SVG inline;
-la flecha apunta a dónde va a ir la barra) y el rótulo en `aria-label` y
-`title`. Es **solo de escritorio** (`lg:inline-flex`): en mobile la barra
-es un cajón que ya tiene su botón de cerrar, plegarla ahí no querría
-decir nada. Por eso *todo* lo que responde a `collapsed` va detrás de
-`lg:`: el mismo DOM sirve para el cajón y para la barra fija.
-
-- **Plegada, la fila de 4.5rem no da para el logo Y el botón**, y de los
-  dos el que tiene que estar es el botón: sin él no hay forma de volver
-  a abrir la barra. El logo se oculta (`lg:hidden`) y vuelve al
-  expandir; el cajón de mobile lo conserva siempre.
-
-- **El estado no vive en la barra** porque tiene un segundo consumidor:
-  la lista de la Bandeja decide chips o puntitos según el ancho que le
-  quede. Y no es un contexto porque no hace falta: es un store externo
-  (`localStorage`, clave `wacrm:layout:sidebar-collapsed`) leído con
-  **`useSyncExternalStore`**, no un `useState` sembrado desde un efecto.
-  Con eso no hay render en cascada al montar (el lint del compilador de
-  React rechaza el `setState` dentro del efecto), el snapshot de
-  servidor es "expandida" —el comportamiento de siempre— así que no hay
-  desajuste de hidratación, y de regalo el evento `storage` sincroniza
-  las pestañas.
-- Device-scoped, igual que el panel de contacto de la Bandeja
-  (`wacrm:inbox:contact-panel-open`).
-- Plegada, cada fila del nav pierde el rótulo (`lg:hidden`), así que la
-  etiqueta accesible la repone `aria-label` y `title` la muestra al
-  pasar el mouse. Los badges (punto de no leídos, contador de
-  notificaciones) pasan a `lg:absolute` sobre la esquina del ícono: sin
-  rótulo no hay renglón donde apoyarlos.
-- La franja de cuenta y el nombre del usuario se ocultan; el avatar
-  queda centrado y sigue abriendo el mismo menú.
-
-## Principal y secundarias
-
-`src/lib/inbox/conversation-tags.ts` — parte pura, con tests
-(`conversation-tags.test.ts`), igual que `contact-tags.ts`.
-
-- `splitConversationTags` devuelve `{ principal, secundarias }`. La
-  principal es la de estado (`grupo = 'estado'`, como máximo una por
-  contacto: lo garantiza `trg_single_etapa_tag`). **Un contacto sin
-  estado no se queda sin pastilla**: sube la primera secundaria y el
-  resto son puntitos.
-- **Secundaria es solo `grupo IS NULL`**, o sea las que alguien puso a
-  mano. Las de `origen` y `senal` las escribe el bot —el receptor de
-  Tally y los nodos del flujo— y son trazabilidad, no algo que el setter
-  mire en la lista: si entraran, cada fila tendría puntitos que nadie
-  puso y el "WhatsApp Mati" se perdería entre ellos. Siguen visibles en
-  la ficha del contacto. Un contacto con **solo** etiquetas del bot se ve
-  en la lista como uno sin etiquetas, que es lo correcto.
-- El orden de `secundarias` es el de entrada a propósito: es el que
-  llega joineado y el mismo que ve la ficha del contacto, así que los
-  puntitos de la lista y las pastillas de la ficha se corresponden.
-- `visibleChips` recorta a `MAX_TAG_CHIPS` (4) y cuenta el `+N`; el
-  `title` del `+N` lista los nombres que quedaron afuera.
-- `tagTint` arma el fondo del chip con **`color-mix` al 15 %** y no con
-  un alfa pegado en hexa, porque `tags.color` es un string libre de la
-  base: los ocho `PRESET_COLORS` son `#rrggbb`, pero una etiqueta creada
-  por API puede traer cualquier color CSS.
-
-## Cómo se ve
-
-La lista pasa de `lg:w-80` a `lg:w-96` cuando la barra está plegada —
-ahí es donde aterriza parte del ancho que libera la barra, y es lo que
-hace que entren los nombres.
-
-- **Barra abierta**: la principal como hoy (pastilla llena, color pleno)
-  y al lado un punto de 8 px por cada secundaria, con el nombre en el
-  `title`. Sin tope, pero el contenedor está acotado (`max-w-24`): del
-  sexto en adelante bajan a un segundo renglón en vez de comerse el
-  nombre del contacto, que es justamente lo que uno mira.
-- **Barra plegada**: las secundarias van enteras, como chips, en su
-  **propio renglón** debajo del preview — al lado del nombre se comerían
-  el nombre. El renglón solo existe si hay etiquetas, así que las filas
-  sin etiqueta miden lo mismo que siempre.
-- Nada de esto toca la app móvil de `/m`: `ConversationList` es del
-  escritorio y `(movil)` tiene su propia lista.
-
-## Pendientes de esta sesión
-
-- **No se vio en un navegador.** Lo verificado es `npm run build`,
-  `npx tsc --noEmit`, `npm run lint` (0 errores, los 35 warnings de
-  base) y los tests de la lógica pura. Los 3 rojos de `vitest` siguen
-  siendo los mismos tres de antes (`flujo-kosmo`,
-  `seguimiento-catalogo`, `date-utils`).
-- **La marca desaparece con la barra plegada** (el botón se queda con
-  la fila). Volver al inicio desde ahí se hace por la entrada del nav,
-  no por el logo.
-- El chip usa el color de la etiqueta como texto sobre ese mismo color
-  al 15 %. Con una etiqueta de color muy oscuro sobre el modo oscuro el
-  contraste queda flojo; la paleta de `PRESET_COLORS` no tiene ninguno
-  así, pero una creada por API sí podría.
-- El ancho plegado (`lg:w-[4.5rem]`) y el de la lista (`lg:w-96`) son
-  números fijos, no una medición: si alguien agrega un ícono más ancho
-  al nav hay que revisarlos.
-- La preferencia es por dispositivo, no por usuario: no viaja entre
-  máquinas.
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, secciones «Flujos»
+y «Seguimiento del catálogo».
 
 # Marca · acento Saysells e íconos
 
-Sesión 2026-09-03 (pedida por Eze). La Bandeja se servía con la marca
-del template original: violeta Hostinger y un bocadillo de chat
-genérico. Entraron los colores de marca y el glifo de WhatsApp, y
-nada más — ni un layout, ni un espaciado, ni un componente. Sin SQL.
-
 ## El acento `saysells`
 
-Sexto acento del catálogo de `src/lib/themes.ts`, y **el nuevo
-`DEFAULT_THEME`**. Los otros cinco siguen en el selector: el boot
-script de `layout.tsx` filtra por `THEME_IDS`, así que quien ya eligió
-uno lo conserva y el default solo aplica a cuentas nuevas y a quien
-nunca eligió. `:root` pasó de sembrar violet a sembrar saysells, para
-que el fallback previo a JS sea el default real.
+Sexto acento de `src/lib/themes.ts` y **`DEFAULT_THEME`**; los otros cinco
+siguen en el selector (el boot script de `layout.tsx` filtra por
+`THEME_IDS`). Es el único acento que cambia con el modo. Desde el
+rediseño, `:root` siembra claro + saysells y el acento quedó al revés:
+navy plano `#1C2B48` como base, navy elevado como override de
+`data-mode="dark"`.
 
-**Es el único acento que cambia con el modo**, y por eso es el único
-que agrega un `html[data-mode="light"][data-theme="saysells"]` encima
-de su bloque base. El resto de los acentos son ciegos al modo: el
-encabezado de `globals.css` dice que ACCENT y MODE escriben variables
-disjuntas, y eso se mantiene — el bloque extra toca tokens de acento
-nada más.
-
-| Token | Oscuro (default) | Claro |
+| Token | Oscuro | Claro (default) |
 | --- | --- | --- |
 | `--primary` | `oklch(0.55 0.15 263)` navy elevado | `oklch(0.291 0.057 262.6)` navy `#1C2B48` |
 | `--primary-foreground` | blanco, **4.75:1** | casi blanco, **13.5:1** |
@@ -988,255 +488,142 @@ nada más.
 | `--ring`, `--sidebar-ring` | celeste `#8EB1D1` | navy |
 | `--chart-2` | naranja `#E84419` | naranja `#E84419` |
 
-- **El navy `#1C2B48` no puede ser el relleno de los botones en
-  oscuro**: es `oklch(0.291 …)` y desaparece sobre las superficies
-  negras. En oscuro va un navy **elevado**, que es el tono del navy de
-  marca con la luminosidad y el croma que hacen legible a cobalt.
-- **El celeste tampoco puede ser el primario en oscuro**, aunque sea
-  la tentación obvia: `oklch(0.746 …)` es casi blanco, y como
-  `bg-primary` deja las **burbujas de mensaje enviado de la Bandeja**
-  en pastel con tinta oscura, que no se leen como enviadas. Se probó y
-  se revirtió en la misma sesión. El celeste se queda con lo que un
-  pastel hace bien: los dos `--primary-soft` y el anillo de foco,
-  donde va **sobre** una superficie oscura en vez de debajo de tinta
-  oscura (8.4:1 sobre `card`).
-- **El naranja `#E84419` es `--chart-2`**, el único lugar donde
-  aterriza. Los otros cinco temas eligen ahí un tono vecino; este
-  tenía un color de marca esperando el puesto, y una segunda serie de
-  gráfico es exactamente el "acento puntual" que el naranja es en la
-  paleta.
-- **El fondo claro `#F4F6F8` no se usa**: `--background` es un token
-  de MODO, compartido por los seis acentos. Escribirlo desde el bloque
-  de un acento rompería esa separación.
-- `text-primary` sobre `card` en oscuro da **3.80:1**. No es un
-  defecto del tema: violet da 3.08:1 y cobalt 4.45:1 en la misma
-  medición. Subir eso es una decisión que afecta a los seis.
+- El navy `#1C2B48` no sirve de relleno en oscuro (desaparece sobre las
+  superficies negras) y el celeste tampoco como primario (deja las
+  burbujas enviadas en pastel): el celeste queda en `--primary-soft` y el
+  anillo de foco. El naranja aterriza solo en `--chart-2`. `--background`
+  es un token de MODO, compartido por los seis acentos.
+- ACCENT y MODE escriben variables disjuntas (`globals.css`); el bloque
+  `html[data-mode][data-theme="saysells"]` toca tokens de acento nada más.
 
-## `WhatsAppGlyph` — una sola definición del glifo
+## `WhatsAppGlyph` y favicon
 
-`src/components/brand/whatsapp-glyph.tsx`. Antes el bocadillo aparecía
-en cinco lugares con **dos dibujos distintos**: el favicon tenía path
-propio y el sidebar más las tres pantallas de auth usaban el
-`MessageSquare` de lucide. Es la marca real de WhatsApp (bocadillo con
-cola y el tubo adentro), no un bocadillo genérico.
+`src/components/brand/whatsapp-glyph.tsx`: una sola definición del glifo
+(bocadillo con cola y tubo calado con `fill-rule: evenodd`), pintado con
+`currentColor`; el tubo es un agujero, así que el mismo marcado sirve
+sobre cualquier fondo sin nombrar un color. `src/app/icon.tsx` importa el
+path (`WHATSAPP_GLYPH_PATH`), no el componente: `ImageResponse` renderiza
+por satori. Cuadrado navy `#1C2B48` hardcodeado a propósito (es un PNG de
+build). La versión de contorno no sirve a 32×32. `MessageSquare` sigue en
+la barra como ícono de la Bandeja, no como marca.
 
-- **Un solo color, a propósito**: el bocadillo se pinta con
-  `currentColor` y el tubo se cala con `fill-rule: evenodd`, así que
-  el tubo es un **agujero** que deja ver lo que hay detrás. Con eso el
-  mismo marcado sirve sobre el `bg-primary` del sidebar, sobre el
-  `bg-primary/10` de las pantallas de auth y sobre el navy plano del
-  favicon **sin nombrar un color en el componente**: lo decide el
-  tema. No hay un color de marca suelto en ningún componente.
-- **`icon.tsx` importa el path (`WHATSAPP_GLYPH_PATH`), no el
-  componente**: `ImageResponse` renderiza por satori, que no entiende
-  clases de Tailwind y quiere `width`/`height` explícitos.
-- **El cuadrado del sidebar sigue siendo `bg-primary` con tinta
-  `text-primary-foreground`**, no un navy fijo. Hardcodearlo le pondría
-  el cuadrado navy también a quien elige emerald o rose. Consecuencia
-  a tener presente: con saysells da navy + blanco en claro, pero
-  **celeste + navy en oscuro**, que es el modo por defecto.
-- `MessageSquare` sigue importado en `sidebar.tsx`: es el ícono de la
-  entrada "Bandeja" del nav, que no es la marca.
-- El `UsersRound` de las invitaciones (login, signup, `join/[token]`)
-  no se tocó: ese no es el glifo de marca.
+Historia: `respaldos/claude-md-historia-2026-10-12.md`, sección «Marca».
 
-## Favicon
+# Rediseño
 
-`src/app/icon.tsx` lo genera con `ImageResponse` en runtime **edge** —
-no es un `.ico` en disco, y no puede traer assets ni imágenes: por eso
-el glifo es path inline. Cuadrado navy `#1C2B48` con el bocadillo
-blanco y el tubo calado, o sea la marca real invertida.
+Rama `rediseno`, salida de `main`; se publica solo en la Bandeja USA
+hasta el merge final. Referencia: `docs/rediseno/prototipo-v1.html`
+(aprobado el 12/10/2026). Regla: **cambia el frontend, la lógica no**
+(ver "Qué no se toca"). Sesiones A (base y barra), B (navegación y lista),
+C (conversación), D (ficha y agendar), E (closer y teclado) y F1
+(Contactos, Notificaciones, diferencias) hechas; **F2 pendiente**:
+Configuración, Panel, Embudos, Difusiones, Automatizaciones, Flujos y
+Agentes IA conservan su layout viejo adentro de la tarjeta.
 
-- **El navy queda hardcodeado a propósito**: es un PNG de build, no ve
-  las variables CSS, y un favicon no puede seguir el acento de cada
-  usuario. Espeja el navy que hay detrás del `--primary` del tema.
-- **La versión de contorno no sirve a 32×32**: el aro queda por debajo
-  del píxel y el tubo se hace papilla. Se comprobó renderizando el
-  ícono a tamaño real y mirándolo, no por deducción.
+## Base y tokens
 
-## Pendientes de esta sesión
+- **Outfit** por `next/font/google` (`layout.tsx`), variable `--font-sans`.
+  **Modo claro por defecto** (`DEFAULT_MODE`); quien ya eligió uno lo
+  conserva. El modo oscuro anda pero no se rediseñó; las clases `dark:`
+  de shadcn siguen sin aplicar (`.dark` nadie lo pone).
+- **Tokens semánticos** en los dos modos, mapeados a Tailwind: `selected`
+  / `selected-strong` (celeste suave), `hover` / `hover-strong`, `pending`
+  (naranja, **solo** lo que espera respuesta), `unread`, `success` /
+  `warning` / `danger` / `info` / `neutral` con su `-soft`, `bubble-in`;
+  `shadow-menu` y `shadow-card`. Modo claro: fondo `#F4F6F8`, tarjeta
+  blanca, línea `#E5E9EF`, tinta navy.
+- **Estructura** (`src/app/(dashboard)/dashboard-shell.tsx`): grilla
+  `4rem + 1fr`; barra lateral sobre el fondo gris sin panel; el contenido
+  de cada pantalla en **una tarjeta blanca de 16 px** que scrollea
+  (`main` con `p-4 sm:p-6`). Bandeja, Contactos y Notificaciones ocupan la
+  tarjeta entera con `-m-4 h-[calc(100%+2rem)] sm:-m-6 sm:h-[calc(100%+3rem)]`.
+  A la derecha, el riel (`side-rail.tsx`, 56 px, solo `lg`).
+- **`src/components/ui/`**: botón de 38 px navy con hover (`sm` 34);
+  **badge en rectángulo de 5 px** con variantes `success` / `warning` /
+  `danger` / `info` / `selected` / `pending`; campos de 40 px con foco
+  celeste sin halo; menús, select y popover con panel de 14 px,
+  `shadow-menu`, sin padding y filas de borde a borde; **modales**
+  (`dialog`, `sheet`) de 20 px con cruz visible de 40 px y **clic afuera
+  bloqueado** (`disablePointerDismissal` por defecto; el velo sacude el
+  modal con `.modal-shake`). Escape cierra. `DialogFooter` sangra `-mx-6`.
+- Chips de estado: tinta de `GROUP_COLORS` sobre `tagTint` (color-mix al
+  15 %, porque `tags.color` es un string libre). Avatares: `avatarColors`
+  / `initialsOf` (`vistas.ts`) y los componentes `NameAvatar`,
+  `MiniAvatar`, `UnassignedMark` de `src/components/inbox/avatars.tsx`.
 
-- **Nada se vio en un navegador.** Lo verificado es: el favicon
-  renderizado de verdad a 32×32 y mirado, la cascada CSS resuelta para
-  los 6 temas × 2 modos (sin variables faltantes, y los otros cinco
-  resolviendo igual que antes), los contrastes calculados, la lógica
-  del boot script ejercitada y `npm run build` completo con las
-  variables dummy del CI.
-- **El chip del selector de temas es un solo string** (`ThemeMeta.swatch`)
-  y muestra el primario de oscuro. En modo claro el tema aplica el navy
-  plano, así que ahí el chip no coincide. Arreglarlo pide un campo más
-  y tocar el panel de Apariencia.
-- El glifo del sidebar quedó en `h-4 w-4`, el tamaño que ya tenía. Al
-  ser relleno y no trazo ocupa un poco menos que la proporción del
-  favicon (22/32); subirlo a `h-5` lo emparejaría, pero es un cambio
-  de tamaño que esta sesión no tenía permitido hacer.
-- Ningún test cubre el catálogo de temas ni el CSS: no había pruebas
-  de eso antes y no se agregaron.
+## Barra superior y selector (`top-bar.tsx`)
 
-# Rediseño · sesión A (base y barra)
+Reemplazó a `header.tsx` y `mode-toggle.tsx` (i18n `TopBar`). Menú (mobile
+abre el cajón, escritorio pliega la barra: `useSidebarCollapsed`, store
+externo en `localStorage` `wacrm:layout:sidebar-collapsed` leído con
+`useSyncExternalStore`), marca, **selector de bandeja**, buscador
+(en la Bandeja filtra mientras se escribe vía `useInboxSearch`; desde otra
+pantalla Enter → `/inbox?q=`; Contactos lee su `?q=` con `useSearchParams`
+bajo `Suspense` y `key={q}`), "Atajos de teclado", campana con contador,
+lanzador de 9 puntos (`SAYSELLS_APPS`; Bandejas abre el selector, las
+demás en otra pestaña) y avatar con el menú de siempre más modo claro /
+oscuro.
 
-Sesión 2026-10-12 (pedida por Emi). Rama `rediseno`, salida de `main`;
-se publica solo en la Bandeja USA hasta el merge final. Referencia:
-`docs/rediseno/prototipo-v1.html` (aprobado el 12/10/2026). Regla de
-todo el rediseño: **cambia el frontend, la lógica no** (ni `supabase/`,
-ni webhook, envío, flujos, `src/lib/auth/` ni `(movil)`). Sin
-dependencias nuevas. Plan: A base y barra · B navegación y lista ·
-C conversación · D ficha y agendar · E closer y teclado · F resto.
+- **Quién ve el selector**: `GET /api/saysells/selector` lee el mail de la
+  sesión y devuelve `{ visible, bandejas }` (401 sin sesión). Variables de
+  **servidor** `SELECTOR_BANDEJAS` y `SELECTOR_EQUIPO`; falta cualquiera o
+  el mail no está ⇒ oculto. Parseo puro en `src/lib/saysells/selector.ts`
+  con tests; `useSaysellsSelector` es un store de módulo (un fetch por
+  persona aunque lo monten la barra y el riel).
+- **Grupos** (F1): `Nombre|URL|Grupo`; `groupBandejas` arma un
+  `DropdownMenuGroup` con su `DropdownMenuLabel` por grupo en orden de
+  aparición y las sin grupo al final bajo "Bandejas". Sin grupos, un solo
+  bloque.
+- **Número** (F1): debajo del nombre va el número de WhatsApp.
+  `useWhatsAppNumber(enabled)` lo pide **una vez por pestaña**
+  (`sessionStorage` `wacrm:selector:whatsapp-number`) a
+  `GET /api/whatsapp/config`, solo con el selector visible; `displayNumberFrom`
+  lo saca de `phone_info.display_phone_number` con `connected: true`. Mientras
+  carga, sin conexión o con error: el dominio.
+- Iniciales y color del cuadrado por hash del nombre (`bandejaColor`). Al
+  elegir otra bandeja: "Abriendo dominio…" y `window.location.assign`.
+  No van: el pie "apps.saysells.com" (el dominio no existe) ni "Vista: Todos".
 
-## Qué cambió
+## Barra lateral (`sidebar.tsx`)
 
-- **Outfit** por `next/font/google` (`layout.tsx`), misma variable
-  `--font-sans`. **Modo claro por defecto** (`DEFAULT_MODE`); quien ya
-  eligió uno lo conserva. En `globals.css`, `:root` siembra claro +
-  saysells, y el acento saysells quedó al revés: navy plano `#1C2B48`
-  como base, navy elevado como override de `data-mode="dark"`.
-- **Tokens del prototipo** en el bloque de modo claro (fondo `#F4F6F8`,
-  tarjeta blanca, línea `#E5E9EF`, tinta navy) y **tokens semánticos**
-  nuevos en los dos modos, mapeados a Tailwind: `selected` /
-  `selected-strong` (celeste suave), `hover` / `hover-strong`, `pending`
-  (naranja, **solo** lo que espera respuesta) y `unread`, y `success` /
-  `warning` / `danger` / `info` / `neutral` con su `-soft`; más
-  `shadow-menu` y `shadow-card`.
-- **Estructura** (`dashboard-shell.tsx`): grilla `4rem + 1fr`; la barra
-  lateral sobre el fondo gris sin panel, y el contenido de cada
-  pantalla en **una tarjeta blanca de 16 px** que es la que scrollea.
-  La Bandeja ocupa la tarjeta entera (`calc(100% + 2rem)` contra sus
-  márgenes negativos).
-- **`src/components/ui/`** (cada pantalla hereda el estilo): botón de
-  38 px navy con hover (`sm` 34); **badge en rectángulo de 5 px**,
-  nunca pastilla, con variantes `success` / `warning` / `danger` /
-  `info` / `selected` / `pending`; campos de 40 px con foco celeste
-  sin halo; menús, select y popover con panel de 14 px, `shadow-menu`,
-  sin padding y filas de borde a borde (el clic afuera los cierra:
-  son desplegables); **modales** (`dialog`, `sheet`) de 20 px con cruz
-  visible de 40 px y **clic afuera bloqueado**:
-  `disablePointerDismissal` en `true` por defecto y el velo sacude el
-  modal (`.modal-shake`, compone con la propiedad `translate` de
-  Tailwind v4). Escape cierra. Ningún uso pasaba
-  `showCloseButton={false}`. `DialogFooter` sangra `-mx-6`; el único
-  modal con `p-0` (`import-modal.tsx`) lo anula.
-- **Barra lateral**: 248 / 76 px plegada, filas de 36 px, activo
-  celeste, no leídos en naranja, contador como número. Mismo contenido
-  y permisos (`nav.ts` intacto). Perdió la fila de marca, el botón de
-  plegar y el menú de avatar: viven en la barra superior. Conserva el
-  cierre del cajón de mobile y la franja de cuenta + rol.
-- **Barra superior** (`top-bar.tsx` reemplaza a `header.tsx` y
-  `mode-toggle.tsx`; i18n `Header` → `TopBar` en en/es/ko, `ModeToggle`
-  desapareció): menú (mobile abre el cajón, escritorio pliega), marca
-  (cuadrado navy con S + "Bandejas"), **selector de bandeja** con
-  `NEXT_PUBLIC_APP_NAME` y el host actual; el desplegable lista
-  nombre + dominio, marca la actual por host (`isCurrentBandeja`),
-  deshabilita las sin URL como "Próximamente" y al elegir otra muestra
-  "Abriendo dominio…" y hace `window.location.assign` (otro dominio).
-  Buscador: Enter → `/contacts?q=`; Contactos lee `?q=` con
-  `useSearchParams` bajo `Suspense` y `key={q}` remonta la pantalla
-  (sin efecto que sincronice). Derecha: campana con el contador que ya
-  existía, lanzador de 9 puntos (Bandejas abre el selector; CRM,
-  Propuestas, SayWorld y Portal en otra pestaña, `SAYSELLS_APPS`) y
-  avatar con el menú de siempre más Modo claro / oscuro.
+248 / 76 px plegada, filas de 36 px **sin espacio entre ellas** (F1,
+prototipo `.ni`), activo celeste, no leídos en naranja, contador como
+número. "Nuevo mensaje" (celeste, `canSendMessages`), vistas con contador,
+Embudo con cuadrado de color, Herramientas con las entradas de siempre
+menos "Bandeja" (`nav.ts` intacto). Plegada: íconos con `title` y
+`aria-label`, contadores `lg:absolute` sobre el ícono. Lee `?vista=` /
+`?embudo=` bajo un `Suspense` del shell. Con muchos grupos y herramientas
+pide scroll: no se cambia la estructura.
 
-## Selector: quién lo ve
+## El store compartido (`src/hooks/use-inbox-store.tsx`)
 
-`GET /api/saysells/selector` lee el mail con la sesión del servidor y
-devuelve `{ visible, bandejas }`; sin sesión **401** con
-`{ visible: false, bandejas: [] }` (el middleware no cubre la ruta).
-Variables de **servidor**, nunca `NEXT_PUBLIC_`:
+`InboxStoreProvider` en el shell; `useInboxStore()`: **una** lista de
+conversaciones para toda la app (la barra cuenta sobre ella, la Bandeja la
+filtra, Contactos y Notificaciones leen `memberNames`). Se carga una vez
+cuando el perfil resuelve, con `conversationVisibilityFilter`, y trae en la
+misma consulta el último mensaje (`last_msg`) y el último del cliente
+(`last_customer_msg`) embebidos (`INBOX_CONVERSATION_SELECT` en
+`src/lib/inbox/inbox-conversation.ts`). Nunca una consulta por fila.
 
-- `SELECTOR_BANDEJAS`: `Nombre|URL,Nombre|URL`. URL vacía =
-  próximamente; una URL no absoluta se trata como vacía.
-- `SELECTOR_EQUIPO`: mails separados por coma, sin distinguir
-  mayúsculas.
-- **Default**: falta cualquiera de las dos, o el mail no está ⇒
-  `visible: false` y lista vacía: la barra muestra solo el nombre, sin
-  desplegable ni lanzador. Es el estado inicial del cliente
-  (`useSaysellsSelector`) y al que cae ante cualquier error.
-- Parseo puro en `src/lib/saysells/selector.ts`, con tests.
+- **Un canal de realtime, nombre único**: `messages` INSERT,
+  `conversations` *, `contact_tags` INSERT/DELETE (relee ESA conversación)
+  y `contacts` UPDATE. Cada evento toca su fila; solo una fila desconocida
+  se hidrata, deduplicada por id. Reconexión y pestaña visible → una
+  recarga.
+- `hydrate(conversationId)` va por `hydrate-queue.ts`; la página copia al
+  store (`patch`, `patchContact`) lo que el hilo y la ficha cambian; el
+  store sabe cuál es el hilo abierto (`setActiveConversationId`) y avisa
+  por `subscribeConversationUpdates`. `tags` y `memberNames` (`profiles`
+  acotado por RLS) salen del mismo store.
+- **Tope**: la consulta no pagina y Supabase corta en 1000; con más
+  conversaciones visibles las más viejas no entran ni en la lista ni en
+  los contadores.
 
-## Decisiones y pendientes
-
-- Iniciales y color del cuadrado por hash del nombre (paleta fija):
-  la misma bandeja se ve igual en toda instancia. La variable no lleva
-  grupo, así que la lista sale plana en su orden. El lanzador no tiene
-  el pie "apps.saysells.com" del prototipo (no estaba en el pedido).
-- `ko.json` se mantuvo en paridad de claves con `en.json`: lo exige
-  `src/i18n/messages.test.ts`.
-- **Arreglo 2026-10-12**: el selector tiraba la página entera en USA
-  porque su `DropdownMenuLabel` iba suelto; es el `Menu.GroupLabel` de
-  base-ui y **siempre va adentro de un `DropdownMenuGroup`** (mismo
-  caso del issue #336; igual `SelectLabel` dentro de `SelectGroup`).
-  `src/components/ui/menu-label-grouping.test.ts` recorre los `.tsx`
-  de `src/` y falla si vuelve a pasar.
-- **Arreglo 2 (2026-10-12)**: con la barra superior,
-  `useUnreadNotifications` quedó montado dos veces (barra lateral y
-  barra superior) y su canal de realtime tenía nombre fijo:
-  `supabase.channel(nombre)` devuelve el canal existente y
-  `.on("postgres_changes")` tira error si ya se está uniendo, así que
-  toda pantalla con sesión caía. Regla: **un canal de realtime por
-  instancia, nombre único por llamada** (`uniqueChannelName` en
-  `src/lib/realtime/channel-name.ts`, con test); nunca un nombre fijo
-  en un hook que pueda vivir en dos lugares. Aplicado también a
-  `useTotalUnread`.
-- **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 40 warnings de base), tests (los 3 rojos de
-  `currency.test.ts` ya estaban), validador de mensajes y build.
-- Sesión B: vistas (Para mí, Sin tomar…), embudo en la barra, "Nuevo
-  mensaje" en la barra, lista del prototipo, búsqueda en mensajes y en
-  la lista. Sesión F: las demás pantallas conservan su layout viejo
-  adentro de la tarjeta. El modo oscuro anda pero no se rediseñó; las
-  clases `dark:` de shadcn siguen sin aplicar (`.dark` nadie lo pone).
-- Botón 32→38 px y campo 32→40: las pantallas densas crecen en alto;
-  lo que se desborde se corrige en F.
-
-# Rediseño · sesión B (navegación y lista)
-
-Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits
-`8ac0608` (barra lateral) y el de la lista. Misma regla: frontend sí,
-lógica no; sin SQL, sin dependencias. Prototipo: `nav()`, `list()`,
-`row()`, `rel()`, `shortWhen()`, `dur()`, `win()`, `takeNext()`.
-
-## El store compartido
-
-`src/hooks/use-inbox-store.tsx` (`InboxStoreProvider`, montado en el
-shell; `useInboxStore()`): **una** lista de conversaciones para toda
-la app. La barra lateral cuenta sobre ella y la Bandeja la filtra, así
-un contador y la lista no pueden contar distinto. Se carga una vez
-cuando el perfil resuelve, con `conversationVisibilityFilter` (vistas,
-contadores y búsqueda cuentan solo lo que el rol ya ve), y trae en la
-**misma consulta** el último mensaje (`last_msg`, para "Vos:" /
-"Bot:") y el último del cliente (`last_customer_msg`, la ventana de
-24 h) embebidos con orden y límite por conversación
-(`INBOX_CONVERSATION_SELECT` en `src/lib/inbox/inbox-conversation.ts`).
-Nunca una consulta por fila; la sintaxis se verificó contra PostgREST.
-
-- **Un canal de realtime, nombre único** (`uniqueChannelName`):
-  `messages` INSERT (vista previa, contador, quién mandó, ventana),
-  `conversations` *, `contact_tags` INSERT/DELETE (relee ESA
-  conversación: cambió el estado) y `contacts` UPDATE (nombre, empresa,
-  `fecha_llamada`). Cada evento toca su fila en memoria; nunca vuelve a
-  pedir todo (#106). Solo una fila desconocida se hidrata, deduplicada
-  por id. Reconexión y pestaña visible → una recarga, nunca más de una
-  en vuelo.
-- El hilo abierto sigue siendo de `inbox/page.tsx`: el store sabe cuál
-  es (`setActiveConversationId`) para no subir su contador, y avisa por
-  `subscribeConversationUpdates` cuando esa fila cambia. La página
-  copia al store (`patch`) lo que el hilo cambia (estado, asignación,
-  etiquetas de la ficha). El canal del hilo también lleva nombre único
-  y `useRealtime` ganó `onReconnect` (sin efecto con setState).
-- `tags` (embudo y filtro) y `memberNames` (setter de cada fila, de
-  `profiles` acotado por RLS) salen del mismo store, una lectura cada
-  uno.
-- **Tope de filas**: la consulta no pagina y Supabase corta en su tope
-  (1000 por defecto). Como contadores y lista salen de la misma lista,
-  cuentan lo mismo, pero con más de 1000 conversaciones visibles las
-  más viejas (orden por `last_message_at`) no entran ni en una ni en
-  otra.
-
-## Vistas contra datos
-
-`src/lib/inbox/vistas.ts`, puro, con tests en `vistas.test.ts`.
+## Vistas, embudo y lista (`src/lib/inbox/vistas.ts`, puro, con tests)
 
 | Vista | Datos | Cuenta cerradas |
 | --- | --- | --- |
+| Mis llamadas | solo closer: llamadas a su nombre o sin closer | no |
 | Para mí | `assigned_agent_id = yo` | no |
 | Sin tomar | `assigned_agent_id IS NULL` (contador en naranja) | no |
 | Agendadas | estado con `requiere_fecha` + `contacts.fecha_llamada` (solo si la cuenta tiene una etiqueta así) | no |
@@ -1245,408 +632,231 @@ Nunca una consulta por fila; la sintaxis se verificó contra PostgREST.
 | Cerradas | `status = 'closed'` (sin contador) | sí |
 
 - **Embudo**: grupo = nombre de la etiqueta de estado, salvo que pida
-  fecha → "Agendada" (`estadoGroupOf`). Orden por `ESTADO_FUNNEL` con
-  una regla: "Agendada" y cualquier "Agendado a …" van donde van las
-  de Paola y Gustavo, sea quien sea el closer (`groupRank`); un nombre
-  desconocido va al final, en gris neutro (`groupColor`). Los grupos
-  salen de las etiquetas de la cuenta (`funnelGroups`), con cero si no
-  tienen conversaciones. Cuenta solo no cerradas.
-- **Closer** = lo que sigue a "Agendado a " en la etiqueta
-  (`closerFromTag`); "Agendada" / "Reagendado" → chip sin nombre.
-- **Ventana** (`windowState`): abierta, por vencer (< 2 h), cerrada
-  (> 24 h, no se muestra en Ganada ni Perdido) o sin mensajes del
-  cliente (sin chip).
-- `relativeTime`, `shortWhen`, `durationParts` devuelven descriptores;
-  la lista los traduce (es y en) y los recalcula con `useNow()` (un
-  reloj por minuto, no un temporizador por fila).
+  fecha → "Agendada" (`estadoGroupOf`); orden por `ESTADO_FUNNEL` con
+  "Agendada" y cualquier "Agendado a …" donde van las de Paola y Gustavo
+  (`groupRank`); nombre desconocido al final, gris neutro (`groupColor`).
+  `funnelGroups(tags)` da los grupos de la cuenta. **Closer** = lo que
+  sigue a "Agendado a " (`closerFromTag`). **Ventana** (`windowState`):
+  abierta, por vencer (< 2 h), cerrada (> 24 h; no se muestra en Ganada ni
+  Perdido) o sin mensajes del cliente.
+- **Tiempos**: `relativeTime` ("recién", "hace N min", "hace N h", "ayer",
+  "hace N días", "dd/mm" desde los 7 días, y "dd/mm/aaaa" si no es de
+  este año), `shortWhen` para el futuro ("hoy 16:00", "mañana 10:00",
+  "jue 15, 17:30"), `pastWhen` para el pasado ("hoy 16:00", "ayer 10:00",
+  "12 oct, 17:30", "12 oct 2025"), `durationParts`. Devuelven
+  descriptores; el texto lo pone `src/lib/inbox/time-text.ts`
+  (`formatRelative`, `formatShortWhen`, `formatPastWhen`,
+  `formatDuration`, claves de `Inbox.conversationList`) y los componentes
+  los recalculan con `useNow()` (un reloj por minuto).
+- **URL**: `/inbox?vista=mis-llamadas|para-mi|sin-tomar|agendadas|por-vencer|todas|cerradas`,
+  `/inbox?embudo=<grupo>`, `/inbox?q=<texto>`, `/inbox?c=<id>` (hilo abierto).
+  Sin vista: Mis llamadas para el closer, Para mí para el agent, Todas para
+  los demás (`defaultVista`).
+- **Búsqueda**: nombre, empresa, teléfono por dígitos y texto de los
+  mensajes (una consulta `ilike` con `escapeLike`, 300 ms entre teclas,
+  tope 1000 filas, cruzada con la lista visible). **Tomar siguiente**
+  (solo Para mí, `canSendMessages`): la sin tomar más antigua por
+  `created_at` con `.is('assigned_agent_id', null)`; si otra persona la
+  tomó primero, sigue con la próxima.
+- **Lista** (`conversation-list.tsx`, 350 px): no carga nada; la página
+  filtra una vez con `filterConversations` (búsqueda > grupo > vista, más
+  los filtros del desplegable) y esa lista es la que recorren J y K.
+  Secciones "Sin leer" / "Leídas" solo en Para mí y Todas. Fila de tres
+  líneas: nombre y hora relativa; vista previa con "Vos:" / "Bot:" y
+  contador en naranja; estado, llamada ("Manuel · hoy 16:00"), ventana,
+  setter (iniciales de 22 px) o sin tomar, y las etiquetas secundarias
+  (`splitConversationTags` / `visibleChips` de `conversation-tags.ts`:
+  secundaria es solo `grupo IS NULL`; chips con la barra plegada, puntitos
+  abierta; la lista pasa a `lg:w-96` plegada).
 
-## URL y barra lateral
+## Hilo y cuadro de mensaje (sesión C)
 
-- `/inbox?vista=para-mi|sin-tomar|agendadas|por-vencer|todas|cerradas`,
-  `/inbox?embudo=<grupo>`, `/inbox?q=<texto>`, `/inbox?c=<id>` (hilo
-  abierto; al elegir un hilo se conserva la vista o el grupo). Sin
-  vista: **Para mí** para el agent, **Todas** para los demás
-  (`defaultVista`). Cambiar de vista o de grupo no abre ningún hilo.
-- Barra lateral: "Nuevo mensaje" (celeste, `canSendMessages`; abre el
-  diálogo de siempre y navega con `?c=`), vistas con contador, embudo
-  con cuadrado de color, Herramientas con las entradas de antes menos
-  "Bandeja" (`nav.ts` intacto). Plegada: íconos con `title` y
-  `aria-label`. Lee `?vista=` / `?embudo=` con `useSearchParams` bajo
-  un `Suspense` del shell.
-- **Búsqueda**: store externo `useInboxSearch` (como la barra plegada;
-  sin efectos que siembren estado). En la Bandeja la barra superior
-  filtra mientras se escribe: nombre, empresa, teléfono por dígitos y
-  texto de los mensajes (una consulta `ilike` con `%`/`_` escapados,
-  300 ms entre teclas, tope 1000 filas, cruzada con la lista visible).
-  Título "Resultados"; vaciar vuelve a la vista. Desde otra pantalla,
-  Enter lleva a `/inbox?q=`. Contactos sigue leyendo su `?q=`.
-- **Tomar siguiente** (solo en Para mí, `canSendMessages`): la sin
-  tomar más antigua por `created_at`, con el `update` de
-  `assigned_agent_id` de siempre más `.is('assigned_agent_id', null)`;
-  si otra persona la tomó primero, sigue con la próxima. Después abre
-  `/inbox?vista=para-mi&c=<id>`.
-
-## Lista
-
-`src/components/inbox/conversation-list.tsx` no carga nada: filtra la
-lista del store con `filterConversations` (búsqueda > grupo > vista,
-más los filtros del desplegable) y pinta. Encabezado con título y
-"N conversaciones"; el desplegable **Filtros** (conversación abierta o
-pendiente, etiquetas, empresa) conserva lo que el prototipo no tiene;
-todo rótulo va dentro de su `DropdownMenuGroup`. Secciones "Sin leer"
-/ "Leídas" ("Conversaciones" si no hay sin leer) solo en Para mí y
-Todas. Fila de tres líneas como `row()`: nombre y hora relativa; vista
-previa con "Vos:" / "Bot:" y contador en naranja; estado (grupo en
-rectángulo de 5 px con el color de `GROUP_COLORS` al 15 %), llamada
-("Manuel · hoy 16:00"), ventana ("Vence en 1 h 20 min" / "Ventana
-cerrada"), setter (iniciales en círculo de 22 px, color por hash) o
-sin tomar, y las etiquetas secundarias al final (chips con la barra
-plegada, puntitos abierta: `visibleChips`). Vacíos del prototipo:
-Sin tomar vacía, Bandeja sin conversaciones, búsqueda sin resultados y
-vista vacía. Ancho 350 px.
-
-## Pendientes y lo que queda para la sesión C
-
-- **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 39 warnings: uno menos que la base), tests (los 3 rojos de
-  `currency.test.ts`), validador y build; y la sintaxis de la consulta
-  con embebidos contra PostgREST real (sin sesión, 200).
-- **Arreglo 2026-10-12 (antes de publicar)**: la lista quedaba cargando
-  para siempre en 6 de 8 cargas. El efecto de carga del store tenía un
-  guard de "una sola consulta en vuelo" más el `cancelled` del cleanup;
-  como el perfil se pide dos veces al arrancar, la respuesta en vuelo
-  se descartaba y la corrida nueva no pedía. Regla: **cada corrida pide
-  siempre y gana la respuesta más nueva** por número de pedido
-  (`src/lib/inbox/load-sequence.ts`, con test); nunca un guard que pueda
-  descartar una respuesta sin que otro pedido la reemplace.
-- Los colores de los chips de estado son la tinta de `GROUP_COLORS`
-  sobre su tinte al 15 %, no los pares pastel exactos del prototipo.
-- El panel de contacto abierto/plegado pasó a un store externo
-  (`useContactPanelOpen`), misma clave de localStorage.
-- Sesión C: el hilo, el composer y la ventana dentro del hilo. Sesión D:
-  ficha y agendar. Sesión E: Mis llamadas y atajos. Sesión F: Contactos,
-  Notificaciones, Configuración y el selector.
-
-# Rediseño · sesión C (conversación)
-
-Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `bcdea3d`
-(hilo) y el del cuadro de mensaje. Misma regla: frontend sí, lógica
-no; sin SQL, sin dependencias. Prototipo: `thread()`, `composer()`,
-`winText()`, `qrPop()`, `send()`, `sendTpl()`, `closeConv()`.
-
-## Hilo (`message-thread.tsx`, `message-bubble.tsx`)
-
-- **Encabezado** de 72 px: avatar de 42 (`avatarColors` / `initialsOf`,
-  los de la lista), nombre, "empresa · teléfono". Derecha: el panel de
-  contacto y volver (mobile) como estaban; la acción principal es
-  **"Reabrir"** solo con `status = 'closed'` (Agendar llamada es de la
-  D); cerrar (`CircleCheck`, mismo UPDATE de `status`, toast con
-  Deshacer) y el menú **"Más"**: pasar a abierta / pendiente, "Asignar
-  a…" (submenú con presencia), Actualizar y Copiar teléfono. "Marcar
-  como no leída" y "Bloquear" no existen y no van. Las líneas de evento
-  del prototipo ("Matías tomó la conversación") no tienen dónde
-  guardarse: no van.
-- **Mensajes** sobre `bg-card` (salió el fondo con dibujos). Burbuja
-  `.bb`: 14.5 px, radio 20, entrante `bg-bubble-in` (token nuevo
-  `--bubble-in`, #F0F3F7 claro / gris oscuro), saliente `bg-primary`
-  con hora y tildes adentro. Rótulos arriba (`outgoingLabel` en
-  `src/lib/inbox/thread.ts`): "Bot" con `sender_type = 'bot'`,
-  "Plantilla · nombre" con `content_type = 'template'` (el bot gana si
-  es las dos cosas). El chip "Plantilla" de adentro de la burbuja se
-  fue; la marca IA (`ai_generated`) sigue adentro.
-- **Separadores de día** y **notas internas** salen de `buildTimeline`
-  (puro, con tests): mensajes y `contact_notes` del contacto
-  intercalados por `created_at`; "Hoy", "Ayer" y "Jueves 9 de octubre"
-  (`dayLabel`; nombres de días y meses en i18n). La nota es el bloque
-  amarillo "Nota interna · autor" (autor por `profiles`, acotado por
-  RLS). **Las notas no son realtime** (`contact_notes` no está en la
-  publicación y eso es SQL): se releen con el hilo y con Actualizar;
-  una que se agrega desde la ficha aparece al actualizar.
-- **Ventana de 24 h**: la regla de la lista (`windowState` de
-  `vistas.ts` sobre `lastCustomerMessageAt(messages)`, con `useNow`).
-  Es `null` hasta que cargaron los mensajes de ESA conversación
-  (`loadedConversationId`), para que el panel de plantillas no
-  parpadee al cambiar de hilo. `Inbox.sessionTimer` desapareció del
-  i18n.
-- El composer va con **`key` por conversación**: borrador, adjunto en
-  curso y grabación son de ese hilo; al cambiar, el `unmount` hace el
-  GC del adjunto y suelta el micrófono (antes viajaban al otro hilo).
-- El vacío sin conversación es el del prototipo sin la línea de J y K
-  (sesión E).
-
-## Cuadro de mensaje (`message-composer.tsx`)
-
-- Pestañas **Responder / Nota interna**; indicador de la ventana a la
-  derecha, solo en Responder: verde "Ventana abierta · quedan X",
-  amarillo "La ventana vence en X" (< 2 h), rojo "Ventana cerrada hace
-  X" o "Sin respuesta del cliente todavía". Con menos de 2 h, el aviso
-  "Después de las HH:MM solo vas a poder escribirle con una plantilla
-  aprobada." (`hhmm(until)`).
-- **Ventana cerrada o sin respuesta** ⇒ `TemplatePanel` en lugar del
-  cuadro: lista a la izquierda, vista previa (burbuja navy) y las
-  variables a la derecha, "Enviar plantilla". Reusa `useApprovedTemplates`,
-  `collectVariableSlots` y `renderBodyPreview`, **exportados de
-  `template-picker.tsx`** (el diálogo sigue existiendo y sigue siendo
-  lo que abre el botón de plantillas con la ventana abierta, y lo usan
-  Contactos y "Nuevo mensaje"). El envío es el `handleSendTemplate`
-  del hilo. El borrador escrito no se pierde: el textarea se desmonta,
-  el estado del componente no.
-- **Borradores por conversación** en dos `Map` de módulo
-  (`replyDrafts`, `noteDrafts`), leídos al montar con la `key`.
-- El cuadro **crece con el texto** (46 a 180 px, `adjustHeight`), el
-  placeholder es "Escribí a <nombre>…  / para respuestas rápidas" (sin
-  nombre, o con el teléfono como nombre: "Escribí un mensaje…").
-- **Barra**: adjuntar (foto / video / documento), grabar audio (directo
-  al grabador), respuestas rápidas (pone "/"), plantillas (el diálogo),
-  interactivo, "Sugerir respuesta" (`/api/ai/draft`; sin IA, aviso en
-  castellano), ayuda "Enter envía · Shift + Enter, nueva línea" y el
-  botón redondo navy. **En Nota interna solo quedan la ayuda y
-  guardar**: un adjunto o una plantilla saldrían por WhatsApp y la
-  nota nunca sale. Es una decisión de esta sesión, no del prototipo
-  (que muestra los botones siempre).
-- **Nota interna**: cuadro amarillo (`warning-soft`), Enter la guarda
-  con el mismo insert de `contact_notes` que la ficha (en el hilo,
-  `handleSaveNote`), aparece en la línea de tiempo y avisa "Nota
-  guardada. Solo la ve el equipo." La pestaña está deshabilitada para
-  el viewer (RLS agent+).
-- **Respuestas rápidas con "/"**: `src/lib/inbox/quick-replies.ts`
-  (puro, con tests): `slashQuery` (empieza con "/", una línea),
-  `filterQuickReplies` (título sin la barra o contenido; título
-  primero), `moveSelection` / `clampSelection`. El panel se apoya sobre
-  el cuadro; flechas y Enter eligen, Escape lo cierra hasta la próxima
-  tecla; `mousedown` para no perder el foco. Texto ⇒ reemplaza el
-  cuadro; interactiva ⇒ abre el armador. El catálogo se pide una vez
-  por montaje (la primera "/"). **`quick-reply-picker.tsx` se borró.**
-- "Guardar como respuesta rápida" pide el nombre en un **Dialog** del
-  sistema (antes `window.prompt`); la nueva entra al catálogo en
-  memoria.
-- **Arreglo 2026-10-12 (antes de publicar)**: con el panel de contacto
-  abierto la barra se salía del cuadro. Medido con navegador: barra
+- **Hilo** (`message-thread.tsx`, `message-bubble.tsx`): encabezado de
+  72 px con avatar, nombre, "empresa · teléfono"; acción principal
+  (`primaryAction`: Agendar / Reagendar, "Crear propuesta" para un closer
+  con llamada suya, "Reabrir" con `status = 'closed'`), cerrar
+  (`CircleCheck`, toast con Deshacer; el UPDATE de `status` vive en la
+  página: botón y tecla E van por `onSetStatus` / `onCloseConversation`)
+  y menú "Más" (abierta / pendiente, Actualizar, Copiar teléfono).
+  Mensajes sobre `bg-card`; burbuja `.bb` 14.5 px radio 20, entrante
+  `bg-bubble-in`, saliente `bg-primary` con hora y tildes adentro; rótulos
+  "Bot" / "Plantilla · nombre" arriba (`outgoingLabel` en
+  `src/lib/inbox/thread.ts`). Separadores de día y notas internas salen
+  de `buildTimeline` (puro); las notas **no son realtime** (se releen con
+  el hilo y con Actualizar). La ventana de 24 h es `null` hasta que
+  cargaron los mensajes de ESA conversación. El menú flotante de cada
+  mensaje (`message-actions.tsx`) va con `bottom-full`: apoyado en el
+  borde de arriba del bloque sin pisar el rótulo (F1).
+- **Cuadro** (`message-composer.tsx`, con `key` por conversación):
+  pestañas Responder / Nota interna; indicador de la ventana (verde
+  abierta, amarillo < 2 h, rojo cerrada o sin respuesta). **Ventana
+  cerrada o sin respuesta ⇒ `TemplatePanel`** en lugar del cuadro
+  (reusa `useApprovedTemplates`, `collectVariableSlots` y
+  `renderBodyPreview` exportados de `template-picker.tsx`). Borradores por
+  conversación en `src/lib/inbox/composer-drafts.ts` (`prefillReplyDraft`
+  + suscripción); órdenes del teclado por `composer-commands.ts`. Crece de
+  46 a 180 px. Barra: adjuntar, grabar, respuestas rápidas ("/"),
+  plantillas, interactivo, "Sugerir respuesta" (`/api/ai/draft`), ayuda y
+  el botón redondo navy; **en Nota interna solo la ayuda y guardar**.
+  Nota interna: cuadro amarillo, Enter guarda con el insert de
+  `contact_notes`, deshabilitada para el viewer. **Respuestas rápidas con
+  "/"**: `src/lib/inbox/quick-replies.ts` (`slashQuery`,
+  `filterQuickReplies`, `moveSelection`); `quick-reply-picker.tsx` se
+  borró. "Guardar como respuesta rápida" pide el nombre en un Dialog.
+  Donde el nombre de una plantilla se corta hay `title` con el entero (F1).
+- **Cortes de ancho del cuadro** (es un `@container`; las consultas `@[…]`
+  miden el contenido sin los 24 px de padding por lado). Medido: barra
   lateral 248, lista 350, panel 280 ⇒ el hilo mide 290 px a 1180, 390 a
-  1280, 476 a 1366, 550 a 1440, 646 a 1536 y 790 a 1680. El cuadro es un
-  `@container` (Tailwind v4) y las consultas `@[…]` miden el CONTENIDO
-  del contenedor, sin los 24 px de padding de cada lado (242 px a 1180).
-  Cortes, con margen sobre lo medido: texto de "Sugerir respuesta" desde
-  410 px (abajo, ícono solo con `title` y `aria-label`), indicador
-  largo de la ventana desde 420 (abajo, la versión corta "Quedan 23 h
-  33 min" / "Vence en 58 min" / "Ventana cerrada", nunca puntos
-  suspensivos), panel de plantillas a dos columnas desde 440, ayuda
-  "Enter envía…" desde 620 (enviar pasa a `ml-0` en el mismo corte). La
-  fila de pestañas y la barra llevan `flex-wrap`: si el indicador no
-  entra baja a su propio renglón a la derecha, y si la barra no entra
-  pasa a dos renglones con enviar abajo a la derecha. Esperado: a 1180
-  indicador en su renglón y barra en dos; a 1280 todo en un renglón con
-  ventana corta y Sugerir solo ícono; de 1366 a 1536 ventana larga y
-  Sugerir con texto; a 1680 también la ayuda. Cerrar el panel por
-  defecto abajo de 1380 px, como el prototipo, es de la sesión D.
-- Viewer: textarea deshabilitado con el placeholder de solo lectura,
-  toda la barra deshabilitada, "Enviar plantilla" deshabilitado.
-- `GatedButton` dejó de usarse en el cuadro (siguen usándolo otras
-  pantallas).
+  1280, 476 a 1366, 550 a 1440, 646 a 1536 y 790 a 1680. Texto de
+  "Sugerir respuesta" desde 410 px (abajo, ícono solo), indicador largo
+  de la ventana desde 420 (abajo, la versión corta), panel de plantillas a
+  dos columnas desde 440, ayuda "Enter envía…" desde 620. Pestañas y barra
+  con `flex-wrap`.
+- No hay reintento del mensaje fallido (la burbuja queda en "fallido").
 
-## Pendientes y lo que queda para la sesión D
+## Riel, ficha y agendar (sesión D)
 
-- **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 37 warnings: dos menos que la base), tests (los 3 rojos de
-  `currency.test.ts`), validador de mensajes y build.
-- **No hay reintento del mensaje fallido**: hoy tampoco existía (la
-  burbuja queda en "fallido"); el pedido lo nombraba como existente.
-- Las notas del hilo no se actualizan solas cuando alguien las carga
-  desde la ficha (ver arriba).
-- El toolbar flotante de cada mensaje (`message-actions.tsx`) sale a
-  `-top-3` del grupo y puede pisar el rótulo "Bot" / "Plantilla".
-- Sesión D: Agendar llamada como acción principal, el riel lateral
-  (Ficha, Llamadas, Notas, Propuestas) y llevar "Asignar a…" del menú
-  "Más" a la ficha. Sesión E: atajos (J, K, A, L, E, N, ?) y Mis
-  llamadas.
+- **Riel** (`side-rail.tsx`): Ficha, Llamadas (solo con `hasScheduling`),
+  Notas y Propuestas (solo `useSaysellsSelector().visible`). Estado en
+  `src/hooks/use-side-panel.ts` (misma clave de localStorage para
+  abierto/cerrado; sin nada guardado arranca abierto desde 1380 px);
+  lógica en `src/lib/inbox/side-panel.ts` (`togglePanelTab`,
+  `tabAfterOpeningConversation`, `effectiveSideTab`).
+- **Panel** (`side-panel.tsx`, 330 px): **la ficha lee la fila VIVA del
+  store** (`activeRow`) y después de escribir hace `patchContact` +
+  `hydrate`. Lo único que pide aparte son oportunidades y datos del
+  formulario. Notas las carga la página (`inbox/page.tsx`) y las comparten
+  hilo y ficha; autor por `memberNames`; fechas de notas y primer mensaje
+  con `pastWhen`. Etiquetas: la fila Estado del grupo Embudo lista las de
+  estado en orden de embudo; el grupo Etiquetas muestra las que NO son de
+  estado con cruz y "Agregar" (`ficha.ts`: `nonEstadoTags`,
+  `tagChipLabel` —"Origen: anuncio" / "Origen: formulario"—,
+  `contactOrigin`, `upcomingCalls`). "Asignar a…" vive acá (UPDATE de
+  `assigned_agent_id`). `usePresence` usa `uniqueChannelName("presence")`.
+- **Agendar llamada**: `src/lib/inbox/agendar.ts` (puro, con pruebas) +
+  `schedule-call-dialog.tsx` (780 px, calendario propio, horarios
+  09:00–12:30 y 14:00–18:30). Siempre **primero la fecha, después la
+  etiqueta** (`applySchedule` → `saveFechaLlamada` → `attachTag`).
+  `resolveScheduleTag` (decisión de Emi del 12/10): agendar sin llamada
+  vigente → "Agendado a <closer>" (sin closers, la de estado con fecha
+  que no es "Reagendado"); reagendar → "Reagendado", o "Agendado a
+  <nuevo>" si cambia el closer; desde Estado, "Agendado a X" abre con X
+  marcado y "Agendada" / "Reagendado" aplican esa (`fixedTag`); si el
+  contacto ya tiene la etiqueta, se saca y se vuelve a poner
+  (`needsReattach`) para que el aviso al CRM salga del INSERT. Ocupados:
+  misma hora, mismo closer, mismo día sobre el store (`busySlots`,
+  `daysWithCalls`, `callsNextWeek`). Casilla "Dejarlo listo en el
+  composer" (`prefillReplyDraft`) solo con ventana abierta o por vencer.
+  USA y Star Energy no tienen etiquetas con fecha: ahí no hay Agendar, ni
+  fila Llamada, ni pestaña Llamadas.
 
-# Rediseño · sesión D (ficha y agendar)
+## Closer y teclado (sesión E)
 
-Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `2de5640`
-(riel y ficha) y el de agendar. Misma regla: frontend sí, lógica no;
-sin SQL, sin dependencias. Prototipo: `rail()`, `side()`,
-`primaryAction()`, `openSchedule()`, `drawSchedule()`, `saveSchedule()`,
-`setState()`, `busy()`, los menús `state` / `setter` / `tags`.
+- **Closer** (`src/lib/inbox/closer.ts` + `use-closer.ts`): quien tiene
+  como nombre de pila (`firstNameKey`) el de una etiqueta "Agendado a
+  <nombre>" de la cuenta (`closerNameOf`); si dos miembros lo comparten,
+  ninguno. **Mis llamadas** (`?vista=mis-llamadas`): pendientes a su
+  nombre y sin closer (chip "Sin closer"), por hora y agrupadas por día
+  (`groupByDay`, `callDayHeading`, `callRow`, `callStatus`); contador "N
+  por hacer". **Tarjeta de la llamada** en el panel (`showsCallCard`):
+  Realizada, Reagendar, No se presentó y Propuesta (`outcomeTag`: cada
+  resultado es `attachTag` de la etiqueta de estado con ese nombre;
+  Propuesta abre propuestas.saysells.com para el equipo de Saysells).
+  "Crear propuesta" como acción principal (`showsProposalAction`).
+- **Teclado** (`src/lib/inbox/shortcuts.ts`: `shortcutFor`,
+  `isTypingTarget`, `neighborId`, `SHORTCUT_HELP`; un solo `keydown` en
+  `inbox/page.tsx`). Nunca escribiendo en un campo, con un modal, menú o
+  popover abierto (`role="dialog"` / `"menu"` / `"listbox"`) ni con Cmd,
+  Ctrl o Alt. J / K mueven por la lista a la vista; A toma la abierta o
+  Tomar siguiente; L abre Agendar / Reagendar; E cierra con Deshacer; N y
+  / mandan una orden al cuadro (Nota interna, o Responder con "/"); ?
+  abre el modal "Atajos de teclado" (`shortcuts-dialog.tsx`, estado en
+  `use-shortcuts-help.ts`; también desde la barra superior). El viewer
+  solo J, K y ?. En esta versión de lucide `CircleHelp` se llama
+  `CircleQuestionMark` y `FileSignature` no existe (se usa `FilePen`).
 
-## Riel y panel
+## Contactos (sesión F1)
 
-- **Riel** (`src/components/layout/side-rail.tsx`, montado en el shell
-  a la derecha de la tarjeta, 56 px, solo `lg`): Ficha, Llamadas (solo
-  con `hasScheduling`), Notas y Propuestas (solo `useSaysellsSelector().
-  visible`). En la Bandeja la activa cierra el panel y otra lo abre;
-  desde otra pantalla lleva a `/inbox` con esa pestaña. Sin el "+".
-- **Estado del panel**: `src/hooks/use-side-panel.ts` (reemplaza a
-  `use-contact-panel-open.ts`; misma clave de localStorage para
-  abierto/cerrado; sin nada guardado arranca abierto desde 1380 px). La
-  pestaña vive en memoria. Lógica pura en `src/lib/inbox/side-panel.ts`
-  (`togglePanelTab`, `tabAfterOpeningConversation`, `effectiveSideTab`).
-  `useSaysellsSelector` pasó a un store de módulo: un fetch por persona
-  aunque lo monten la barra superior y el riel.
-- **Panel** (`src/components/inbox/side-panel.tsx`, 330 px; reemplaza a
-  `contact-sidebar.tsx`). **La ficha lee la fila VIVA del store**
-  (`activeRow`: el contacto con etiquetas y `fecha_llamada` de la misma
-  lista que pintan la barra, la lista y Llamadas) y después de escribir
-  hace `patchContact` + `hydrate(conversationId)`. Con eso lista,
-  contadores, Llamadas, ficha y encabezado se actualizan sin recargar y
-  sin esperar al realtime; lo del CRM llega por el canal del store. Lo
-  único que la ficha pide aparte son oportunidades y datos del
-  formulario. Las escrituras no cambiaron (`attachTag` / `detachTag` /
-  `createAndAttachTag`; el UPDATE de `assigned_agent_id` del viejo
-  "Asignar a…", que salió del menú "Más").
-- **Notas** las carga la página (`inbox/page.tsx`, con `load-sequence`)
-  y las comparten hilo y ficha: una nota cargada en cualquiera de los
-  dos aparece en el otro. Autor por `memberNames` del store (el hilo ya
-  no pide `profiles`). Orden: la más vieja primero, cuadro abajo.
-- **Etiquetas**: la fila Estado del grupo Embudo lista las de estado en
-  orden de embudo; el grupo Etiquetas muestra las que NO son de estado
-  (manuales, origen y señal) con cruz y "Agregar" (`ficha.ts`:
-  `nonEstadoTags`, `tagChipLabel` —"Origen: anuncio" / "Origen:
-  formulario"—, `contactOrigin` para "Llegó por", `upcomingCalls` para
-  la pestaña Llamadas).
-- `usePresence` pasó a `uniqueChannelName("presence")` (lo montan la
-  ficha y Miembros).
+`src/app/(dashboard)/contacts/page.tsx`, prototipo `contactos()`; lógica
+en `src/lib/contacts/contactos.ts` (puro, con pruebas).
 
-## Agendar llamada
+- **Encabezado**: "Contactos" con el contador de la consulta; a la
+  derecha Campos personalizados (botón de ícono con `title`, solo
+  `canEditSettings`), Importar y Nuevo contacto (`canEdit`, abre
+  `ContactForm`) y Exportar (`canExport`).
+- **Barra**: un solo filtro, "Filtro por estado" (`.ddb`), que abre el
+  menú "Estado es cualquiera de" con los grupos del embudo
+  (`filterOptions`: los mismos de la barra lateral, cada uno con su chip)
+  y debajo "Otras etiquetas" (las que no son de estado, rotuladas con
+  `tagChipLabel`). Casillas (`DropdownMenuCheckboxItem`, no cierran al
+  marcar) con el cuadrado `.cb` a la izquierda. **Un solo disparador
+  estable**: al marcar, el botón se convierte en el chip `.fchip`
+  ("Estado" / "Etiqueta" / "Estado o etiqueta" · "es cualquiera de" · lo
+  marcado · X) sin desmontarse, así base-ui no pierde el ancla. Lo marcado
+  arma **una lista de ids** para `filter_contacts_by_tags`
+  (`filterTagIds`: un grupo = todas sus etiquetas de estado), que ya
+  filtra por "cualquiera de" y trae total y página. Sin etiquetas en la
+  cuenta (USA) el filtro no va. Buscador a la derecha (nombre, teléfono y
+  email, y el `?q=` de la barra superior).
+- **Columnas**: Nombre (avatar de 28 px, semibold; "Sin nombre"),
+  Teléfono, Estado (chip del grupo; solo si hay etiquetas de estado),
+  Origen ("Anuncio" / "Formulario" / nombre, `contactOrigin`; solo si hay
+  etiquetas de origen), Setter (`assigned_agent_id` de su conversación:
+  mini avatar y nombre, o "Sin tomar") y Último mensaje (`last_message_at`
+  con `formatRelative`). Una sola consulta más por página a
+  `conversations` con los ids de la página, en la misma corrida y con su
+  `fetchSeq` (`conversationsByContact`). Sin conversación, Setter y
+  Último mensaje vacíos. Orden por fecha de alta (ordenar por último
+  mensaje necesita la base).
+- **Clic en la fila** (`conversationHref`): `/inbox?vista=todas&c=<id>`,
+  o `vista=cerradas` si está cerrada; sin conversación, la ficha
+  (`ContactDetailView`). Se quedan, con el diseño nuevo: la casilla de
+  cada fila y la barra para borrar varios, el menú Más (Ver ficha,
+  Editar, Eliminar), la paginación de a 25, el vacío sin contactos y lo
+  que ve un agent (`hiddenContactIds`). Vacío con filtro o búsqueda:
+  "Sin contactos con este filtro."
 
-`src/lib/inbox/agendar.ts` (puro, con pruebas) +
-`src/components/inbox/schedule-call-dialog.tsx` (780 px, calendario
-propio, horarios 09:00–12:30 y 14:00–18:30). Lo abren la acción
-principal del hilo (`primaryAction`), Agendar / Cambiar de la fila
-Llamada y los estados con fecha. **Salió el diálogo con el campo nativo
-`datetime-local`.** Siempre **primero la fecha, después la etiqueta**
-(`applySchedule` → `saveFechaLlamada` → `attachTag`).
+## Notificaciones (sesión F1)
 
-Qué etiqueta se aplica (`resolveScheduleTag`, decisión de Emi del
-12/10):
+`src/app/(dashboard)/notifications/page.tsx`; lógica en
+`src/lib/inbox/notificaciones.ts` (puro, con pruebas); i18n en el
+namespace `Notifications`.
 
-1. Agendar sin llamada vigente: "Agendado a <closer elegido>"; sin
-   closers en la cuenta, la de estado con fecha que no es "Reagendado"
-   en orden de embudo ("Agendada").
-2. Reagendar con llamada vigente: "Reagendado"; con un closer distinto
-   del actual, "Agendado a <nuevo>"; sin "Reagendado" en la cuenta, la
-   actual.
-3. Desde Estado: "Agendado a X" abre Agendar con X marcado; "Agendada" /
-   "Reagendado" abren sin lista de closers y aplican esa (`fixedTag`);
-   el estado actual con fecha abre Reagendar (`requestFromEstado`).
-4. Si el contacto ya tiene la etiqueta que corresponde, después de la
-   fecha se saca y se vuelve a poner (`needsReattach`): el aviso al CRM
-   sale del INSERT y el duplicado no inserta nada.
+- Encabezado como Contactos: "Notificaciones" con "N sin leer" y "Marcar
+  todas como leídas". Filas como las de la lista: ícono de 42, texto,
+  hora con `formatRelative`, sin leer en negrita con punto naranja y hora
+  en navy. Click: la marca leída y abre `/inbox?c=`.
+- **El texto se arma en el navegador**: la base escribe título y texto en
+  inglés (`notify_conversation_assigned`, migración 027) y eso no se toca.
+  `notificationText`: "<nombre de pila> te asignó la conversación con
+  <contacto>" (actor de `store.memberNames`, `firstNameOf`) o "Te
+  asignaron la conversación con <contacto>" sin `actor_user_id`; el
+  contacto sale de una consulta a `contacts` con los `contact_id` que
+  faltan (`missingContactIds`, también para las que llegan en vivo), "un
+  contacto" si no está. Otro tipo: título y texto de la fila.
+- Vacío: "No tenés notificaciones" / "Cuando alguien te asigne una
+  conversación, aparece acá." Canal de realtime con `uniqueChannelName`.
 
-- **Ocupados**: misma hora y minuto, mismo closer, mismo día, sobre las
-  conversaciones del store (`busySlots`, `daysWithCalls`,
-  `callsNextWeek`). Closer `null` = las etiquetas que no nombran a nadie.
-- **Mensaje al cliente** (`Inbox.schedule.msg*`): con la casilla
-  "Dejarlo listo en el composer" y la ventana abierta o por vencer,
-  queda escrito en Responder de esa conversación sin enviarse, con el
-  foco al final; si había un borrador se agrega abajo. Los borradores
-  del cuadro salieron a `src/lib/inbox/composer-drafts.ts`
-  (`prefillReplyDraft` + suscripción del cuadro). Ventana cerrada o sin
-  respuesta: casilla deshabilitada con el motivo.
-- USA y Star Energy no tienen etiquetas con fecha: ahí no hay botón
-  Agendar, ni fila Llamada, ni pestaña Llamadas.
+## Pendientes del rediseño
 
-## Pendientes y lo que queda para la sesión E
+- **Nada se vio en un navegador** desde esta base: la revisión con
+  navegador la hace el chat de dirección contra una Supabase falsa y la
+  visual, Emi en USA.
+- **F2**: Configuración, Panel, Embudos, Difusiones, Automatizaciones,
+  Flujos y Agentes IA con el diseño del rediseño; el ajuste de alto de
+  los controles (botón 32→38, campo 32→40) en esas pantallas.
+- Del prototipo no van: "Ver como", las líneas de evento, el resultado
+  guardado en la llamada, "Vista: Todos" (no hay tabla para vistas
+  guardadas) y el pie "apps.saysells.com".
+- Las notas de otras personas llegan al actualizar (realtime de
+  `contact_notes` es SQL). El panel y el riel son de escritorio.
+- Los colores de los chips de estado son la tinta de `GROUP_COLORS` al
+  15 %, no los pares pastel exactos del prototipo. El chip del selector
+  de temas (`ThemeMeta.swatch`) muestra el primario de oscuro.
+- Barra plegada: anchos fijos (`lg:w-[76px]`, lista `lg:w-96`); la
+  preferencia es por dispositivo, no por usuario.
 
-- **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 35 warnings: dos menos que la base), tests (los 3 rojos de
-  `currency.test.ts`), validador de mensajes y build.
-- El panel y el riel son de escritorio; `(movil)` no se tocó.
-- Las notas de otras personas siguen llegando al actualizar (realtime
-  de `contact_notes` es SQL).
-- Las notas de la ficha se listan por `shortWhen` ("lun 6, 10:00"), sin
-  año: una nota de otro año se ve igual que una de este.
-- Sesión E: la vista de closer (tarjeta de la llamada, Realizada /
-  Reagendar / No se presentó / Propuesta, "Crear propuesta"), Mis
-  llamadas y los atajos (J, K, A, L, E, N, ?). Sesión F: Contactos,
-  Notificaciones, Configuración y el selector.
-
-# Rediseño · sesión E (closer y teclado)
-
-Sesión 2026-10-12 (pedida por Emi), rama `rediseno`, commits `16bd0e7`
-(bloque 1: arreglo del store y vista de closer) y el del teclado.
-Misma regla: frontend sí, lógica no; sin SQL, sin dependencias.
-Prototipo: `ISCLOSER()`, `inView(c,'calls')`, `callRow()`, `callc` /
-`outc`, `outcome()`, `primaryAction()`, `keydown`, `openKeys()`.
-
-## Arreglo del store
-
-`hydrate` descartaba una relectura si ya había otra de esa conversación
-en vuelo (`hydratingRef`, sesión B): con dos cambios de etiqueta
-seguidos la lista quedaba con el estado del medio. Ahora
-`src/lib/inbox/hydrate-queue.ts` (puro, con pruebas): por conversación
-corre UNA lectura a la vez; la pedida durante otra queda anotada y
-corre **una sola más** apenas termina, con lo último de la base; quien
-pidió mientras tanto espera esa lectura extra. Las lecturas van en
-serie, así que la última respuesta aplicada es la de la última lectura.
-No se encontró otra guarda igual: los `cancelled` de los efectos
-(etiquetas, miembros, mensajes del hilo, ficha) descartan la respuesta
-vieja pero la corrida nueva siempre vuelve a pedir, y
-`quickRepliesFetchRef` es "pedir una vez por montaje", no una relectura.
-
-## Closer
-
-`src/lib/inbox/closer.ts` + `src/hooks/use-closer.ts`. Es closer quien
-tiene como nombre de pila (primera palabra de `profiles.full_name`, sin
-mayúsculas ni acentos: `firstNameKey`) el de una etiqueta "Agendado a
-<nombre>" de la cuenta (`closerNameOf`); si dos miembros del roster
-comparten ese nombre de pila, ninguno. USA y Star Energy no tienen
-closers; en ARG serán Ezequiel y Manuel cuando sus etiquetas reemplacen
-a las de Paola y Gustavo (datos, lo hace el chat de dirección).
-
-- **Mis llamadas** (`?vista=mis-llamadas`, solo closer, primera de la
-  lista, mismo ícono que Agendadas): las llamadas pendientes a su nombre
-  y las que no nombran closer ("Agendada" / "Reagendado", chip "Sin
-  closer"), sin cerradas, por hora y agrupadas por día ("Hoy · jueves 15
-  de octubre"; `dayLabel` de `thread.ts` suma "Mañana"). Fila
-  `callRow`: hora, avatar, nombre, "empresa o teléfono · setter X",
-  estado "Sin resultado" (ya pasó) / "En X" (< 3 h) / "Agendada".
-  Contador "N por hacer". Sin vista en la URL el closer arranca ahí
-  (`defaultVista(role, isCloser)`); las demás vistas quedan (un closer
-  puede ser admin).
-- **Tarjeta de la llamada** (`side-panel.tsx`, título "Llamada") cuando
-  la llamada abierta es suya o sin closer (`showsCallCard`): día, hora
-  con "en X" / "ya pasó", nombre · empresa, y "Después de la llamada"
-  con Realizada, Reagendar (modal de la D), No se presentó y Propuesta.
-  Cada resultado es `attachTag` de la etiqueta de estado con ese nombre
-  (`outcomeTag`; sin ella el botón no va); Propuesta abre
-  propuestas.saysells.com en otra pestaña para el equipo de Saysells,
-  antes de esperar la red. La versión hecha vive en memoria hasta
-  cambiar de hilo: al recargar vuelve la ficha común.
-- **"Crear propuesta"** como acción principal del hilo
-  (`showsProposalAction`: closer + llamada suya + equipo Saysells).
-- Los filtros del desplegable de la lista pasaron a la página: la lista
-  filtrada se calcula una vez (`filterConversations`) y es la misma que
-  recorren J y K.
-
-## Teclado
-
-`src/lib/inbox/shortcuts.ts` (puro, con pruebas: `shortcutFor`,
-`isTypingTarget`, `neighborId`, `SHORTCUT_HELP`) y un solo manejador de
-`keydown` en `inbox/page.tsx`. Nunca escribiendo en un campo, con un
-modal, menú o popover abierto (base-ui los monta con `role="dialog"` /
-`"menu"` / `"listbox"` solo mientras están abiertos) ni con Cmd, Ctrl o
-Alt. J / K mueven por la lista a la vista; A toma la abierta si está sin
-tomar (el UPDATE del Setter) o Tomar siguiente; L abre Agendar /
-Reagendar (sin etiquetas con fecha, nada); E cierra con Deshacer (el
-UPDATE de `status` salió del hilo a la página: botón y tecla cierran
-por el mismo camino, `onSetStatus` / `onCloseConversation`); N y /
-mandan una orden al cuadro de esa conversación
-(`src/lib/inbox/composer-commands.ts`, un bus como `composer-drafts`):
-Nota interna con el foco, o Responder con "/" si la ventana está
-abierta o por vencer; ? abre el modal. El viewer solo J, K y ?.
-
-Modal "Atajos de teclado" (`shortcuts-dialog.tsx`, montado en el shell,
-estado en `use-shortcuts-help.ts`): lo abren ? y el botón de la barra
-superior, antes de la campana, en todas las pantallas. En esta versión
-de lucide `CircleHelp` se llama `CircleQuestionMark`, y `FileSignature`
-no existe: Propuesta y "Crear propuesta" usan `FilePen`, como la D. El
-vacío del hilo volvió a decir "Usá J y K para moverte por la lista."
-
-## Pendientes y lo que queda para la F
-
-- **Nada se vio en un navegador**: verificado typecheck, lint (0
-  errores, 35 warnings: los de base), tests (los 3 rojos de
-  `currency.test.ts`), validador de mensajes y build.
-- Del prototipo no van: "Ver como", las líneas de evento y el resultado
-  guardado en la llamada.
-- Sesión F: Contactos, Notificaciones, Configuración y el selector.
+Historia de las sesiones A a F1 (fechas, commits, incidentes, conteos de
+warnings): `respaldos/claude-md-historia-2026-10-12.md`, secciones
+«Rediseño · sesión A» a «Rediseño · sesión E», «Bandeja de escritorio ·
+más de una etiqueta por fila» y «Marca».
