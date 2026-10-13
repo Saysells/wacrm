@@ -455,9 +455,12 @@ export type RelativeTime =
   | { kind: "hours"; n: number }
   | { kind: "yesterday" }
   | { kind: "days"; n: number }
-  | { kind: "date"; day: number; month: number };
+  | { kind: "date"; day: number; month: number; year?: number };
 
-/** Como `rel` del prototipo. */
+/**
+ * Como `rel` del prototipo. Desde los 7 días es "dd/mm"; si no es de
+ * este año, trae `year` (sesión F1: "12/10/2025").
+ */
 export function relativeTime(t: number, now: number): RelativeTime {
   const diff = now - t;
   const MIN = 60 * 1000;
@@ -468,7 +471,11 @@ export function relativeTime(t: number, now: number): RelativeTime {
   if (days === 1) return { kind: "yesterday" };
   if (days < 7) return { kind: "days", n: days };
   const d = new Date(t);
-  return { kind: "date", day: d.getDate(), month: d.getMonth() + 1 };
+  const year = d.getFullYear();
+  if (year === new Date(now).getFullYear()) {
+    return { kind: "date", day: d.getDate(), month: d.getMonth() + 1 };
+  }
+  return { kind: "date", day: d.getDate(), month: d.getMonth() + 1, year };
 }
 
 export type ShortWhen =

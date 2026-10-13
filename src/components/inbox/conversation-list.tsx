@@ -38,12 +38,9 @@ import {
   splitsUnread,
   unassignedOldestFirst,
   windowState,
-  type DurationParts,
   type ListFilters,
   type ListSelection,
-  type RelativeTime,
   type ScheduledCall,
-  type ShortWhen,
 } from "@/lib/inbox/vistas";
 import { callDayHeading, callStatus, groupByDay } from "@/lib/inbox/closer";
 import {
@@ -52,6 +49,7 @@ import {
   visibleChips,
 } from "@/lib/inbox/conversation-tags";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { formatDuration, formatRelative, formatShortWhen } from "@/lib/inbox/time-text";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -499,46 +497,6 @@ function EmptyState({
 // Textos de tiempo: la lógica pura devuelve descriptores, acá se
 // traducen (es y en).
 // ------------------------------------------------------------
-
-function formatRelative(rel: RelativeTime, t: Translator): string {
-  switch (rel.kind) {
-    case "now":
-      return t("timeNow");
-    case "minutes":
-      return t("timeMinutes", { n: rel.n });
-    case "hours":
-      return t("timeHours", { n: rel.n });
-    case "yesterday":
-      return t("timeYesterday");
-    case "days":
-      return t("timeDays", { n: rel.n });
-    case "date":
-      return `${String(rel.day).padStart(2, "0")}/${String(rel.month).padStart(2, "0")}`;
-  }
-}
-
-function formatShortWhen(when: ShortWhen, t: Translator): string {
-  switch (when.kind) {
-    case "today":
-      return t("whenToday", { time: when.time });
-    case "tomorrow":
-      return t("whenTomorrow", { time: when.time });
-    case "other": {
-      const weekdays = t("weekdays").split(",");
-      return t("whenOther", {
-        weekday: weekdays[when.weekday] ?? "",
-        day: when.day,
-        time: when.time,
-      });
-    }
-  }
-}
-
-function formatDuration(d: DurationParts, t: Translator): string {
-  if (d.hours > 0 && d.minutes > 0) return t("durationHm", { h: d.hours, m: d.minutes });
-  if (d.hours > 0) return t("durationH", { h: d.hours });
-  return t("durationM", { m: d.minutes });
-}
 
 // ------------------------------------------------------------
 // Fila (prototipo `row()`): tres líneas.

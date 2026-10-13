@@ -239,6 +239,8 @@ describe("tiempos", () => {
     expect(relativeTime(NOW - 23 * H, NOW)).toEqual({ kind: "yesterday" });
     expect(relativeTime(NOW - 3 * 24 * H, NOW)).toEqual({ kind: "days", n: 3 });
     expect(relativeTime(NOW - 10 * 24 * H, NOW)).toEqual({ kind: "date", day: 30, month: 9 });
+    // De otro año, con el año (sesión F1).
+    expect(relativeTime(NOW - 370 * 24 * H, NOW)).toEqual({ kind: "date", day: 5, month: 10, year: 2025 });
   });
 
   it("shortWhen() y dur()", () => {

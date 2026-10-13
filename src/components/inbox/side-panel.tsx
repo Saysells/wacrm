@@ -69,10 +69,9 @@ import {
   initialsOf,
   scheduledCall,
   shortWhen,
-  type DurationParts,
   type ScheduledCall,
-  type ShortWhen,
 } from "@/lib/inbox/vistas";
+import { formatDuration, formatShortWhen } from "@/lib/inbox/time-text";
 import { tagTint } from "@/lib/inbox/conversation-tags";
 import { cn } from "@/lib/utils";
 import type { Contact, ContactNote, Deal, Tag } from "@/types";
@@ -133,28 +132,6 @@ const CHIP =
 const QUICK_ACTION =
   "flex flex-col items-center gap-[5px] text-[11.5px] text-secondary-foreground outline-none [&>i]:grid [&>i]:size-10 [&>i]:place-items-center [&>i]:rounded-full [&>i]:bg-selected [&>i]:text-primary [&>i>svg]:size-[17px] hover:[&>i]:bg-selected-strong focus-visible:[&>i]:ring-2 focus-visible:[&>i]:ring-ring";
 
-function formatShortWhen(when: ShortWhen, tList: Translator): string {
-  switch (when.kind) {
-    case "today":
-      return tList("whenToday", { time: when.time });
-    case "tomorrow":
-      return tList("whenTomorrow", { time: when.time });
-    case "other": {
-      const weekdays = tList("weekdays").split(",");
-      return tList("whenOther", {
-        weekday: weekdays[when.weekday] ?? "",
-        day: when.day,
-        time: when.time,
-      });
-    }
-  }
-}
-
-function formatDuration(d: DurationParts, tList: Translator): string {
-  if (d.hours > 0 && d.minutes > 0) return tList("durationHm", { h: d.hours, m: d.minutes });
-  if (d.hours > 0) return tList("durationH", { h: d.hours });
-  return tList("durationM", { m: d.minutes });
-}
 
 /** Resultado registrado en esta conversación (vive hasta cambiar de hilo). */
 interface RegisteredOutcome {
