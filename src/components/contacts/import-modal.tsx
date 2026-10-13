@@ -95,11 +95,11 @@ function ImportPreviewTags({
         return (
           <span
             key={name}
-            className="inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-none font-medium"
+            className="inline-flex max-w-full items-center gap-1 rounded-[5px] px-2 py-0.5 text-[10px] leading-none font-medium"
             style={{
-              backgroundColor: `${color}18`,
+              backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
               color,
-              border: `1px solid ${color}${isKnown ? '55' : '30'}`,
+              border: `1px solid ${isKnown ? 'transparent' : color}`,
             }}
             title={isKnown ? name : t('willBeCreated', { name })}
           >
@@ -437,7 +437,7 @@ export function ImportModal({
                 >
                   {truncateFilename(file.name)}
                 </p>
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <span className="rounded-[5px] bg-neutral-soft px-2 py-0.5 text-[11px] font-medium text-neutral">
                   {t('rowsReady', { count: parsedRows.length })}
                 </span>
               </>
@@ -575,19 +575,19 @@ export function ImportModal({
                   </div>
                 )}
                 {result.tagsAssigned > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-cyan-400">
+                  <div className="flex items-center gap-1.5 text-sm text-info">
                     <CheckCircle className="size-4 shrink-0" />
                     {t('resultTags', { count: result.tagsAssigned })}
                   </div>
                 )}
                 {result.skipped > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-amber-400">
+                  <div className="flex items-center gap-1.5 text-sm text-warning">
                     <AlertTriangle className="size-4 shrink-0" />
                     {t('resultSkipped', { count: result.skipped })}
                   </div>
                 )}
                 {result.failed > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-red-400">
+                  <div className="flex items-center gap-1.5 text-sm text-danger">
                     <XCircle className="size-4 shrink-0" />
                     {t('resultFailed', { count: result.failed })}
                   </div>

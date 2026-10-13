@@ -54,7 +54,7 @@ function StatusIcon({ status }: { status: Message["status"] }) {
     case "delivered":
       return <CheckCheck className="size-3.5" />;
     case "read":
-      return <CheckCheck className="size-3.5 text-sky-300" />;
+      return <CheckCheck className="size-3.5 text-[#8EB1D1]" />;
     case "failed":
       return <XCircle className="size-3.5 text-red-300" />;
     default:

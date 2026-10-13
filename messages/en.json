@@ -43,7 +43,8 @@
     "roleAgent": "Agent",
     "roleViewer": "Viewer",
     "closeMenu": "Close menu",
-    "vistaMisLlamadas": "My calls"
+    "vistaMisLlamadas": "My calls",
+    "navAria": "Primary navigation"
   },
   "TopBar": {
     "openMenu": "Open menu",
@@ -777,7 +778,9 @@
       "toastCreated": "Created \"{name}\".",
       "toastRenameFailed": "Could not rename field.",
       "toastDeleteFailed": "Could not delete field.",
-      "toastDeleted": "Deleted \"{name}\"."
+      "toastDeleted": "Deleted \"{name}\".",
+      "cancel": "Cancel",
+      "delete": "Delete"
     }
   },
   "Pipelines": {
@@ -2328,5 +2331,24 @@
       "callCount": "{count, plural, =1 {# call} other {# calls}}",
       "partialWindow": "Showing a partial window: usage is high enough that only the most recent records are summarized here."
     }
+  },
+  "Interactive": {
+    "kindButtons": "Reply buttons",
+    "kindList": "List",
+    "body": "Body",
+    "bodyPlaceholder": "What the customer reads above the options",
+    "header": "Header (optional)",
+    "footer": "Footer (optional)",
+    "showIds": "Show reply IDs (advanced)",
+    "buttonsCount": "Buttons ({count}/{max})",
+    "buttonLabel": "Button label",
+    "addButton": "Add button",
+    "listButtonLabel": "List button label",
+    "rowsCount": "Rows ({count}/{max})",
+    "sectionTitle": "Section title (optional)",
+    "rowTitle": "Row title",
+    "rowDescription": "Description (optional)",
+    "addRow": "Add row",
+    "addSection": "Add section"
   }
 }

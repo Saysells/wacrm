@@ -8,6 +8,7 @@ import type { CustomField } from '@/types';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -150,14 +151,11 @@ export function CustomFieldsPanel() {
     return true;
   }
 
+  // Borrar pide confirmación en un modal del sistema (sesión F2).
+  const [pendingDelete, setPendingDelete] = useState<CustomField | null>(null);
+
   async function handleDelete(field: CustomField) {
-    if (
-      !window.confirm(
-        t('deleteConfirm', { name: field.field_name })
-      )
-    ) {
-      return;
-    }
+    setPendingDelete(null);
     setBusyId(field.id);
     const { error } = await supabase
       .from('custom_fields')
@@ -186,12 +184,11 @@ export function CustomFieldsPanel() {
             }
           }}
           placeholder={t('fieldName')}
-          className="bg-muted text-foreground"
         />
         <Button
           onClick={handleCreate}
           disabled={creating || !newName.trim()}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
+          className="shrink-0"
         >
           {creating ? (
             <Loader2 className="size-4 animate-spin" />
@@ -221,12 +218,34 @@ export function CustomFieldsPanel() {
                 field={field}
                 busy={busyId === field.id}
                 onRename={handleRename}
-                onDelete={handleDelete}
+                onDelete={(f) => setPendingDelete(f)}
               />
             ))}
           </ul>
         )}
       </div>
+
+      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('deleteTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('deleteConfirm', { name: pendingDelete?.field_name ?? '' })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDelete && void handleDelete(pendingDelete)}
+            >
+              {t('delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -275,7 +294,7 @@ function FieldRow({
         disabled={busy}
         onClick={() => onDelete(field)}
         title={t('deleteTitle')}
-        className="shrink-0 text-muted-foreground hover:text-red-400"
+        className="shrink-0 text-muted-foreground hover:text-danger"
       >
         {busy ? (
           <Loader2 className="size-4 animate-spin" />

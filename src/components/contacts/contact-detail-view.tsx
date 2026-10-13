@@ -497,7 +497,7 @@ export function ContactDetailView({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-xs">
-                      {t('phone')} <span className="text-red-400">*</span>
+                      {t('phone')} <span className="text-danger">*</span>
                     </Label>
                     <Input
                       value={editPhone}
@@ -556,13 +556,13 @@ export function ContactDetailView({
                             key={tag.id}
                             onClick={() => toggleTag(tag.id)}
                             disabled={savingTags}
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                            className={`inline-flex h-7 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors cursor-pointer ${
                               selected
-                                ? 'ring-2 ring-primary ring-offset-1 ring-offset-border'
+                                ? 'ring-2 ring-primary ring-offset-1 ring-offset-card'
                                 : 'opacity-50 hover:opacity-80'
                             }`}
                             style={{
-                              backgroundColor: tag.color + '20',
+                              backgroundColor: `color-mix(in srgb, ${tag.color} 15%, transparent)`,
                               color: tag.color,
                             }}
                           >
@@ -621,7 +621,7 @@ export function ContactDetailView({
                           </p>
                           <button
                             onClick={() => deleteNote(note.id)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all cursor-pointer shrink-0"
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-danger transition-all cursor-pointer shrink-0"
                           >
                             <Trash2 className="size-3.5" />
                           </button>
@@ -709,9 +709,9 @@ export function ContactDetailView({
                           </p>
                           {deal.stage && (
                             <span
-                              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                              className="shrink-0 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium"
                               style={{
-                                backgroundColor: `${deal.stage.color}20`,
+                                backgroundColor: `color-mix(in srgb, ${deal.stage.color} 15%, transparent)`,
                                 color: deal.stage.color,
                               }}
                             >
@@ -731,8 +731,8 @@ export function ContactDetailView({
                             <span
                               className={
                                 deal.status === 'won'
-                                  ? 'text-primary'
-                                  : 'text-red-400'
+                                  ? 'text-success'
+                                  : 'text-danger'
                               }
                             >
                               {deal.status}

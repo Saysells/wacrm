@@ -43,7 +43,8 @@
     "roleAgent": "Agente",
     "roleViewer": "Observador",
     "closeMenu": "Cerrar menú",
-    "vistaMisLlamadas": "Mis llamadas"
+    "vistaMisLlamadas": "Mis llamadas",
+    "navAria": "Navegación principal"
   },
   "TopBar": {
     "openMenu": "Abrir menú",
@@ -777,7 +778,9 @@
       "toastCreated": "Se creó \"{name}\".",
       "toastRenameFailed": "No se pudo renombrar el campo.",
       "toastDeleteFailed": "No se pudo eliminar el campo.",
-      "toastDeleted": "Se eliminó \"{name}\"."
+      "toastDeleted": "Se eliminó \"{name}\".",
+      "cancel": "Cancelar",
+      "delete": "Eliminar"
     }
   },
   "Pipelines": {
@@ -2328,5 +2331,24 @@
       "callCount": "{count, plural, =1 {# llamada} other {# llamadas}}",
       "partialWindow": "Se muestra una ventana parcial: hay tanto uso que acá solo se resumen los registros más recientes."
     }
+  },
+  "Interactive": {
+    "kindButtons": "Botones de respuesta",
+    "kindList": "Lista",
+    "body": "Cuerpo",
+    "bodyPlaceholder": "Lo que el cliente lee arriba de las opciones",
+    "header": "Encabezado (opcional)",
+    "footer": "Pie (opcional)",
+    "showIds": "Mostrar los ids de respuesta (avanzado)",
+    "buttonsCount": "Botones ({count}/{max})",
+    "buttonLabel": "Texto del botón",
+    "addButton": "Agregar botón",
+    "listButtonLabel": "Texto del botón de la lista",
+    "rowsCount": "Filas ({count}/{max})",
+    "sectionTitle": "Título de la sección (opcional)",
+    "rowTitle": "Título de la fila",
+    "rowDescription": "Descripción (opcional)",
+    "addRow": "Agregar fila",
+    "addSection": "Agregar sección"
   }
 }

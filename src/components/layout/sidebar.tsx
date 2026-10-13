@@ -275,7 +275,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           "lg:static lg:z-0 lg:translate-x-0 lg:shadow-none lg:transition-none",
           collapsed ? "lg:w-[76px]" : "lg:w-[248px]",
         )}
-        aria-label="Primary"
+        aria-label={t("navAria")}
       >
         {/* Rediseño (sesión A): en escritorio la barra ya no tiene fila
             de marca ni botón de plegar — la marca y el botón viven en la

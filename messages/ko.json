@@ -43,7 +43,8 @@
     "roleAgent": "상담원",
     "roleViewer": "뷰어",
     "closeMenu": "메뉴 닫기",
-    "vistaMisLlamadas": "내 통화"
+    "vistaMisLlamadas": "내 통화",
+    "navAria": "기본 탐색"
   },
   "TopBar": {
     "openMenu": "메뉴 열기",
@@ -777,7 +778,9 @@
       "toastCreated": "\"{name}\"을(를) 만들었습니다.",
       "toastRenameFailed": "필드 이름을 변경할 수 없습니다.",
       "toastDeleteFailed": "필드를 삭제할 수 없습니다.",
-      "toastDeleted": "\"{name}\"을(를) 삭제했습니다."
+      "toastDeleted": "\"{name}\"을(를) 삭제했습니다.",
+      "cancel": "취소",
+      "delete": "삭제"
     }
   },
   "Pipelines": {
@@ -2328,5 +2331,24 @@
       "callCount": "호출 {count}회",
       "partialWindow": "일부 기간만 표시됩니다. 사용량이 많아 최근 기록만 요약합니다."
     }
+  },
+  "Interactive": {
+    "kindButtons": "답장 버튼",
+    "kindList": "목록",
+    "body": "본문",
+    "bodyPlaceholder": "옵션 위에 고객이 읽는 내용",
+    "header": "헤더(선택)",
+    "footer": "푸터(선택)",
+    "showIds": "답장 ID 표시(고급)",
+    "buttonsCount": "버튼({count}/{max})",
+    "buttonLabel": "버튼 텍스트",
+    "addButton": "버튼 추가",
+    "listButtonLabel": "목록 버튼 텍스트",
+    "rowsCount": "행({count}/{max})",
+    "sectionTitle": "섹션 제목(선택)",
+    "rowTitle": "행 제목",
+    "rowDescription": "설명(선택)",
+    "addRow": "행 추가",
+    "addSection": "섹션 추가"
   }
 }

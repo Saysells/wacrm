@@ -515,10 +515,9 @@ Rama `rediseno`, salida de `main`; se publica solo en la Bandeja USA
 hasta el merge final. Referencia: `docs/rediseno/prototipo-v1.html`
 (aprobado el 12/10/2026). Regla: **cambia el frontend, la lógica no**
 (ver "Qué no se toca"). Sesiones A (base y barra), B (navegación y lista),
-C (conversación), D (ficha y agendar), E (closer y teclado) y F1
-(Contactos, Notificaciones, diferencias) hechas; **F2 pendiente**:
-Configuración, Panel, Embudos, Difusiones, Automatizaciones, Flujos y
-Agentes IA conservan su layout viejo adentro de la tarjeta.
+C (conversación), D (ficha y agendar), E (closer y teclado), F1
+(Contactos, Notificaciones, diferencias) y F2 (el resto de las pantallas,
+13/10/2026) hechas: queda el merge a `main`.
 
 ## Base y tokens
 
@@ -837,14 +836,69 @@ namespace `Notifications`.
 - Vacío: "No tenés notificaciones" / "Cuando alguien te asigne una
   conversación, aparece acá." Canal de realtime con `uniqueChannelName`.
 
+## Piezas comunes y el resto de las pantallas (sesión F2)
+
+- **Encabezado** `PageHeader` (`src/components/ui/page-header.tsx`,
+  prototipo `.ctop`): título de 22 px, `meta` al lado (contador, chip o
+  el selector de embudo), `actions` a la derecha, `note` gris debajo,
+  `back` a la izquierda; `padded` para las pantallas que ocupan la
+  tarjeta entera. Lo usan todas las pantallas, Contactos y Notificaciones
+  incluidas.
+- **Vacío** `EmptyState` (`empty-state.tsx`, `.empty`: cuadro celeste de
+  56 px, título, texto, `action`; `compact` adentro de una tarjeta).
+  `src/components/dashboard/empty-state.tsx` lo envuelve. **Filtro**
+  `FilterButton` / `ddbClassName` (`filter-button.tsx`, `.ddb` de 32 px).
+  **Tabla** `table.tsx` con las medidas de `.tbl` y `tableHeadClass` /
+  `tableCellClass` para las armadas a mano. **Casilla**: base-ui renderiza
+  un `span`, así que `checkbox.tsx` lleva `inline-flex` (cuadrado de 16 px).
+- **Select plano** `SimpleSelect` (`simple-select.tsx`: opciones
+  `{ value, label, group? }`, el `""` viaja como centinela) para los
+  formularios con listas; **selector de fecha** `DatePicker`
+  (`date-picker.tsx`, el calendario de Agendar en un popover; valor
+  `YYYY-MM-DD`; lógica en `src/lib/dates/iso-day.ts`). Nunca `<select>` ni
+  `type="date"` nativos.
+- **`GatedButton`**: el tooltip sale de `Common.readOnly`; `gateReason`
+  queda como documentación. Namespaces nuevos: `Common`, `Agents`,
+  `Interactive`, `Flows.header`, `Automations.templates`.
+- **Estados en `Badge`**: `src/lib/broadcast-status.ts` y
+  `src/lib/template-status.ts` mapean a **variantes** (`success`,
+  `warning`, `danger`, `info`, `selected`, `secondary`), no a clases;
+  `SettingsChip` es un `Badge`. Colores crudos de Tailwind (ámbar, verde,
+  rojo, azul…) reemplazados por los tokens en todas las pantallas de la
+  sesión; los gráficos van en navy y celeste (`chart-colors.ts` tiene
+  `navy` y `celeste`). Sin `window.confirm`: borrar pide un `Dialog`.
+- **Configuración**: el Resumen es el tablero de `config()`
+  (`settings-overview.tsx`): tarjetas `.hc.t` en tres columnas, primero
+  WhatsApp, Plantillas, Respuestas rápidas, Etiquetas, Miembros y
+  Apariencia, después Tu perfil, Inicio de sesión y seguridad,
+  Oportunidades y moneda y Claves de API. Orden y estados en
+  `src/lib/settings/tablero.ts` (`tableroCards(rol)`: hoy las diez para
+  todos; los permisos siguen adentro de cada panel). Encabezado con el
+  nombre de la cuenta (`useAuth().account.name`). Respuestas rápidas tiene
+  su namespace (`Settings.quickReplies`).
+- **Menú flotante de cada mensaje** (`message-actions.tsx`): al costado
+  de la burbuja, centrado en el alto del bloque, del lado libre. Para que
+  entre a 1180 px el padding de los mensajes es por container query
+  (`px-4 @[520px]:px-10` en el hilo), ya no por ventana.
+- **Automatizaciones**: el disparador se nombra con
+  `Automations.builder.triggers.*` y el chip lo colorea la página; la
+  tabla del motor (`src/lib/automations/trigger-meta.ts`) no se toca. Las
+  plantillas para arrancar leen `Automations.templates.<slug>`; los textos
+  que cargan (`templates.ts`) están en español. **Flujos**: la
+  confirmación de borrar vive en `header.tsx`; `deleteFlow` solo borra. El
+  lienzo (`FlowNodeCard`, `FlowCanvasInner`) no se tocó.
+
 ## Pendientes del rediseño
 
 - **Nada se vio en un navegador** desde esta base: la revisión con
   navegador la hace el chat de dirección contra una Supabase falsa y la
   visual, Emi en USA.
-- **F2**: Configuración, Panel, Embudos, Difusiones, Automatizaciones,
-  Flujos y Agentes IA con el diseño del rediseño; el ajuste de alto de
-  los controles (botón 32→38, campo 32→40) en esas pantallas.
+- Quedan en inglés: los mensajes del validador de mensajes interactivos
+  (`src/lib/whatsapp/interactive.ts`) y del validador de flujos
+  (`src/lib/flows/validate.ts`), que son del lado del servidor; las
+  pantallas de entrada (`(auth)`, `join`) no eran de la sesión. Los
+  colores por tipo de nodo del lienzo (`flows/shared.tsx`) siguen en la
+  paleta de Tailwind porque el lienzo no se toca.
 - Del prototipo no van: "Ver como", las líneas de evento, el resultado
   guardado en la llamada, "Vista: Todos" (no hay tabla para vistas
   guardadas) y el pie "apps.saysells.com".
@@ -856,7 +910,7 @@ namespace `Notifications`.
 - Barra plegada: anchos fijos (`lg:w-[76px]`, lista `lg:w-96`); la
   preferencia es por dispositivo, no por usuario.
 
-Historia de las sesiones A a F1 (fechas, commits, incidentes, conteos de
+Historia de las sesiones A a F2 (fechas, commits, incidentes, conteos de
 warnings): `respaldos/claude-md-historia-2026-10-12.md`, secciones
 «Rediseño · sesión A» a «Rediseño · sesión E», «Bandeja de escritorio ·
 más de una etiqueta por fila» y «Marca».
