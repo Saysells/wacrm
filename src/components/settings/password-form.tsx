@@ -22,6 +22,7 @@ const MIN_PASSWORD = 8;
 
 export function PasswordForm() {
   const t = useTranslations('Settings.profile');
+  const tCommon = useTranslations('Common');
   const { profile } = useAuth();
   const supabase = createClient();
 
@@ -75,7 +76,7 @@ export function PasswordForm() {
       setConfirm('');
       toast.success(t('passwordUpdated'));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tCommon('unknownError');
       toast.error(msg);
     } finally {
       setSaving(false);

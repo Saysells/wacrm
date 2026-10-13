@@ -33,6 +33,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ProfileForm() {
   const t = useTranslations('Settings.profile');
+  const tCommon = useTranslations('Common');
   const { user, profile, refreshProfile } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,7 +185,7 @@ export function ProfileForm() {
           : t('profileSaved'),
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tCommon('unknownError');
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -270,7 +271,7 @@ export function ProfileForm() {
               id="profile-full-name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ada Lovelace"
+              placeholder={t('namePlaceholder')}
               maxLength={120}
               disabled={saving}
               required
@@ -291,7 +292,7 @@ export function ProfileForm() {
               required
             />
             {emailChangePending && (
-              <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
                 <Mail className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   {t.rich('emailChangeHint', { 

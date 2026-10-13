@@ -1549,7 +1549,11 @@
       "fieldsCount": "{count} custom {count, plural, =1 {field} other {fields}}",
       "appearance": "{mode} mode · {theme} accent",
       "yourAccount": "Your account",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "quickRepliesHint": "The ones that show up with /",
+      "quickRepliesCount": "{count} {count, plural, =1 {quick reply} other {quick replies}}",
+      "securityHint": "Password and sessions",
+      "apiHint": "Access for integrations"
     },
     "members": {
       "permissionsBtn": "Permissions",
@@ -1582,7 +1586,14 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "loadMembersFailed": "Failed to load members",
+      "loadInvitationsFailed": "Failed to load invitations",
+      "serverUnreachable": "Could not reach the server",
+      "updateRoleFailed": "Failed to update role",
+      "updatePermissionFailed": "Failed to update permission",
+      "removeFailed": "Failed to remove member",
+      "revokeFailed": "Failed to revoke invitation"
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -1610,7 +1621,10 @@
       "labelTooLong": "Label must be {max} characters or fewer",
       "copied": "Invite link copied",
       "clipboardBlocked": "Clipboard blocked — copy the link manually",
-      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}"
+      "whatsappMessage": "Join {accountName} on the Inbox using this link (valid for {expiresInDays} days): {url}",
+      "createFailed": "Failed to create invitation",
+      "serverUnreachable": "Could not reach the server. Try again?",
+      "ourAccount": "our account"
     },
     "tagsAndFields": {
       "title": "Fields & tags",
@@ -1729,8 +1743,8 @@
       "saveResubmit": "Save & Resubmit",
       "submitApproval": "Submit for Approval",
       "deleteDialogTitle": "Delete template?",
-      "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.",
-      "deleteLocalDesc": "\"{name}\" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.",
+      "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from the Inbox. Active broadcasts using this template will start failing on their next send. This can't be undone.",
+      "deleteLocalDesc": "\"{name}\" will be deleted from the Inbox. It was never submitted to Meta, so no remote cleanup is needed.",
       "deleting": "Deleting…",
       "delete": "Delete",
       "toastLoadFailed": "Failed to load templates",
@@ -1749,7 +1763,25 @@
       "toastInvalidImage": "Header image must be a JPEG or PNG.",
       "toastImageTooLarge": "Image is {size} MB — Meta's limit is 5 MB.",
       "toastUploadSuccess": "Image uploaded.",
-      "toastUploadFailed": "Upload failed."
+      "toastUploadFailed": "Upload failed.",
+      "toastHttpFailed": "Submit failed (HTTP {status})",
+      "moreCount": ", +{count} more",
+      "qualityScore": "Meta quality score",
+      "categories": {
+        "Marketing": "Marketing",
+        "Utility": "Utility",
+        "Authentication": "Authentication"
+      },
+      "status": {
+        "DRAFT": "Draft",
+        "PENDING": "Pending",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected",
+        "PAUSED": "Paused",
+        "DISABLED": "Disabled",
+        "IN_APPEAL": "In appeal",
+        "PENDING_DELETION": "Pending deletion"
+      }
     },
     "permissions": {
       "view_all_data": "View all data",
@@ -1783,7 +1815,7 @@
       "notConnected": "Not Connected",
       "connectedDesc": "Your access token authenticates with Meta. See Registration status below for whether webhooks are actually wired.",
       "notConnectedDesc": "Configure your Meta API credentials below to connect your WhatsApp Business account.",
-      "registered": "Registered — Meta will deliver events to wacrm",
+      "registered": "Registered: Meta will deliver events to the Inbox",
       "notRegistered": "Not registered — Meta will not deliver events",
       "verifyWithMeta": "Verify with Meta",
       "subscribedSince": "Subscribed since {date}. Click Verify with Meta if events stop arriving.",
@@ -1807,7 +1839,7 @@
       "twoStepPin": "Two-step verification PIN",
       "optional": "(optional)",
       "pinPlaceholder": "6-digit PIN from Meta WhatsApp Manager",
-      "pinHint": "Needed only to wire inbound messages for a production number. Set it in Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification, then paste it here so wacrm can subscribe the number — otherwise Meta routes inbound events to whichever app last claimed it (the symptom that hits second numbers under a shared WABA). Meta test numbers have no PIN and are pre-registered — leave this blank for them. Leaving it blank also keeps an existing registration untouched.",
+      "pinHint": "Needed only to wire inbound messages for a production number. Set it in Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification, then paste it here so the Inbox can subscribe the number — otherwise Meta routes inbound events to whichever app last claimed it (the symptom that hits second numbers under a shared WABA). Meta test numbers have no PIN and are pre-registered — leave this blank for them. Leaving it blank also keeps an existing registration untouched.",
       "webhookTitle": "Webhook Configuration",
       "webhookDesc": "Use this URL as your webhook callback in the Meta App Dashboard.",
       "webhookUrl": "Webhook Callback URL",
@@ -1843,7 +1875,32 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "idPlaceholder": "e.g. 100234567890123",
+      "resetDialogTitle": "Reset the WhatsApp configuration?",
+      "resetDialogDesc": "The current configuration is deleted so you can re-enter the credentials. Messages stop arriving until you complete it again.",
+      "resetDialogCancel": "Cancel",
+      "toasts": {
+        "loadFailed": "Failed to load the WhatsApp configuration",
+        "phoneNumberIdRequired": "Phone Number ID is required",
+        "accessTokenRequired": "Access Token is required for the initial setup",
+        "reenterToken": "Re-enter the Access Token to save the changes",
+        "saveFailed": "Failed to save the configuration",
+        "savedNotRegistered": "Saved, but Meta couldn't register the number: {error}",
+        "savedSkippedRegistration": "Credentials saved and verified. Inbound registration was skipped (no PIN): see the registration status below.",
+        "liveNamed": "Live: {name} can now receive events.",
+        "connected": "WhatsApp connected. Events start flowing within a minute.",
+        "connectedTo": "Connected to {name}",
+        "apiOk": "API connection successful",
+        "apiFailed": "API connection failed",
+        "testFailed": "Connection test failed. Check the network and try again.",
+        "numberLive": "The number is fully wired: Meta is delivering events.",
+        "numberNotRegistered": "The number is not fully registered. See below which step failed.",
+        "verifyUnreachable": "Could not reach the verification endpoint.",
+        "resetFailed": "Failed to reset the configuration",
+        "resetDone": "Configuration cleared. You can re-enter the credentials now.",
+        "webhookCopied": "Webhook URL copied"
+      }
     },
     "sections": {
       "overview": "Overview",
@@ -1911,7 +1968,8 @@
       "cancel": "Cancel",
       "signingOut": "Signing out…",
       "signOutEverywhere": "Sign out everywhere",
-      "signOutFailed": "Sign-out failed: {message}"
+      "signOutFailed": "Sign-out failed: {message}",
+      "namePlaceholder": "Your name"
     },
     "appearance": {
       "title": "Appearance",
@@ -1920,7 +1978,19 @@
       "useMode": "Use {mode} mode",
       "active": "Active",
       "accentColor": "Accent color",
-      "useTheme": "Use {name} theme"
+      "useTheme": "Use {name} theme",
+      "modes": {
+        "light": "Light",
+        "dark": "Dark"
+      },
+      "themes": {
+        "saysells": "The default: brand navy and celeste.",
+        "violet": "Confident, slightly playful: the original accent.",
+        "emerald": "Growth green, without copying WhatsApp's.",
+        "cobalt": "Clean B2B software blue: calm and product-like.",
+        "amber": "Warm and friendly, made for small teams.",
+        "rose": "Bold and modern: direct-to-consumer brands."
+      }
     },
     "security": {
       "title": "Login & security",
@@ -1978,7 +2048,7 @@
     },
     "aiConfig": {
       "title": "Agent setup",
-      "description": "Bring your own OpenAI or Anthropic key. wacrm calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, and the Playground.",
+      "description": "Bring your own OpenAI or Anthropic key. the Inbox calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, and the Playground.",
       "adminOnlyConfig": "Only admins and owners can change the AI configuration.",
       "loadFailed": "Failed to load AI configuration",
       "providerAndKey": "Provider & key",
@@ -2042,6 +2112,30 @@
       "reindex": "Reindex",
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
+    },
+    "railAria": "Settings sections",
+    "quickReplies": {
+      "title": "Quick replies",
+      "description": "Reusable snippets, plain text or a saved interactive message, that the team inserts from the composer with /.",
+      "newQuickReply": "New quick reply",
+      "emptyTitle": "No quick replies yet",
+      "emptyBody": "Create one to reuse it across conversations.",
+      "editTitle": "Edit quick reply",
+      "deleteTitle": "Delete quick reply",
+      "deleteDesc": "\"{name}\" will be deleted. This can't be undone.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Business hours",
+      "kindText": "Text",
+      "kindInteractive": "Interactive",
+      "textPlaceholder": "The message text to insert",
+      "cancel": "Cancel",
+      "save": "Save",
+      "delete": "Delete",
+      "nameRequired": "Give the quick reply a name.",
+      "saveFailed": "Couldn't save the quick reply.",
+      "updated": "Quick reply updated.",
+      "created": "Quick reply created.",
+      "deleteFailed": "Couldn't delete the quick reply."
     }
   },
   "Shortcuts": {
@@ -2056,5 +2150,18 @@
     "note": "Internal note",
     "escape": "Close menus and panels",
     "help": "Show these shortcuts"
+  },
+  "Common": {
+    "readOnly": "Read-only: your role can't do this.",
+    "loading": "Loading…",
+    "unknownError": "Unknown error",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "close": "Close",
+    "retry": "Retry",
+    "back": "Back",
+    "edit": "Edit",
+    "inbox": "the Inbox"
   }
 }

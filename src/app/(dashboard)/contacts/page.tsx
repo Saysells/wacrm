@@ -6,6 +6,10 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ddbClassName } from '@/components/ui/filter-button';
+import { tableCellClass, tableHeadClass } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -100,21 +104,16 @@ interface ContactWithTags extends Contact {
 // diseño nuevo. La lógica está en `src/lib/contacts/contactos.ts`.
 // ============================================================
 
-/** Botón desplegable de la barra (prototipo `.ddb`): 32 px, borde, radio 8. */
-const DDB =
-  'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[13px] text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring [&>svg]:size-[15px] [&>svg]:text-muted-foreground';
+/** Botón desplegable de la barra (prototipo `.ddb`): el del sistema. */
+const DDB = ddbClassName;
 
 /** Chip de estado (prototipo `.ch`, el mismo de la tercera línea de la lista). */
 const CHIP =
   'inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-[5px] px-[7px] text-xs font-medium whitespace-nowrap';
 
-/** Celda de encabezado (prototipo `.tbl th`): pegada arriba, 40 px. */
-const TH =
-  'sticky top-0 z-[1] h-10 border-b border-border bg-card px-3.5 text-left text-[12.5px] font-semibold whitespace-nowrap text-muted-foreground';
-
-/** Celda (prototipo `.tbl td`): 46 px. */
-const TD =
-  'h-[46px] border-b border-border/60 px-3.5 whitespace-nowrap transition-colors group-hover:bg-hover';
+/** Celdas (prototipo `.tbl th` / `.tbl td`): las del sistema (`table.tsx`). */
+const TH = tableHeadClass;
+const TD = cn(tableCellClass, 'transition-colors group-hover:bg-hover');
 
 /** Casilla del menú del filtro (prototipo `.cb`): cuadrado de 16 px. */
 const CB =
@@ -579,55 +578,56 @@ function ContactsPageInner({ initialSearch }: { initialSearch: string }) {
     // Ocupa la tarjeta entera (como la Bandeja): el encabezado y la
     // barra quedan fijos y la tabla scrollea sola (prototipo `.tw`).
     <div className="-m-4 flex h-[calc(100%+2rem)] flex-col overflow-hidden sm:-m-6 sm:h-[calc(100%+3rem)]">
-      {/* Encabezado (prototipo `.ctop`). */}
-      <div className="flex flex-wrap items-center gap-2.5 px-6 pt-5 pb-3.5">
-        <h1 className="text-[22px] font-semibold text-foreground">{t('title')}</h1>
-        {!loading && (
-          <span className="mt-1 ml-1 text-sm tabular-nums text-muted-foreground">{totalCount}</span>
-        )}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {canEditSettings && (
-            <Button
+      {/* Encabezado común (`PageHeader`, prototipo `.ctop`). */}
+      <PageHeader
+        padded
+        title={t('title')}
+        meta={!loading ? totalCount : undefined}
+        actions={
+          <>
+            {canEditSettings && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCustomFieldsOpen(true)}
+                title={t('customFieldsBtn')}
+                aria-label={t('customFieldsBtn')}
+              >
+                <SlidersHorizontal />
+              </Button>
+            )}
+            <GatedButton
               variant="outline"
-              size="icon"
-              onClick={() => setCustomFieldsOpen(true)}
-              title={t('customFieldsBtn')}
-              aria-label={t('customFieldsBtn')}
+              canAct={canEdit}
+              gateReason="add or import contacts"
+              onClick={() => setImportOpen(true)}
             >
-              <SlidersHorizontal />
-            </Button>
-          )}
-          <GatedButton
-            variant="outline"
-            canAct={canEdit}
-            gateReason="add or import contacts"
-            onClick={() => setImportOpen(true)}
-          >
-            <Upload />
-            {t('importBtn')}
-          </GatedButton>
-          {canExport && (
-            // Admin+ only (can_export_contacts) — and the endpoint refuses
-            // agents with 403 on its own, so hiding this is UX, not the
-            // security boundary.
-            <Button
-              variant="outline"
-              onClick={() => window.location.assign('/api/contacts/export')}
+              <Upload />
+              {t('importBtn')}
+            </GatedButton>
+            {canExport && (
+              // Admin+ only (can_export_contacts) — and the endpoint refuses
+              // agents with 403 on its own, so hiding this is UX, not the
+              // security boundary.
+              <Button
+                variant="outline"
+                onClick={() => window.location.assign('/api/contacts/export')}
+              >
+                <Download />
+                {t('exportBtn')}
+              </Button>
+            )}
+            <GatedButton
+              canAct={canEdit}
+              gateReason="add or import contacts"
+              onClick={openAddForm}
             >
-              <Download />
-              {t('exportBtn')}
-            </Button>
-          )}
-          <GatedButton
-            canAct={canEdit}
-            gateReason="add or import contacts"
-            onClick={openAddForm}
-          >
-            <UserRoundPlus />
-            {t('addContactBtn')}
-          </GatedButton>
-        </div>
-      </div>
+              <UserRoundPlus />
+              {t('addContactBtn')}
+            </GatedButton>
+          </>
+        }
+      />
 
       {/* Barra (prototipo `.ctb2`): filtro a la izquierda, buscador a la derecha. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-3.5">
@@ -765,21 +765,21 @@ function ContactsPageInner({ initialSearch }: { initialSearch: string }) {
                   {hasActiveFilters ? (
                     <p className="text-sm text-muted-foreground">{t('noContactsFilter')}</p>
                   ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <Users className="size-8 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{t('noContactsYet')}</p>
-                      <GatedButton
-                        canAct={canEdit}
-                        gateReason="add or import contacts"
-                        variant="outline"
-                        size="sm"
-                        onClick={openAddForm}
-                        className="mt-2"
-                      >
-                        <Plus />
-                        {t('addFirstContact')}
-                      </GatedButton>
-                    </div>
+                    <EmptyState
+                      icon={Users}
+                      title={t('noContactsYet')}
+                      action={
+                        <GatedButton
+                          canAct={canEdit}
+                          gateReason="add or import contacts"
+                          variant="outline"
+                          onClick={openAddForm}
+                        >
+                          <Plus />
+                          {t('addFirstContact')}
+                        </GatedButton>
+                      }
+                    />
                   )}
                 </td>
               </tr>

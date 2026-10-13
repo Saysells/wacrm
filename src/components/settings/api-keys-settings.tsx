@@ -21,6 +21,7 @@ import { Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -155,27 +156,19 @@ export function ApiKeysSettings() {
       />
 
       {keys.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-            <KeyRound className="text-muted-foreground size-6" />
-            <p className="text-muted-foreground mt-2 text-sm">
-              {t('noApiKeys')}
-            </p>
-            {canEditSettings ? (
-              <p className="text-muted-foreground mt-1 text-xs">
-                {t.rich('createOneHint', {
+        <EmptyState
+          icon={KeyRound}
+          title={t('noApiKeys')}
+          description={
+            canEditSettings
+              ? t.rich('createOneHint', {
                   bold: (chunks: React.ReactNode) => (
                     <span className="text-foreground">{chunks}</span>
                   ),
-                })}
-              </p>
-            ) : (
-              <p className="text-muted-foreground mt-1 text-xs">
-                {t('askAdminHint')}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                })
+              : t('askAdminHint')
+          }
+        />
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -248,7 +241,7 @@ export function ApiKeysSettings() {
                           size="sm"
                           onClick={() => handleRevoke(k)}
                           disabled={revoking === k.id}
-                          className="self-start border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200 sm:self-auto"
+                          className="self-start border-transparent bg-danger-soft text-danger hover:bg-danger hover:text-white sm:self-auto"
                         >
                           {revoking === k.id ? (
                             <Loader2 className="size-4 animate-spin" />

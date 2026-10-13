@@ -12,6 +12,7 @@ import {
   Pencil,
   RotateCcw,
   Upload,
+  FileText,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -24,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useTranslations } from 'next-intl';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsPanelHead } from './settings-panel-head';
@@ -47,20 +49,27 @@ import type {
   TemplateButton,
   TemplateSampleValues,
 } from '@/types';
-import { templateStatusConfig } from '@/lib/template-status';
+import { templateStatusVariant } from '@/lib/template-status';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
 
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
+type Category = (typeof CATEGORIES)[number];
+function isCategory(value: string): value is Category {
+  return (CATEGORIES as readonly string[]).includes(value);
+}
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
 const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
 
-const categoryColors: Record<string, string> = {
-  Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
-  Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  Authentication: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
+// Chips de categoría y estado: variantes del `Badge` del sistema
+// (rediseño, sesión F2); los textos salen del catálogo
+// (`Settings.templates.categories.*` y `.status.*`).
+const categoryVariant: Record<string, 'info' | 'selected' | 'warning'> = {
+  Marketing: 'info',
+  Utility: 'selected',
+  Authentication: 'warning',
 };
 
 interface TemplateFormData {
@@ -126,6 +135,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const categoryLabel = (c: string) => (isCategory(c) ? t(`categories.${c}`) : c);
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 
@@ -275,7 +285,7 @@ export function TemplateManager() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data?.error || `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
+          data?.error || t('toastHttpFailed', { status: res.status }),
         );
       }
       // Refresh first, then close — re-opening the dialog
@@ -322,7 +332,7 @@ export function TemplateManager() {
             `${e.name} (${e.language})`,
         );
         const suffix =
-          data.errors.length > 3 ? `, +${data.errors.length - 3} more` : '';
+          data.errors.length > 3 ? t('moreCount', { count: data.errors.length - 3 }) : '';
         toast.error(t('toastSyncFailed', { preview: preview.join(', ') + suffix }));
       }
       if (data.truncated) {
@@ -506,33 +516,22 @@ export function TemplateManager() {
       />
 
       {templates.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-muted-foreground text-sm">{t('noTemplates')}</p>
-            <p className="text-muted-foreground text-xs mt-1">
-              {t('createFirst')}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState icon={FileText} title={t('noTemplates')} description={t('createFirst')} />
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">
           {templates.map((template) => {
             const statusKey = template.status || 'DRAFT';
-            const status = templateStatusConfig[statusKey];
+            const statusVariant = templateStatusVariant[statusKey];
             return (
               <Card key={template.id}>
                 <CardContent className="flex items-start justify-between pt-4">
                   <div className="space-y-2 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <Badge
-                        className={`text-xs border ${categoryColors[template.category] || ''}`}
-                      >
-                        {template.category}
+                      <Badge variant={categoryVariant[template.category] ?? 'secondary'}>
+                        {categoryLabel(template.category)}
                       </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
+                      <Badge variant={statusVariant}>{t(`status.${statusKey}`)}</Badge>
                       {template.language && (
                         <span className="text-xs text-muted-foreground uppercase">
                           {template.language}
@@ -542,12 +541,12 @@ export function TemplateManager() {
                         <span
                           className={`text-[10px] uppercase font-medium ${
                             template.quality_score === 'GREEN'
-                              ? 'text-emerald-400'
+                              ? 'text-success'
                               : template.quality_score === 'YELLOW'
-                                ? 'text-yellow-400'
-                                : 'text-red-400'
+                                ? 'text-warning'
+                                : 'text-danger'
                           }`}
-                          title="Meta quality score"
+                          title={t('qualityScore')}
                         >
                           {template.quality_score}
                         </span>
@@ -562,7 +561,7 @@ export function TemplateManager() {
                       </p>
                     )}
                     {(template.rejection_reason || template.submission_error) && (
-                      <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
+                      <div className="flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger-soft px-2 py-1.5 text-xs text-danger">
                         <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
                         <span>
                           {template.rejection_reason || template.submission_error}
@@ -612,7 +611,7 @@ export function TemplateManager() {
                           ? t('deleteMetaLocallyTitle')
                           : t('deleteLocallyTitle')
                       }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
+                      className="text-muted-foreground hover:bg-danger-soft hover:text-danger h-8 w-8"
                     >
                       {deletingId === template.id ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -651,7 +650,7 @@ export function TemplateManager() {
           </DialogHeader>
 
           {form.category === 'Authentication' && (
-            <div className="flex items-start gap-2 rounded border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
               <AlertCircle className="size-4 mt-0.5 shrink-0" />
               <p>{t.rich('authWarning', { bold: (chunks) => <strong>{chunks}</strong> })}</p>
             </div>
@@ -696,7 +695,7 @@ export function TemplateManager() {
                         value={cat}
                         className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
                       >
-                        {cat}
+                        {categoryLabel(cat)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -775,7 +774,7 @@ export function TemplateManager() {
                 <div className="space-y-2 mt-2">
                   <Input
                     id="template-header-text"
-                    aria-label="Header text"
+                    aria-label={t('headerText')}
                     placeholder={t.raw('headerTextPlaceholder')}
                     value={form.header_content}
                     onChange={(e) =>
@@ -845,7 +844,7 @@ export function TemplateManager() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={form.header_media_url}
-                      alt="Header sample"
+                      alt={t('headerSampleAria')}
                       className="max-h-28 rounded-md border border-border object-contain"
                     />
                   )}
@@ -999,7 +998,7 @@ export function TemplateManager() {
                           variant="ghost"
                           size="icon"
                           onClick={() => removeButton(i)}
-                          className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 size-7"
+                          className="text-muted-foreground hover:bg-danger-soft hover:text-danger size-7"
                         >
                           <X className="size-3.5" />
                         </Button>
@@ -1109,9 +1108,9 @@ export function TemplateManager() {
               {t('cancel')}
             </Button>
             <Button
+              variant="destructive"
               onClick={confirmDelete}
               disabled={deletingId !== null}
-              className="bg-red-600 hover:bg-red-700 text-white"
             >
               {deletingId !== null ? (
                 <>

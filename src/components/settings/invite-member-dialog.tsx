@@ -117,7 +117,7 @@ export function InviteMemberDialog({
 
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to create invitation');
+        toast.error(payload.error || t('createFailed'));
         return;
       }
 
@@ -135,12 +135,12 @@ export function InviteMemberDialog({
         // string if `account` hasn't loaded yet (shouldn't happen
         // — the dialog requires admin+ which requires a loaded
         // profile — but stay safe).
-        accountName: account?.name ?? 'our wacrm account',
+        accountName: account?.name ?? t('ourAccount'),
       });
       onCreated();
     } catch (err) {
       console.error('[InviteMemberDialog] create error:', err);
-      toast.error('Could not reach the server. Try again?');
+      toast.error(t('serverUnreachable'));
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +164,7 @@ export function InviteMemberDialog({
     // they're being invited to before clicking through. This matters
     // for users in multi-team contexts where "our wacrm account"
     // wouldn't be enough to disambiguate.
-    const accountName = result?.accountName ?? 'our wacrm account';
+    const accountName = result?.accountName ?? t('ourAccount');
     const message = t('whatsappMessage', { accountName, expiresInDays: result?.expiresInDays ?? 0, url });
     return `https://wa.me/?text=${encodeURIComponent(message)}`;
   }
@@ -221,8 +221,8 @@ export function InviteMemberDialog({
                   text (target ratio 7:1). Border bumped to /50, bg to
                   /15, foreground promoted to amber-100 for the strong
                   intro, amber-200 for the body. */}
-              <div className="rounded-md border border-amber-500/50 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
-                <strong className="font-semibold text-amber-100">
+              <div className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
+                <strong className="font-semibold">
                   {t('saveLinkNow')}
                 </strong>{' '}
                 {t('saveLinkHint')}

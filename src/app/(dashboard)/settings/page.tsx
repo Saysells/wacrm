@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
+import { PageHeader } from '@/components/ui/page-header';
 import { SettingsRail } from '@/components/settings/settings-rail';
 import { SettingsOverview } from '@/components/settings/settings-overview';
 import { ProfileForm } from '@/components/settings/profile-form';
@@ -39,12 +40,17 @@ export default function SettingsPage() {
   );
 }
 
+// Configuración (rediseño, sesión F2), prototipo `config()`: encabezado
+// "Configuración" con el nombre de la Bandeja al lado, la nota gris
+// debajo, el riel para moverse entre secciones y, en el Resumen, el
+// tablero de tarjetas (`settings-overview.tsx`).
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { account, defaultCurrency } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
+  const tAppearance = useTranslations('Settings.appearance');
 
   // The URL (`?tab=`) is the single source of truth for the active
   // section — deep-linkable, and it keeps the existing links in the
@@ -60,13 +66,13 @@ function SettingsPageInner() {
 
   // Cheap, fetch-free rail hints. The Overview landing carries the
   // full live status/counts; the rail just surfaces the two that are
-  // already in context.
+  // already in context. El modo sale del catálogo ("Claro" / "Oscuro").
   const hints: Partial<Record<SettingsSection, ReactNode>> = useMemo(
     () => ({
-      appearance: mode.charAt(0).toUpperCase() + mode.slice(1),
+      appearance: tAppearance(`modes.${mode}`),
       deals: defaultCurrency,
     }),
-    [mode, defaultCurrency],
+    [mode, defaultCurrency, tAppearance],
   );
 
   const panel: Record<SettingsSection, ReactNode> = {
@@ -84,17 +90,14 @@ function SettingsPageInner() {
   };
 
   return (
-    <div>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {t('pageTitle')}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('pageDesc')}
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t('pageTitle')}
+        meta={account?.name}
+        note={section === 'overview' ? t('pageDesc') : undefined}
+      />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
+      <div className="grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
         <SettingsRail active={section} onSelect={go} hints={hints} />
         <div className="min-w-0">{panel[section]}</div>
       </div>

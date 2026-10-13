@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, MessageSquare, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,6 +28,12 @@ import {
   type InteractiveMessagePayload,
 } from "@/lib/whatsapp/interactive";
 import type { QuickReply, QuickReplyKind } from "@/types";
+import { cn } from "@/lib/utils";
+
+// Respuestas rápidas (Configuración). Rediseño, sesión F2: textos del
+// catálogo (`Settings.quickReplies`), borrar con un modal en vez de
+// `window.confirm`, vacío del sistema y botón de borrar en rojo del
+// sistema. La API y el formato del payload no cambian.
 
 interface DraftState {
   id?: string;
@@ -43,10 +53,13 @@ function emptyDraft(): DraftState {
 }
 
 export function QuickRepliesManager() {
+  const t = useTranslations("Settings.quickReplies");
   const [items, setItems] = useState<QuickReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [toDelete, setToDelete] = useState<QuickReply | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,7 +90,7 @@ export function QuickRepliesManager() {
   const save = useCallback(async () => {
     if (!draft) return;
     if (!draft.title.trim()) {
-      toast.error("Give the quick reply a name.");
+      toast.error(t("nameRequired"));
       return;
     }
     const payload =
@@ -97,64 +110,75 @@ export function QuickRepliesManager() {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error ?? "Couldn't save the quick reply.");
+        toast.error(data.error ?? t("saveFailed"));
         return;
       }
-      toast.success(draft.id ? "Quick reply updated." : "Quick reply created.");
+      toast.success(draft.id ? t("updated") : t("created"));
       setDraft(null);
       await load();
     } catch {
-      toast.error("Couldn't save the quick reply.");
+      toast.error(t("saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [draft, load]);
+  }, [draft, load, t]);
 
-  const remove = useCallback(
-    async (id: string) => {
-      if (!window.confirm("Delete this quick reply?")) return;
-      const res = await fetch(`/api/quick-replies/${id}`, { method: "DELETE" });
+  const confirmDelete = useCallback(async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/quick-replies/${toDelete.id}`, { method: "DELETE" });
       if (!res.ok) {
-        toast.error("Couldn't delete the quick reply.");
+        toast.error(t("deleteFailed"));
         return;
       }
+      setToDelete(null);
       await load();
-    },
-    [load],
-  );
+    } finally {
+      setDeleting(false);
+    }
+  }, [toDelete, load, t]);
 
   return (
-    <div>
+    <section className="animate-in fade-in-50 duration-200">
       <SettingsPanelHead
-        title="Quick replies"
-        description="Reusable snippets — plain text or a saved interactive message — that agents can insert from the inbox composer."
+        title={t("title")}
+        description={t("description")}
         action={
           <Button onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" />
-            New quick reply
+            <Plus />
+            {t("newQuickReply")}
           </Button>
         }
       />
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Loader2 className="size-5 animate-spin text-primary" />
         </div>
       ) : items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          No quick replies yet. Create one to reuse it across conversations.
-        </p>
+        <EmptyState
+          icon={Zap}
+          title={t("emptyTitle")}
+          description={t("emptyBody")}
+          action={
+            <Button variant="outline" onClick={openCreate}>
+              <Plus />
+              {t("newQuickReply")}
+            </Button>
+          }
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((qr) => (
             <li
               key={qr.id}
-              className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+              className="flex items-start gap-3 rounded-xl border border-border bg-card p-3"
             >
               {qr.kind === "interactive" ? (
-                <Zap className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <Zap className="mt-0.5 size-4 shrink-0 text-primary" />
               ) : (
-                <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               )}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{qr.title}</p>
@@ -165,16 +189,24 @@ export function QuickRepliesManager() {
                 </p>
               </div>
               <div className="flex shrink-0 gap-1">
-                <Button variant="ghost" size="icon-sm" onClick={() => openEdit(qr)}>
-                  <Pencil className="h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => openEdit(qr)}
+                  aria-label={t("editTitle")}
+                  title={t("editTitle")}
+                >
+                  <Pencil />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => remove(qr.id)}
-                  className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  onClick={() => setToDelete(qr)}
+                  aria-label={t("deleteTitle")}
+                  title={t("deleteTitle")}
+                  className="text-danger hover:bg-danger-soft hover:text-danger"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 />
                 </Button>
               </div>
             </li>
@@ -185,28 +217,29 @@ export function QuickRepliesManager() {
       <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{draft?.id ? "Edit quick reply" : "New quick reply"}</DialogTitle>
+            <DialogTitle>{draft?.id ? t("editTitle") : t("newQuickReply")}</DialogTitle>
           </DialogHeader>
           {draft && (
             <div className="max-h-[70vh] space-y-3 overflow-y-auto">
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Name</label>
+              <div className="space-y-1.5">
+                <Label className="text-[12.5px] font-semibold text-muted-foreground">
+                  {t("nameLabel")}
+                </Label>
                 <Input
                   value={draft.title}
                   onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                  placeholder="e.g. Business hours"
-                  className="bg-muted text-foreground"
+                  placeholder={t("namePlaceholder")}
                 />
               </div>
               <div className="flex gap-2">
                 <KindTab
                   active={draft.kind === "text"}
-                  label="Text"
+                  label={t("kindText")}
                   onClick={() => setDraft({ ...draft, kind: "text" })}
                 />
                 <KindTab
                   active={draft.kind === "interactive"}
-                  label="Interactive"
+                  label={t("kindInteractive")}
                   onClick={() => setDraft({ ...draft, kind: "interactive" })}
                 />
               </div>
@@ -214,8 +247,8 @@ export function QuickRepliesManager() {
                 <Textarea
                   value={draft.content_text}
                   onChange={(e) => setDraft({ ...draft, content_text: e.target.value })}
-                  placeholder="The message text to insert"
-                  className="min-h-28 bg-muted text-foreground"
+                  placeholder={t("textPlaceholder")}
+                  className="min-h-28"
                 />
               ) : (
                 <InteractiveBuilder
@@ -227,16 +260,36 @@ export function QuickRepliesManager() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDraft(null)} disabled={saving}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button onClick={save} disabled={saving}>
-              {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-              Save
+              {saving && <Loader2 className="animate-spin" />}
+              {t("save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <Dialog open={!!toDelete} onOpenChange={(o) => !o && !deleting && setToDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("deleteTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("deleteDesc", { name: toDelete?.title ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setToDelete(null)} disabled={deleting}>
+              {t("cancel")}
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting && <Loader2 className="animate-spin" />}
+              {t("delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 
@@ -253,11 +306,13 @@ function KindTab({
     <button
       type="button"
       onClick={onClick}
-      className={
+      aria-pressed={active}
+      className={cn(
+        "h-[34px] flex-1 rounded-lg border text-[13px] font-semibold transition-colors",
         active
-          ? "flex-1 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
-          : "flex-1 rounded-md border border-border bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-      }
+          ? "border-transparent bg-selected-strong text-primary"
+          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
     >
       {label}
     </button>

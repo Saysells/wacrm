@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { createClient } from '@/lib/supabase/client';
@@ -9,13 +9,26 @@ import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { THEMES } from '@/lib/themes';
 import { CURRENCIES } from '@/lib/currency';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import {
+  countOf,
+  joinEstado,
+  tableroCards,
+  whatsappEstado,
+  type TableroCard,
+} from '@/lib/settings/tablero';
 
 import { SECTION_META, type SettingsSection } from './settings-sections';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
+
+// ============================================================
+// Tablero de Configuración (rediseño, sesión F2), prototipo `config()`:
+// tarjetas `.hc.t` en tres columnas, cada una con el ícono en un cuadro
+// de 46 px, el título de la sección y su estado corto de hoy
+// ("Necesita reconexión", "3 miembros", …). El orden y los estados se
+// deciden en `src/lib/settings/tablero.ts`; acá solo se piden los datos
+// y se pinta.
+// ============================================================
 
 interface OverviewCounts {
   members: number | null;
@@ -24,6 +37,7 @@ interface OverviewCounts {
   templatesPending: number | null;
   tags: number | null;
   customFields: number | null;
+  quickReplies: number | null;
 }
 
 interface WhatsAppStatus {
@@ -42,6 +56,7 @@ export function SettingsOverview({
   const t = useTranslations('Settings.overview');
   const tRoles = useTranslations('Settings.roles');
   const tSections = useTranslations('Settings.sections');
+  const tAppearance = useTranslations('Settings.appearance');
 
   const [counts, setCounts] = useState<OverviewCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(true);
@@ -62,7 +77,7 @@ export function SettingsOverview({
     // Cheap counts — resolve fast, render immediately.
     (async () => {
       setCountsLoading(true);
-      const [membersRes, invitesRes, templatesTotal, templatesPending, tagsRes, fieldsRes] =
+      const [membersRes, invitesRes, templatesTotal, templatesPending, tagsRes, fieldsRes, qrRes] =
         await Promise.allSettled([
           fetch('/api/account/members', { cache: 'no-store' }).then((r) => r.json()),
           canManageMembers
@@ -84,6 +99,7 @@ export function SettingsOverview({
             .select('id', { count: 'exact', head: true })
             .eq('user_id', userId),
           supabase.from('custom_fields').select('id', { count: 'exact', head: true }),
+          fetch('/api/quick-replies', { cache: 'no-store' }).then((r) => r.json()),
         ]);
 
       if (cancelled) return;
@@ -98,21 +114,19 @@ export function SettingsOverview({
         Array.isArray(invitesRes.value.invitations)
           ? invitesRes.value.invitations.length
           : null;
+      const quickReplies =
+        qrRes.status === 'fulfilled' && Array.isArray(qrRes.value?.quick_replies)
+          ? qrRes.value.quick_replies.length
+          : null;
 
       setCounts({
         members,
         pendingInvites,
-        templates:
-          templatesTotal.status === 'fulfilled'
-            ? templatesTotal.value.count ?? null
-            : null,
-        templatesPending:
-          templatesPending.status === 'fulfilled'
-            ? templatesPending.value.count ?? null
-            : null,
-        tags: tagsRes.status === 'fulfilled' ? tagsRes.value.count ?? null : null,
-        customFields:
-          fieldsRes.status === 'fulfilled' ? fieldsRes.value.count ?? null : null,
+        templates: countOf(templatesTotal),
+        templatesPending: countOf(templatesPending),
+        tags: countOf(tagsRes),
+        customFields: countOf(fieldsRes),
+        quickReplies,
       });
       setCountsLoading(false);
     })();
@@ -141,147 +155,129 @@ export function SettingsOverview({
     };
   }, [user?.id, accountId, canManageMembers]);
 
-  const displayName = profile?.full_name || profile?.email || t('yourAccount');
-  const initial = (profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase();
   const roleMeta = accountRole ? ROLE_META[accountRole] : null;
   const RoleIcon = roleMeta?.icon;
-
   const currencyLabel =
     CURRENCIES.find((c) => c.code === defaultCurrency)?.label ?? defaultCurrency;
-  const themeName = THEMES.find((t) => t.id === theme)?.name ?? theme;
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const themeName = THEMES.find((th) => th.id === theme)?.name ?? theme;
+  const waEstado = whatsappEstado(whatsapp);
 
-  // Per-tile loading + subtitle. `null` counts render as a graceful
-  // fallback so a single failed query never blanks a tile.
-  const tiles: {
-    section: SettingsSection;
-    loading: boolean;
-    subtitle: ReactNode;
-  }[] = [
-    {
-      section: 'whatsapp',
+  // Estado corto por tarjeta. Un count en `null` cae a un texto genérico,
+  // así una consulta que falló nunca deja la tarjeta en blanco.
+  const estado: Record<TableroCard, { loading: boolean; text: ReactNode }> = {
+    whatsapp: {
       loading: whatsappLoading,
-      subtitle: !whatsapp?.configured ? (
-        t('notSetup')
-      ) : whatsapp.connected ? (
+      text:
+        waEstado === 'connected' ? (
+          <>
+            <StatusDot tone="ok" /> {t('connected')}
+          </>
+        ) : waEstado === 'needsReconnecting' ? (
+          <>
+            <StatusDot tone="muted" /> {t('needsReconnecting')}
+          </>
+        ) : (
+          t('notSetup')
+        ),
+    },
+    templates: {
+      loading: countsLoading,
+      text:
+        counts?.templates == null
+          ? t('manageTemplates')
+          : joinEstado([
+              t('templatesCount', { count: counts.templates }),
+              counts.templatesPending
+                ? t('pendingReview', { count: counts.templatesPending })
+                : null,
+            ]),
+    },
+    'quick-replies': {
+      loading: countsLoading,
+      text:
+        counts?.quickReplies == null
+          ? t('quickRepliesHint')
+          : t('quickRepliesCount', { count: counts.quickReplies }),
+    },
+    fields: {
+      loading: countsLoading,
+      text:
+        counts?.tags == null && counts?.customFields == null
+          ? t('tagsAndFields')
+          : joinEstado([
+              t('tagsCount', { count: counts?.tags ?? 0 }),
+              t('fieldsCount', { count: counts?.customFields ?? 0 }),
+            ]),
+    },
+    members: {
+      loading: countsLoading,
+      text:
+        counts?.members == null
+          ? t('viewTeamMembers')
+          : joinEstado([
+              t('membersCount', { count: counts.members }),
+              counts.pendingInvites
+                ? t('pendingInvites', { count: counts.pendingInvites })
+                : null,
+            ]),
+    },
+    appearance: {
+      loading: false,
+      text: t('appearance', { mode: tAppearance(`modes.${mode}`), theme: themeName }),
+    },
+    profile: {
+      loading: false,
+      text: (
         <>
-          <StatusDot tone="ok" /> {t('connected')}
-        </>
-      ) : (
-        <>
-          <StatusDot tone="muted" /> {t('needsReconnecting')}
+          {roleMeta && RoleIcon && accountRole ? (
+            <SettingsChip variant={roleMeta.variant}>
+              <RoleIcon />
+              {tRoles(accountRole)}
+            </SettingsChip>
+          ) : null}
+          <span className="truncate">{profile?.email || profile?.full_name || t('yourAccount')}</span>
         </>
       ),
     },
-    {
-      section: 'members',
-      loading: countsLoading,
-      subtitle:
-        counts?.members == null
-          ? t('viewTeamMembers')
-          : `${t('membersCount', { count: counts.members })}${
-              counts.pendingInvites
-                ? ` · ${t('pendingInvites', { count: counts.pendingInvites })}`
-                : ''
-            }`,
-    },
-    {
-      section: 'templates',
-      loading: countsLoading,
-      subtitle:
-        counts?.templates == null
-          ? t('manageTemplates')
-          : `${t('templatesCount', { count: counts.templates })}${
-              counts.templatesPending
-                ? ` · ${t('pendingReview', { count: counts.templatesPending })}`
-                : ''
-            }`,
-    },
-    {
-      section: 'deals',
-      loading: false,
-      subtitle: `${defaultCurrency} — ${currencyLabel}`,
-    },
-    {
-      section: 'fields',
-      loading: countsLoading,
-      subtitle:
-        counts?.tags == null && counts?.customFields == null
-          ? t('tagsAndFields')
-          : `${t('tagsCount', { count: counts?.tags ?? 0 })} · ${t('fieldsCount', {
-              count: counts?.customFields ?? 0,
-            })}`,
-    },
-    {
-      section: 'appearance',
-      loading: false,
-      subtitle: t('appearance', { mode: cap(mode), theme: themeName }),
-    },
-  ];
+    security: { loading: false, text: t('securityHint') },
+    deals: { loading: false, text: joinEstado([defaultCurrency, currencyLabel]) },
+    api: { loading: false, text: t('apiHint') },
+  };
 
   return (
     <section className="animate-in fade-in-50 duration-200">
-      {/* Identity */}
-      <Card className="flex-row items-center gap-4 px-5 py-5">
-        <Avatar size="lg" className="size-14">
-          {profile?.avatar_url ? (
-            <AvatarImage src={profile.avatar_url} alt={displayName} />
-          ) : null}
-          <AvatarFallback className="bg-primary/10 text-xl text-primary">
-            {initial}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold text-foreground">
-            {displayName}
-          </div>
-          {profile?.email ? (
-            <div className="truncate text-sm text-muted-foreground">
-              {profile.email}
-            </div>
-          ) : null}
-        </div>
-        {roleMeta && RoleIcon ? (
-          <SettingsChip variant={roleMeta.variant}>
-            <RoleIcon />
-            {tRoles(accountRole!)}
-          </SettingsChip>
-        ) : null}
-      </Card>
-
-      {/* Status tiles */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {tiles.map(({ section, loading, subtitle }) => {
-          const meta = SECTION_META[section];
-          const Icon = meta.icon;
+      {/* Prototipo `.cfg`: tres columnas, tarjetas `.hc.t`. */}
+      <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+        {tableroCards(accountRole).map((card) => {
+          const Icon = SECTION_META[card].icon;
+          const { loading, text } = estado[card];
           return (
             <button
-              key={section}
+              key={card}
               type="button"
-              onClick={() => onSelect(section)}
-              className={cn(
-                'group flex items-start gap-3.5 rounded-xl border border-border bg-card p-4 text-left transition-colors',
-                'hover:border-primary-soft-2 hover:bg-card-2',
-              )}
+              onClick={() => onSelect(card)}
+              className="flex items-center gap-3.5 rounded-[18px] border border-border bg-card p-[18px] text-left transition-[border-color,box-shadow] hover:border-[#B9C4D2] hover:shadow-card"
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
-                <Icon className="size-4" />
+              <span
+                aria-hidden="true"
+                className="grid size-[46px] shrink-0 place-items-center rounded-[13px] bg-[#5C7FA3] text-white"
+              >
+                <Icon className="size-[22px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-foreground">
-                  {tSections(section)}
+                <span className="block text-[15px] font-semibold text-foreground">
+                  {tSections(card)}
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
                   {loading ? (
                     <>
                       <Loader2 className="size-3 animate-spin" /> {t('loading')}
                     </>
                   ) : (
-                    subtitle
+                    text
                   )}
                 </span>
               </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </button>
           );
         })}

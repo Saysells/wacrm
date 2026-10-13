@@ -1,24 +1,26 @@
 import type { ReactNode } from 'react';
 
+import { Badge, type badgeVariants } from '@/components/ui/badge';
+import type { VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 /**
- * Small status / role pill used across the settings redesign
- * (Overview tiles, WhatsApp banner, the "Active" appearance markers).
- *
- * Status colours (emerald = good, amber = attention) follow the same
- * Tailwind palette the members tab already uses for role chips — they
- * are semantic accents, not neutrals, so they're intentionally not
- * tokenized. Neutrals stay on design tokens.
+ * Chip de estado / rol de Configuración. Desde el rediseño (sesión F2)
+ * es el `Badge` del sistema (rectángulo de 5 px, nunca pastilla) con
+ * los tonos semánticos: propietario en ámbar (`warning`), administrador
+ * en celeste (`selected`), ok en verde (`success`), atención en ámbar y
+ * el resto neutro.
  */
 export type ChipVariant = 'owner' | 'admin' | 'ok' | 'warn' | 'muted';
 
-const VARIANTS: Record<ChipVariant, string> = {
-  owner: 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300',
-  admin: 'border-primary-soft-2 bg-primary-soft text-primary',
-  ok: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-  warn: 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300',
-  muted: 'border-border bg-muted text-muted-foreground',
+type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>['variant']>;
+
+const VARIANTS: Record<ChipVariant, BadgeVariant> = {
+  owner: 'warning',
+  admin: 'selected',
+  ok: 'success',
+  warn: 'warning',
+  muted: 'secondary',
 };
 
 export function SettingsChip({
@@ -31,19 +33,13 @@ export function SettingsChip({
   children: ReactNode;
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap [&_svg]:size-3.5',
-        VARIANTS[variant],
-        className,
-      )}
-    >
+    <Badge variant={VARIANTS[variant]} className={cn('[&_svg]:size-3.5', className)}>
       {children}
-    </span>
+    </Badge>
   );
 }
 
-/** A small live status dot (e.g. WhatsApp connected indicator). */
+/** Punto de estado en vivo (por ejemplo, WhatsApp conectado). */
 export function StatusDot({
   tone = 'ok',
   className,
@@ -56,7 +52,7 @@ export function StatusDot({
       aria-hidden
       className={cn(
         'inline-block size-1.5 shrink-0 rounded-full',
-        tone === 'ok' ? 'bg-emerald-500' : 'bg-muted-foreground',
+        tone === 'ok' ? 'bg-success' : 'bg-muted-foreground',
         className,
       )}
     />

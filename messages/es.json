@@ -1549,7 +1549,11 @@
       "fieldsCount": "{count} {count, plural, =1 {campo personalizado} other {campos personalizados}}",
       "appearance": "Modo {mode} · acento {theme}",
       "yourAccount": "Tu cuenta",
-      "loading": "Cargando…"
+      "loading": "Cargando…",
+      "quickRepliesHint": "Las que aparecen con /",
+      "quickRepliesCount": "{count} {count, plural, =1 {respuesta rápida} other {respuestas rápidas}}",
+      "securityHint": "Contraseña y sesiones",
+      "apiHint": "Acceso para integraciones"
     },
     "members": {
       "permissionsBtn": "Permisos",
@@ -1582,7 +1586,14 @@
       "removeDialogDesc": "¿Quitar a <bold>{name}</bold> de la cuenta? Su sesión en esta cuenta se cierra y en su próximo inicio de sesión recibe una cuenta personal nueva. Su usuario no se elimina.",
       "cancel": "Cancelar",
       "removing": "Quitando...",
-      "removeBtn": "Quitar miembro"
+      "removeBtn": "Quitar miembro",
+      "loadMembersFailed": "No se pudieron cargar los miembros",
+      "loadInvitationsFailed": "No se pudieron cargar las invitaciones",
+      "serverUnreachable": "No se pudo conectar con el servidor",
+      "updateRoleFailed": "No se pudo cambiar el rol",
+      "updatePermissionFailed": "No se pudo cambiar el permiso",
+      "removeFailed": "No se pudo quitar al miembro",
+      "revokeFailed": "No se pudo revocar la invitación"
     },
     "invite": {
       "inviteCreated": "Invitación creada",
@@ -1610,7 +1621,10 @@
       "labelTooLong": "La referencia debe tener {max} caracteres o menos",
       "copied": "Link de invitación copiado",
       "clipboardBlocked": "Portapapeles bloqueado: copiá el link a mano",
-      "whatsappMessage": "Sumate a {accountName} en wacrm con este link (válido por {expiresInDays} días): {url}"
+      "whatsappMessage": "Sumate a {accountName} en la Bandeja con este link (válido por {expiresInDays} días): {url}",
+      "createFailed": "No se pudo crear la invitación",
+      "serverUnreachable": "No se pudo conectar con el servidor. ¿Probás de nuevo?",
+      "ourAccount": "nuestra cuenta"
     },
     "tagsAndFields": {
       "title": "Campos y etiquetas",
@@ -1729,8 +1743,8 @@
       "saveResubmit": "Guardar y reenviar",
       "submitApproval": "Enviar para aprobación",
       "deleteDialogTitle": "¿Eliminar plantilla?",
-      "deleteMetaDesc": "\"{name}\" se va a eliminar de Meta y de wacrm. Las difusiones activas que la usen van a empezar a fallar en su próximo envío. No se puede deshacer.",
-      "deleteLocalDesc": "\"{name}\" se va a eliminar de wacrm. Nunca se envió a Meta, así que no hay nada que limpiar del lado remoto.",
+      "deleteMetaDesc": "\"{name}\" se va a eliminar de Meta y de la Bandeja. Las difusiones activas que la usen van a empezar a fallar en su próximo envío. No se puede deshacer.",
+      "deleteLocalDesc": "\"{name}\" se va a eliminar de la Bandeja. Nunca se envió a Meta, así que no hay nada que limpiar del lado remoto.",
       "deleting": "Eliminando…",
       "delete": "Eliminar",
       "toastLoadFailed": "No se pudieron cargar las plantillas",
@@ -1749,7 +1763,25 @@
       "toastInvalidImage": "La imagen del encabezado debe ser JPEG o PNG.",
       "toastImageTooLarge": "La imagen pesa {size} MB; el límite de Meta es 5 MB.",
       "toastUploadSuccess": "Imagen subida.",
-      "toastUploadFailed": "No se pudo subir."
+      "toastUploadFailed": "No se pudo subir.",
+      "toastHttpFailed": "El envío falló (HTTP {status})",
+      "moreCount": ", +{count} más",
+      "qualityScore": "Puntaje de calidad de Meta",
+      "categories": {
+        "Marketing": "Marketing",
+        "Utility": "Utilidad",
+        "Authentication": "Autenticación"
+      },
+      "status": {
+        "DRAFT": "Borrador",
+        "PENDING": "En revisión",
+        "APPROVED": "Aprobada",
+        "REJECTED": "Rechazada",
+        "PAUSED": "Pausada",
+        "DISABLED": "Deshabilitada",
+        "IN_APPEAL": "En apelación",
+        "PENDING_DELETION": "Por eliminar"
+      }
     },
     "permissions": {
       "view_all_data": "Ver todos los datos",
@@ -1783,7 +1815,7 @@
       "notConnected": "No conectado",
       "connectedDesc": "Tu token de acceso autentica con Meta. Mirá el estado de registro más abajo para saber si los webhooks están realmente conectados.",
       "notConnectedDesc": "Configurá tus credenciales de la API de Meta acá abajo para conectar tu cuenta de WhatsApp Business.",
-      "registered": "Registrado: Meta va a entregar los eventos a wacrm",
+      "registered": "Registrado: Meta va a entregar los eventos a la Bandeja",
       "notRegistered": "No registrado: Meta no va a entregar eventos",
       "verifyWithMeta": "Verificar con Meta",
       "subscribedSince": "Suscripto desde {date}. Hacé clic en Verificar con Meta si dejan de llegar eventos.",
@@ -1807,7 +1839,7 @@
       "twoStepPin": "PIN de verificación en dos pasos",
       "optional": "(opcional)",
       "pinPlaceholder": "PIN de 6 dígitos del WhatsApp Manager de Meta",
-      "pinHint": "Solo hace falta para conectar los mensajes entrantes de un número de producción. Configuralo en Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification y pegalo acá para que wacrm pueda suscribir el número; si no, Meta enruta los eventos entrantes a la última app que lo reclamó (el síntoma que sufren los segundos números bajo una WABA compartida). Los números de prueba de Meta no tienen PIN y vienen prerregistrados: para ellos dejalo en blanco. Dejarlo en blanco tampoco toca un registro existente.",
+      "pinHint": "Solo hace falta para conectar los mensajes entrantes de un número de producción. Configuralo en Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification y pegalo acá para que la Bandeja pueda suscribir el número; si no, Meta enruta los eventos entrantes a la última app que lo reclamó (el síntoma que sufren los segundos números bajo una WABA compartida). Los números de prueba de Meta no tienen PIN y vienen prerregistrados: para ellos dejalo en blanco. Dejarlo en blanco tampoco toca un registro existente.",
       "webhookTitle": "Configuración del webhook",
       "webhookDesc": "Usá esta URL como callback del webhook en el panel de la app de Meta.",
       "webhookUrl": "URL de callback del webhook",
@@ -1843,7 +1875,32 @@
       "step4_3": "Pegá la <strong class=\"text-foreground\">URL de callback del webhook</strong> de arriba",
       "step4_4": "Ingresá el mismo <strong class=\"text-foreground\">token de verificación</strong> que definiste acá",
       "step4_5": "Suscribite al campo de webhook \"messages\"",
-      "metaDocs": "Documentación de la API de WhatsApp de Meta"
+      "metaDocs": "Documentación de la API de WhatsApp de Meta",
+      "idPlaceholder": "p. ej. 100234567890123",
+      "resetDialogTitle": "¿Restablecer la configuración de WhatsApp?",
+      "resetDialogDesc": "Se borra la configuración actual para que vuelvas a cargar las credenciales. Los mensajes dejan de llegar hasta que la completes de nuevo.",
+      "resetDialogCancel": "Cancelar",
+      "toasts": {
+        "loadFailed": "No se pudo cargar la configuración de WhatsApp",
+        "phoneNumberIdRequired": "Falta el Phone Number ID",
+        "accessTokenRequired": "Para la primera configuración hace falta el Access Token",
+        "reenterToken": "Volvé a pegar el Access Token para guardar los cambios",
+        "saveFailed": "No se pudo guardar la configuración",
+        "savedNotRegistered": "Se guardó, pero Meta no pudo registrar el número: {error}",
+        "savedSkippedRegistration": "Credenciales guardadas y verificadas. El registro de entrada se saltó (sin PIN): mirá el estado del registro más abajo.",
+        "liveNamed": "En vivo: {name} ya puede recibir eventos.",
+        "connected": "WhatsApp conectado. Los eventos empiezan a llegar en un minuto.",
+        "connectedTo": "Conectado a {name}",
+        "apiOk": "Conexión con la API correcta",
+        "apiFailed": "Falló la conexión con la API",
+        "testFailed": "Falló la prueba de conexión. Revisá la red y probá de nuevo.",
+        "numberLive": "El número está conectado del todo: Meta entrega los eventos.",
+        "numberNotRegistered": "El número no está registrado del todo. Mirá abajo qué paso falló.",
+        "verifyUnreachable": "No se pudo llegar al verificador.",
+        "resetFailed": "No se pudo restablecer la configuración",
+        "resetDone": "Configuración borrada. Ya podés volver a cargar las credenciales.",
+        "webhookCopied": "URL del webhook copiada"
+      }
     },
     "sections": {
       "overview": "Resumen",
@@ -1911,7 +1968,8 @@
       "cancel": "Cancelar",
       "signingOut": "Cerrando sesión…",
       "signOutEverywhere": "Cerrar sesión en todos lados",
-      "signOutFailed": "No se pudo cerrar sesión: {message}"
+      "signOutFailed": "No se pudo cerrar sesión: {message}",
+      "namePlaceholder": "Tu nombre"
     },
     "appearance": {
       "title": "Apariencia",
@@ -1920,7 +1978,19 @@
       "useMode": "Usar modo {mode}",
       "active": "Activo",
       "accentColor": "Color de acento",
-      "useTheme": "Usar tema {name}"
+      "useTheme": "Usar tema {name}",
+      "modes": {
+        "light": "Claro",
+        "dark": "Oscuro"
+      },
+      "themes": {
+        "saysells": "El acento de la casa: navy y celeste.",
+        "violet": "Seguro, un poco juguetón: el acento original.",
+        "emerald": "Verde de crecimiento, sin copiar el de WhatsApp.",
+        "cobalt": "Azul limpio de software B2B: calmo y de producto.",
+        "amber": "Cálido y amigable, pensado para equipos chicos.",
+        "rose": "Audaz y moderno: marcas directas al consumidor."
+      }
     },
     "security": {
       "title": "Inicio de sesión y seguridad",
@@ -1978,7 +2048,7 @@
     },
     "aiConfig": {
       "title": "Configuración del agente",
-      "description": "Usá tu propia clave de OpenAI o Anthropic. wacrm llama al proveedor directamente con tu clave: sin cargos de IA por asiento, y tus datos siguen siendo tuyos. Esto alimenta las respuestas redactadas con IA en la bandeja, el bot de respuesta automática y el Playground.",
+      "description": "Usá tu propia clave de OpenAI o Anthropic. la Bandeja llama al proveedor directamente con tu clave: sin cargos de IA por asiento, y tus datos siguen siendo tuyos. Esto alimenta las respuestas redactadas con IA en la bandeja, el bot de respuesta automática y el Playground.",
       "adminOnlyConfig": "Solo administradores y propietarios pueden cambiar la configuración de IA.",
       "loadFailed": "No se pudo cargar la configuración de IA",
       "providerAndKey": "Proveedor y clave",
@@ -2042,6 +2112,30 @@
       "reindex": "Reindexar",
       "reindexTooltip": "Volver a indexar todos los documentos (por ej. después de agregar una clave de embeddings)",
       "loading": "Cargando…"
+    },
+    "railAria": "Secciones de configuración",
+    "quickReplies": {
+      "title": "Respuestas rápidas",
+      "description": "Fragmentos para reusar, texto plano o un mensaje interactivo guardado, que el equipo inserta desde el cuadro de mensaje con /.",
+      "newQuickReply": "Nueva respuesta rápida",
+      "emptyTitle": "Todavía no hay respuestas rápidas",
+      "emptyBody": "Creá una para reusarla en todas las conversaciones.",
+      "editTitle": "Editar respuesta rápida",
+      "deleteTitle": "Eliminar respuesta rápida",
+      "deleteDesc": "\"{name}\" se va a eliminar. No se puede deshacer.",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "p. ej. Horario de atención",
+      "kindText": "Texto",
+      "kindInteractive": "Interactivo",
+      "textPlaceholder": "El texto del mensaje que se inserta",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "delete": "Eliminar",
+      "nameRequired": "Ponele un nombre a la respuesta rápida.",
+      "saveFailed": "No se pudo guardar la respuesta rápida.",
+      "updated": "Respuesta rápida actualizada.",
+      "created": "Respuesta rápida creada.",
+      "deleteFailed": "No se pudo eliminar la respuesta rápida."
     }
   },
   "Shortcuts": {
@@ -2056,5 +2150,18 @@
     "note": "Nota interna",
     "escape": "Cerrar menús y paneles",
     "help": "Ver estos atajos"
+  },
+  "Common": {
+    "readOnly": "Solo lectura: tu rol no puede hacer esto.",
+    "loading": "Cargando…",
+    "unknownError": "Error desconocido",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "close": "Cerrar",
+    "retry": "Reintentar",
+    "back": "Volver",
+    "edit": "Editar",
+    "inbox": "la Bandeja"
   }
 }

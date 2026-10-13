@@ -25,6 +25,7 @@ import { useTranslations } from 'next-intl';
 
 export function SessionsCard() {
   const t = useTranslations('Settings.profile');
+  const tCommon = useTranslations('Common');
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -42,7 +43,7 @@ export function SessionsCard() {
       }
       window.location.href = '/login';
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tCommon('unknownError');
       toast.error(msg);
     } finally {
       setSigningOut(false);

@@ -23,6 +23,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { SettingsPanelHead } from './settings-panel-head';
 import {
   Accordion,
@@ -57,6 +65,7 @@ export function WhatsAppConfig() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [config, setConfig] = useState<WhatsAppConfigType | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('unknown');
@@ -180,11 +189,11 @@ export function WhatsAppConfig() {
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
-      toast.error('Failed to load WhatsApp configuration');
+      toast.error(t('toasts.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, t]);
 
   useEffect(() => {
     // Need both the auth session (`!authLoading`) AND the profile
@@ -228,11 +237,11 @@ export function WhatsAppConfig() {
 
   async function handleSave() {
     if (!phoneNumberId.trim()) {
-      toast.error('Phone Number ID is required');
+      toast.error(t('toasts.phoneNumberIdRequired'));
       return;
     }
     if (!config && (!accessToken.trim() || !tokenEdited)) {
-      toast.error('Access Token is required for initial setup');
+      toast.error(t('toasts.accessTokenRequired'));
       return;
     }
 
@@ -260,7 +269,7 @@ export function WhatsAppConfig() {
         // server. But our POST handler requires an access_token to verify
         // with Meta. If the user didn't change the token, we need to signal
         // that. Simplest: require token re-entry if they're updating.
-        toast.error('Please re-enter the Access Token to save changes');
+        toast.error(t('toasts.reenterToken'));
         setSaving(false);
         return;
       }
@@ -274,7 +283,7 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to save configuration');
+        toast.error(data.error || t('toasts.saveFailed'));
         setSaving(false);
         return;
       }
@@ -287,7 +296,7 @@ export function WhatsAppConfig() {
       //                         is human-readable from Meta.
       if (data.registered === false && data.registration_error) {
         toast.error(
-          `Saved, but Meta couldn't register the number: ${data.registration_error}`,
+          t('toasts.savedNotRegistered', { error: data.registration_error }),
           { duration: 12000 },
         );
       } else if (data.registration_skipped) {
@@ -295,16 +304,13 @@ export function WhatsAppConfig() {
         // because no PIN was supplied (e.g. a Meta test number).
         // Don't claim the number is "Live" — point at the
         // Registration status banner instead.
-        toast.success(
-          'Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.',
-          { duration: 10000 },
-        );
+        toast.success(t('toasts.savedSkippedRegistration'), { duration: 10000 });
         setPin('');
       } else {
         toast.success(
           data.phone_info?.verified_name
-            ? `Live — ${data.phone_info.verified_name} can now receive events.`
-            : 'WhatsApp connected. Events will start flowing within a minute.',
+            ? t('toasts.liveNamed', { name: data.phone_info.verified_name })
+            : t('toasts.connected'),
         );
         // Clear the PIN so subsequent saves don't accidentally
         // re-register (which would void the active subscription if
@@ -315,7 +321,7 @@ export function WhatsAppConfig() {
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('Save error:', err);
-      toast.error('Failed to save configuration');
+      toast.error(t('toasts.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -333,19 +339,19 @@ export function WhatsAppConfig() {
         setStatusMessage('');
         toast.success(
           payload.phone_info?.verified_name
-            ? `Connected to ${payload.phone_info.verified_name}`
-            : 'API connection successful'
+            ? t('toasts.connectedTo', { name: payload.phone_info.verified_name })
+            : t('toasts.apiOk'),
         );
       } else {
         setConnectionStatus('disconnected');
         setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
         setStatusMessage(payload.message || '');
-        toast.error(payload.message || 'API connection failed');
+        toast.error(payload.message || t('toasts.apiFailed'));
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
-      toast.error('Connection test failed. Check network and try again.');
+      toast.error(t('toasts.testFailed'));
     } finally {
       setTesting(false);
     }
@@ -361,38 +367,34 @@ export function WhatsAppConfig() {
       const data = (await res.json()) as RegistrationProbe;
       setRegistrationProbe(data);
       if (data.live) {
-        toast.success('Number is fully wired — Meta is delivering events.');
+        toast.success(t('toasts.numberLive'));
       } else {
-        toast.error(
-          'Number is not fully registered. See the checks below for which step failed.',
-          { duration: 8000 },
-        );
+        toast.error(t('toasts.numberNotRegistered'), { duration: 8000 });
       }
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('verify-registration failed:', err);
-      toast.error('Could not reach the verification endpoint.');
+      toast.error(t('toasts.verifyUnreachable'));
     } finally {
       setVerifyingRegistration(false);
     }
   }
 
+  // Restablecer: pide confirmación en un modal del sistema (sesión F2),
+  // nunca con `confirm()`.
   async function handleReset() {
-    if (!confirm('This will delete the current WhatsApp config so you can re-enter it. Continue?')) {
-      return;
-    }
-
+    setResetOpen(false);
     try {
       setResetting(true);
       const res = await fetch('/api/whatsapp/config', { method: 'DELETE' });
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to reset configuration');
+        toast.error(data.error || t('toasts.resetFailed'));
         return;
       }
 
-      toast.success('Configuration cleared. You can now re-enter your credentials.');
+      toast.success(t('toasts.resetDone'));
       setConfig(null);
       setPhoneNumberId('');
       setWabaId('');
@@ -404,7 +406,7 @@ export function WhatsAppConfig() {
       setStatusMessage('');
     } catch (err) {
       console.error('Reset error:', err);
-      toast.error('Failed to reset configuration');
+      toast.error(t('toasts.resetFailed'));
     } finally {
       setResetting(false);
     }
@@ -412,7 +414,7 @@ export function WhatsAppConfig() {
 
   function handleCopyWebhookUrl() {
     navigator.clipboard.writeText(webhookUrl);
-    toast.success('Webhook URL copied to clipboard');
+    toast.success(t('toasts.webhookCopied'));
   }
 
   if (loading) {
@@ -442,21 +444,22 @@ export function WhatsAppConfig() {
       <div className="space-y-6">
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
-          <Alert className="bg-amber-950/40 border-amber-600/40">
+          <Alert className="border-warning/30 bg-warning-soft">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="size-5 text-amber-400 mt-0.5 shrink-0" />
+              <AlertTriangle className="size-5 text-warning mt-0.5 shrink-0" />
               <div className="flex-1">
-                <AlertTitle className="text-amber-200 mb-1">
-                  Stored token can&apos;t be decrypted
+                <AlertTitle className="text-warning mb-1">
+                  {t('tokenCorrupted')}
                 </AlertTitle>
-                <AlertDescription className="text-amber-100/80 text-sm">
+                <AlertDescription className="text-foreground/80 text-sm">
                   {statusMessage}
                 </AlertDescription>
                 <Button
-                  onClick={handleReset}
+                  onClick={() => setResetOpen(true)}
                   disabled={resetting}
                   size="sm"
-                  className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
+                  variant="destructive"
+                  className="mt-3"
                 >
                   {resetting ? (
                     <>
@@ -481,7 +484,7 @@ export function WhatsAppConfig() {
             {connectionStatus === 'connected' ? (
               <CheckCircle2 className="size-4 text-primary" />
             ) : (
-              <XCircle className="size-4 text-red-500" />
+              <XCircle className="size-4 text-danger" />
             )}
             <AlertTitle className="text-foreground mb-0">
               {connectionStatus === 'connected' ? t('credentialsValid') : t('notConnected')}
@@ -504,20 +507,20 @@ export function WhatsAppConfig() {
           <Alert
             className={
               isRegistered
-                ? 'bg-emerald-950/30 border-emerald-700/50'
-                : 'bg-amber-950/30 border-amber-700/50'
+                ? 'border-success/30 bg-success-soft'
+                : 'border-warning/30 bg-warning-soft'
             }
           >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 {isRegistered ? (
-                  <CheckCircle2 className="size-4 text-emerald-400" />
+                  <CheckCircle2 className="size-4 text-success" />
                 ) : (
-                  <AlertTriangle className="size-4 text-amber-400" />
+                  <AlertTriangle className="size-4 text-warning" />
                 )}
                 <AlertTitle
                   className={
-                    'mb-0 ' + (isRegistered ? 'text-emerald-200' : 'text-amber-200')
+                    'mb-0 ' + (isRegistered ? 'text-success' : 'text-warning')
                   }
                 >
                   {isRegistered
@@ -554,7 +557,7 @@ export function WhatsAppConfig() {
               ) : lastRegistrationError ? (
                 <>
                   {t('lastAttemptFailed')}
-                  <span className="text-red-300">
+                  <span className="text-danger">
                     &quot;{lastRegistrationError}&quot;
                   </span>
                   . {t('retryHint')}
@@ -568,7 +571,7 @@ export function WhatsAppConfig() {
               <div className="mt-3 rounded border border-border bg-card/60 px-3 py-2 space-y-1.5 text-[11px]">
                 <p className="font-medium text-foreground">
                   {t('diagnosticLastRun')}
-                  <span className={registrationProbe.live ? 'text-emerald-400' : 'text-amber-400'}>
+                  <span className={registrationProbe.live ? 'text-success' : 'text-warning'}>
                     {registrationProbe.live ? t('live') : t('notLive')}
                   </span>
                 </p>
@@ -576,9 +579,9 @@ export function WhatsAppConfig() {
                   {Object.entries(registrationProbe.checks).map(([k, v]) => (
                     <li key={k} className="flex items-center gap-1.5">
                       {v === true ? (
-                        <CheckCircle2 className="size-3 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className="size-3 text-success shrink-0" />
                       ) : v === false ? (
-                        <XCircle className="size-3 text-red-400 shrink-0" />
+                        <XCircle className="size-3 text-danger shrink-0" />
                       ) : (
                         <span className="size-3 rounded-full border border-border shrink-0" />
                       )}
@@ -587,7 +590,7 @@ export function WhatsAppConfig() {
                   ))}
                 </ul>
                 {(registrationProbe.errors ?? []).length > 0 && (
-                  <ul className="pt-1 space-y-0.5 text-red-300">
+                  <ul className="pt-1 space-y-0.5 text-danger">
                     {registrationProbe.errors?.map((e, i) => (
                       <li key={i}>• {e}</li>
                     ))}
@@ -610,7 +613,7 @@ export function WhatsAppConfig() {
             <div className="space-y-2">
               <Label className="text-muted-foreground">{t('phoneNumberId')}</Label>
               <Input
-                placeholder="e.g. 100234567890123"
+                placeholder={t('idPlaceholder')}
                 value={phoneNumberId}
                 onChange={(e) => setPhoneNumberId(e.target.value)}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
@@ -620,7 +623,7 @@ export function WhatsAppConfig() {
             <div className="space-y-2">
               <Label className="text-muted-foreground">{t('wabaId')}</Label>
               <Input
-                placeholder="e.g. 100234567890456"
+                placeholder={t('idPlaceholder')}
                 value={wabaId}
                 onChange={(e) => setWabaId(e.target.value)}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
@@ -748,7 +751,7 @@ export function WhatsAppConfig() {
                     {t('mirrorInboundDesc')}
                   </p>
                   {!mirrorMedia && (
-                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                    <p className="mt-1 text-xs text-warning">
                       {t('mirrorInboundOffWarning')}
                     </p>
                   )}
@@ -801,9 +804,9 @@ export function WhatsAppConfig() {
           {config && (
             <Button
               variant="outline"
-              onClick={handleReset}
+              onClick={() => setResetOpen(true)}
               disabled={resetting}
-              className="border-red-900 text-red-400 hover:text-red-300 hover:bg-red-950/40"
+              className="border-transparent bg-danger-soft text-danger hover:bg-danger hover:text-white"
             >
               {resetting ? (
                 <>
@@ -916,6 +919,23 @@ export function WhatsAppConfig() {
         </Card>
       </div>
     </div>
+
+      <Dialog open={resetOpen} onOpenChange={(o) => !o && setResetOpen(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('resetDialogTitle')}</DialogTitle>
+            <DialogDescription>{t('resetDialogDesc')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(false)}>
+              {t('resetDialogCancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleReset} disabled={resetting}>
+              {t('resetConfig')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

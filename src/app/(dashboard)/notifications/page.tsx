@@ -10,6 +10,8 @@ import { useNow } from "@/hooks/use-now";
 import type { Notification } from "@/types";
 import { Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { uniqueChannelName } from "@/lib/realtime/channel-name";
 import {
   missingContactIds,
@@ -212,15 +214,13 @@ export default function NotificationsPage() {
   return (
     // Ocupa la tarjeta entera (como Contactos): encabezado fijo, lista con scroll.
     <div className="-m-4 flex h-[calc(100%+2rem)] flex-col overflow-hidden sm:-m-6 sm:h-[calc(100%+3rem)]">
-      {/* Encabezado (prototipo `.ctop`). */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-6 pt-5 pb-3.5">
-        <h1 className="text-[22px] font-semibold text-foreground">{t("title")}</h1>
-        {unread > 0 && (
-          <span className="mt-1 ml-1 text-sm tabular-nums text-muted-foreground">
-            {t("unreadCount", { count: unread })}
-          </span>
-        )}
-        <div className="ml-auto">
+      {/* Encabezado común (`PageHeader`, prototipo `.ctop`). */}
+      <PageHeader
+        padded
+        border
+        title={t("title")}
+        meta={unread > 0 ? t("unreadCount", { count: unread }) : undefined}
+        actions={
           <Button
             variant="outline"
             disabled={unread === 0 || markingAll}
@@ -229,17 +229,16 @@ export default function NotificationsPage() {
             {markingAll ? <Loader2 className="animate-spin" /> : <CheckCheck />}
             {t("markAllRead")}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {notifications.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 py-12 text-center">
-          <div className="mb-2 grid size-12 place-items-center rounded-full bg-selected text-primary">
-            <Bell className="size-6" />
-          </div>
-          <p className="text-[15px] font-semibold text-foreground">{t("emptyTitle")}</p>
-          <p className="max-w-sm text-[13.5px] text-muted-foreground">{t("emptyBody")}</p>
-        </div>
+        <EmptyState
+          className="flex-1"
+          icon={Bell}
+          title={t("emptyTitle")}
+          description={t("emptyBody")}
+        />
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto py-2">
           {notifications.map((n) => {

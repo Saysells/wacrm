@@ -184,11 +184,12 @@ export function TagManager() {
                 {tags.map((tag) => (
                   <span
                     key={tag.id}
-                    className="group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                    // Rectángulo de 5 px sobre la tinta al 15 % (sesión F2), como
+                    // los chips de la lista; `tags.color` es un string libre.
+                    className="group inline-flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-[13px] font-medium transition-colors"
                     style={{
-                      backgroundColor: `${tag.color}20`,
+                      backgroundColor: `color-mix(in srgb, ${tag.color} 15%, transparent)`,
                       color: tag.color,
-                      border: `1px solid ${tag.color}40`,
                     }}
                   >
                     <span
@@ -217,7 +218,7 @@ export function TagManager() {
                         onClick={() => confirmDelete(tag)}
                         disabled={isEstadoTag(tag)}
                         aria-label={t('deleteAria', { name: tag.name })}
-                        className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-white/10"
+                        className="ml-0.5 rounded-[4px] p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-white/10"
                       >
                         <X className="size-3" />
                       </button>

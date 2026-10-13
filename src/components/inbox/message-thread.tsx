@@ -1034,8 +1034,13 @@ export function MessageThread({
       {/* Mensajes (prototipo `.msgs`): fondo blanco, columna con 8 px
           entre burbujas y un espaciador arriba que las apoya abajo
           cuando son pocas. */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="flex min-h-full flex-col justify-end gap-2 px-4 pb-2 pt-5 sm:px-10">
+      {/* `@container`: el padding de los mensajes depende del ancho del
+          HILO, no de la ventana (sesión F2). Con el panel abierto el hilo
+          mide 290 px a 1180 y 476 a 1366: ahí 40 px por lado dejaban al
+          menú flotante de cada mensaje sin lugar al costado de la burbuja;
+          desde 520 px de hilo vuelven los 40 del prototipo. */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto @container">
+        <div className="flex min-h-full flex-col justify-end gap-2 px-4 pb-2 pt-5 @[520px]:px-10">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

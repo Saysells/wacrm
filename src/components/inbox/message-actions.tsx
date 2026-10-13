@@ -98,23 +98,28 @@ export function MessageActions({
       <div
         data-touch-open={touchOpen || pickerOpen ? "true" : undefined}
         className={cn(
-          // Apoyado en el borde de arriba del bloque (sesión F1): el
-          // rótulo "Bot" / "Plantilla · nombre" va arriba de la burbuja
-          // dentro de este mismo bloque, así que un `-top-3` lo pisaba.
-          // Con `bottom-full` el menú queda entero por encima, y el
-          // rótulo, si lo hay, a la vista.
-          "absolute bottom-full z-10 flex h-7 items-center gap-0.5 rounded-full border border-border bg-popover/95 px-1 shadow-md backdrop-blur-sm transition-opacity",
+          // Al costado de la burbuja (sesión F2): centrado en el alto del
+          // bloque, del lado libre de la fila (a la izquierda de las
+          // enviadas, a la derecha de las recibidas). Arriba (`bottom-full`,
+          // F1) pisaba la hora y los tildes del mensaje anterior cuando
+          // dos burbujas iban pegadas; al costado solo ocupa la franja
+          // vertical de su propio bloque, que del otro lado está vacía.
+          // Ancho: 3 botones de 18 px + 4 de padding + 2 de borde = 60 px,
+          // más 4 px de separación. A 1180 el hilo mide 290 px: con 16 px
+          // de padding por lado (ver `message-thread.tsx`) la fila mide
+          // 258 y la burbuja al 75 % deja 64 px libres, así que entra.
+          "absolute top-1/2 z-10 flex h-6 -translate-y-1/2 items-center gap-0 rounded-lg border border-border bg-popover/95 px-0.5 shadow-md backdrop-blur-sm transition-opacity",
           "opacity-0 group-hover/actions:opacity-100 group-focus-within/actions:opacity-100",
           "data-[touch-open=true]:opacity-100",
-          isAgent ? "right-3" : "left-3",
+          isAgent ? "right-full mr-1" : "left-full ml-1",
         )}
       >
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger
-            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+            className="flex size-[18px] items-center justify-center rounded-md text-popover-foreground hover:bg-muted hover:text-foreground"
             aria-label={t("react")}
           >
-            <SmilePlus className="h-3.5 w-3.5" />
+            <SmilePlus className="size-[13px]" />
           </PopoverTrigger>
           <PopoverContent
             className="flex w-auto flex-row gap-1 p-1.5"
@@ -136,18 +141,18 @@ export function MessageActions({
         <button
           type="button"
           onClick={handleReply}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+          className="flex size-[18px] items-center justify-center rounded-md text-popover-foreground hover:bg-muted hover:text-foreground"
           aria-label={t("reply")}
         >
-          <CornerUpLeft className="h-3.5 w-3.5" />
+          <CornerUpLeft className="size-[13px]" />
         </button>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+          className="flex size-[18px] items-center justify-center rounded-md text-popover-foreground hover:bg-muted hover:text-foreground"
           aria-label={t("copyText")}
         >
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="size-[13px]" />
         </button>
       </div>
       </div>

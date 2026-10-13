@@ -83,6 +83,7 @@ import {
 } from '@/lib/auth/overrides-api';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ROLE_META } from './role-meta';
+import { SettingsChip } from './settings-chip';
 
 interface Member {
   user_id: string;
@@ -179,7 +180,7 @@ export function MembersTab() {
 
       if (!mres.ok) {
         const payload = await mres.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to load members');
+        toast.error(payload.error || t('loadMembersFailed'));
         return;
       }
       const mdata = (await mres.json()) as { members: Member[] };
@@ -188,7 +189,7 @@ export function MembersTab() {
       if (ires) {
         if (!ires.ok) {
           const payload = await ires.json().catch(() => ({}));
-          toast.error(payload.error || 'Failed to load invitations');
+          toast.error(payload.error || t('loadInvitationsFailed'));
           return;
         }
         const idata = (await ires.json()) as { invitations: Invitation[] };
@@ -198,11 +199,11 @@ export function MembersTab() {
       }
     } catch (err) {
       console.error('[MembersTab] load error:', err);
-      toast.error('Could not reach the server');
+      toast.error(t('serverUnreachable'));
     } finally {
       setLoading(false);
     }
-  }, [canManageMembers]);
+  }, [canManageMembers, t]);
 
   useEffect(() => {
     void loadEverything();
@@ -238,7 +239,7 @@ export function MembersTab() {
           )
         );
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to update role');
+        toast.error(payload.error || t('updateRoleFailed'));
         return;
       }
       toast.success(
@@ -255,7 +256,7 @@ export function MembersTab() {
         )
       );
       console.error('[MembersTab] role change error:', err);
-      toast.error('Could not reach the server');
+      toast.error(t('serverUnreachable'));
     } finally {
       setPendingMemberAction(null);
     }
@@ -297,7 +298,7 @@ export function MembersTab() {
         )
       );
       toast.error(
-        err instanceof Error ? err.message : 'Failed to update permission'
+        err instanceof Error ? err.message : t('updatePermissionFailed')
       );
     } finally {
       setBusyPermission(null);
@@ -314,7 +315,7 @@ export function MembersTab() {
       );
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to remove member');
+        toast.error(payload.error || t('removeFailed'));
         return;
       }
       toast.success(
@@ -326,7 +327,7 @@ export function MembersTab() {
       setRemovingMember(null);
     } catch (err) {
       console.error('[MembersTab] remove error:', err);
-      toast.error('Could not reach the server');
+      toast.error(t('serverUnreachable'));
     } finally {
       setPendingMemberAction(null);
     }
@@ -339,14 +340,14 @@ export function MembersTab() {
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to revoke invitation');
+        toast.error(payload.error || t('revokeFailed'));
         return;
       }
       toast.success(t('revokedToast'));
       setInvitations((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       console.error('[MembersTab] revoke error:', err);
-      toast.error('Could not reach the server');
+      toast.error(t('serverUnreachable'));
     }
   }
 
@@ -521,12 +522,10 @@ export function MembersTab() {
                           </SelectContent>
                         </Select>
                       ) : (
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${roleMeta.className}`}
-                        >
-                          <RoleIcon className="size-3.5" />
+                        <SettingsChip variant={roleMeta.variant}>
+                          <RoleIcon />
                           {tRoles(member.role)}
-                        </span>
+                        </SettingsChip>
                       )}
 
                       {/* Remove. Admin+ only; never on the owner row;
@@ -542,7 +541,7 @@ export function MembersTab() {
                           size="sm"
                           onClick={() => setRemovingMember(member)}
                           disabled={isBusy}
-                          className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                          className="border-transparent bg-danger-soft text-danger hover:bg-danger hover:text-white"
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -656,12 +655,10 @@ export function MembersTab() {
                             <span className="text-foreground text-sm font-medium">
                               {inv.label || t('untitledInvite')}
                             </span>
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${inviteRoleMeta.className}`}
-                            >
-                              <InviteRoleIcon className="size-3" />
+                            <SettingsChip variant={inviteRoleMeta.variant}>
+                              <InviteRoleIcon />
                               {tRoles(inv.role)}
-                            </span>
+                            </SettingsChip>
                           </div>
                           <p className="text-muted-foreground mt-0.5 text-xs">
                             {t('created', { date: fmtDate(inv.created_at) })} ·{' '}
@@ -677,7 +674,7 @@ export function MembersTab() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleRevoke(inv)}
-                          className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                          className="border-transparent bg-danger-soft text-danger hover:bg-danger hover:text-white"
                         >
                           <MailX className="size-4" />
                           {t('revoke')}
@@ -707,7 +704,7 @@ export function MembersTab() {
         <DialogContent className="bg-popover border-border sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-popover-foreground flex items-center gap-2">
-              <AlertTriangle className="size-4 text-amber-400" />
+              <AlertTriangle className="size-4 text-warning" />
               {t('removeDialogTitle')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -726,9 +723,9 @@ export function MembersTab() {
               {t('cancel')}
             </Button>
             <Button
+              variant="destructive"
               onClick={handleRemove}
               disabled={!!pendingMemberAction}
-              className="bg-red-600 text-white hover:bg-red-700"
             >
               {pendingMemberAction ? (
                 <>

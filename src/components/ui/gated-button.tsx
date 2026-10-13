@@ -46,6 +46,7 @@
 // ============================================================
 
 import type { ComponentProps, ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -74,10 +75,13 @@ export function GatedButton({
   children,
   ...rest
 }: GatedButtonProps) {
+  // Rediseño (sesión F2): el texto del tooltip sale del catálogo
+  // (`Common.readOnly`); `gateReason` queda como documentación de qué
+  // acción se bloquea, en inglés, y no se muestra.
+  const tCommon = useTranslations("Common");
   const effectivelyDisabled = disabled || !canAct;
-  const tooltip = !canAct && gateReason
-    ? `Read-only — your role can't ${gateReason}`
-    : title;
+  void gateReason;
+  const tooltip = !canAct ? tCommon("readOnly") : title;
 
   return (
     <span
