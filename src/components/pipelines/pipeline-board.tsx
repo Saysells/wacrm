@@ -17,6 +17,7 @@ import {
 import type { Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
@@ -211,19 +212,17 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-[14px] border border-border bg-card p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
       {/* 3px colored top border — sits above the column's padding */}
       <div
-        className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
+        className="-mx-4 -mt-4 h-[3px] rounded-t-[14px]"
         style={{ backgroundColor: stage.color }}
       />
       <div className="flex items-center justify-between pt-3">
         <h3 className="truncate text-sm font-semibold text-foreground">
           {stage.name}
         </h3>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {deals.length}
-        </span>
+        <Badge variant="secondary" className="tabular-nums">{deals.length}</Badge>
       </div>
       <p className="text-xs text-muted-foreground">
         {formatCurrency(totalValue, currency)}
@@ -233,12 +232,12 @@ function StageColumn({
         ref={setNodeRef}
         className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
           isOver
-            ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
+            ? "bg-selected outline outline-2 outline-primary outline-offset-2"
             : ""
         }`}
       >
         {deals.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border py-10 text-xs text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center rounded-lg bg-muted/50 py-10 text-xs text-muted-foreground">
             {t("dropDealHere")}
           </div>
         ) : (
@@ -254,12 +253,12 @@ function StageColumn({
       </div>
 
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+        className="mt-3 w-full justify-start text-muted-foreground hover:text-foreground"
       >
-        <Plus className="mr-1 h-3 w-3" />
+        <Plus />
         {t("addDeal")}
       </Button>
     </div>

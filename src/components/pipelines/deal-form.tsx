@@ -24,6 +24,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
+
+// Valor centinela del Select de asignación: base-ui no acepta "" como
+// opción, y "sin asignar" tiene que poder elegirse.
+const UNASSIGNED = "__unassigned__";
+import {
   Check,
   X,
   Trash2,
@@ -249,45 +261,49 @@ export function DealForm({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="bg-popover border-border text-popover-foreground sm:max-w-lg w-full p-0"
+        className="sm:max-w-lg w-full p-0"
       >
         <div className="flex h-full flex-col">
-          <SheetHeader className="border-b border-border/50 p-4">
-            <SheetTitle className="text-popover-foreground">
+          <SheetHeader className="border-b border-border p-5">
+            <SheetTitle>
               {deal ? t("editDeal") : t("newDeal")}
             </SheetTitle>
           </SheetHeader>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("title")}</Label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={t("titlePlaceholder")}
-                className="border-border bg-muted text-foreground"
               />
             </div>
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("contact")}</Label>
-              <select
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              >
-                <option value="">{t("selectContact")}</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || c.phone}
-                  </option>
-                ))}
-              </select>
+              <Select value={contactId || null} onValueChange={(v) => setContactId(v ?? "")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("selectContact")}>
+                    {(() => {
+                      const c = contacts.find((x) => x.id === contactId);
+                      return c ? c.name || c.phone : null;
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {contacts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name || c.phone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               {linkedConversation && (
                 <Link
                   href="/inbox"
-                  className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+                  className="mt-1 inline-flex items-center gap-1.5 self-start rounded-[5px] bg-selected px-2 py-1 text-xs text-primary hover:bg-selected-strong"
                 >
                   <MessageSquare className="h-3 w-3" />
                   {t("linkToConversation")}
@@ -305,65 +321,71 @@ export function DealForm({
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     placeholder="0"
-                    className="border-border bg-muted pl-7 text-foreground"
+                    className="pl-7"
                   />
                 </div>
               </div>
               <div className="grid gap-2">
                 <Label className="text-muted-foreground">{t("currency")}</Label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </select>
+                <Select value={currency} onValueChange={(v) => v && setCurrency(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{currency}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("expectedCloseDate")}</Label>
-              <Input
-                type="date"
-                value={expectedCloseDate}
-                onChange={(e) => setExpectedCloseDate(e.target.value)}
-                className="border-border bg-muted text-foreground"
-              />
+              {/* Selector de fecha propio (sesión F2), nunca el campo de fecha nativo. */}
+              <DatePicker value={expectedCloseDate} onChange={setExpectedCloseDate} />
             </div>
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("stage")}</Label>
-              <select
-                value={stageId}
-                onChange={(e) => setStageId(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-              >
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={stageId || null} onValueChange={(v) => v && setStageId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{stages.find((s) => s.id === stageId)?.name ?? null}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {stages.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("assignedTo")}</Label>
-              <select
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-              >
-                <option value="">{t("unassigned")}</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.email}
-                  </option>
-                ))}
-              </select>
+              <Select value={assignedTo || UNASSIGNED} onValueChange={(v) => setAssignedTo(!v || v === UNASSIGNED ? "" : v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {assignedTo
+                      ? (() => {
+                          const p = profiles.find((x) => x.id === assignedTo);
+                          return p ? p.full_name || p.email : null;
+                        })()
+                      : t("unassigned")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>{t("unassigned")}</SelectItem>
+                  {profiles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name || p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid gap-2">
@@ -377,8 +399,8 @@ export function DealForm({
             </div>
 
             {deal && (
-              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
+                <p className="text-[12.5px] font-semibold text-muted-foreground">
                   {t("status")}
                 </p>
                 <div className="flex gap-2">
@@ -386,7 +408,7 @@ export function DealForm({
                     type="button"
                     onClick={() => handleStatusChange("won")}
                     disabled={!!statusAction || deal.status === "won"}
-                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    className="flex-1"
                   >
                     {statusAction === "won" ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -401,7 +423,8 @@ export function DealForm({
                     type="button"
                     onClick={() => handleStatusChange("lost")}
                     disabled={!!statusAction || deal.status === "lost"}
-                    className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                    variant="destructive"
+                    className="flex-1"
                   >
                     {statusAction === "lost" ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -428,19 +451,15 @@ export function DealForm({
             )}
           </div>
 
-          <div className="border-t border-border/50 bg-popover/80 p-4">
+          <div className="border-t border-border p-5">
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="flex-1 border-border bg-transparent text-muted-foreground hover:bg-muted"
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
                 {t("cancel")}
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={saving || !title.trim() || !contactId || !stageId}
-                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                className="flex-1"
               >
                 {saving ? t("saving") : deal ? t("saveChanges") : t("createDeal")}
               </Button>
@@ -448,32 +467,34 @@ export function DealForm({
 
             {deal &&
               (confirmDelete ? (
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">
-                  <span className="text-red-300">{t("deletePrompt")}</span>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs">
+                  <span className="text-danger">{t("deletePrompt")}</span>
                   <div className="flex gap-1">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="xs"
                       onClick={() => setConfirmDelete(false)}
                       disabled={deleting}
-                      className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
                     >
                       {t("cancel")}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="destructive"
+                      size="xs"
                       onClick={handleDelete}
                       disabled={deleting}
-                      className="rounded bg-red-600 px-2 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
                     >
                       {deleting ? t("deleting") : t("confirm")}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
-                  className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300"
+                  className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-danger hover:underline"
                 >
                   <Trash2 className="h-3 w-3" />
                   {t("deleteDeal")}

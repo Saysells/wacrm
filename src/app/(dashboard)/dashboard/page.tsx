@@ -26,6 +26,7 @@ import type {
   ResponseTimeSummary,
 } from '@/lib/dashboard/types'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
@@ -123,13 +124,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('description')}
-        </p>
-      </div>
+      {/* Encabezado común (rediseño, sesión F2). */}
+      <PageHeader title={t('title')} note={t('description')} />
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

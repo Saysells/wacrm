@@ -150,7 +150,20 @@
       "thisWeek": "이번 주:",
       "lastWeek": "지난 주:",
       "noReplies": "아직 기록된 응답이 없습니다",
-      "noRepliesHint": "고객 메시지에 답변하면 이 차트가 채워집니다."
+      "noRepliesHint": "고객 메시지에 답변하면 이 차트가 채워집니다.",
+      "avgMinutes": "평균 분",
+      "unitSeconds": "{value}초",
+      "unitMinutes": "{value}분",
+      "unitHours": "{value}시간",
+      "dow": {
+        "Mon": "월",
+        "Tue": "화",
+        "Wed": "수",
+        "Thu": "목",
+        "Fri": "금",
+        "Sat": "토",
+        "Sun": "일"
+      }
     },
     "emptyState": {
       "title": "아직 데이터가 충분하지 않습니다"
@@ -787,7 +800,8 @@
       "toastFailedMoveDeal": "딜을 이동하지 못했습니다",
       "toastFailedCreatePipeline": "파이프라인을 만들지 못했습니다",
       "toastPipelineCreated": "파이프라인이 생성되었습니다",
-      "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다."
+      "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다.",
+      "title": "파이프라인"
     },
     "board": {
       "dropDealHere": "여기에 딜을 놓으세요",
@@ -897,7 +911,8 @@
         "date": "날짜"
       },
       "errorLoad": "브로드캐스트를 불러오지 못했습니다",
-      "retry": "다시 시도"
+      "retry": "다시 시도",
+      "inProgress": "브로드캐스트 진행 중"
     },
     "status": {
       "draft": "초안",
@@ -957,7 +972,8 @@
       "retryFailed": "실패 재시도 ({count})",
       "toastResumeStarted": "{count}명에게 백그라운드로 발송 중입니다.",
       "toastResumeStartedCapped": "{count}명에게 백그라운드로 발송 중입니다. 나머지 {remaining}명은 한 번 더 실행해야 합니다.",
-      "toastResumeFailed": "이어서 발송할 수 없습니다: {error}"
+      "toastResumeFailed": "이어서 발송할 수 없습니다: {error}",
+      "unknownContact": "이름 없음"
     },
     "new": {
       "title": "새 브로드캐스트",
@@ -972,7 +988,8 @@
       "toastNotSignedIn": "로그인되어 있지 않습니다.",
       "toastNotLinked": "프로필이 계정에 연결되어 있지 않습니다.",
       "toastFailedDraft": "초안 저장 실패: {error}",
-      "toastDraftSaved": "초안이 저장되었습니다"
+      "toastDraftSaved": "초안이 저장되었습니다",
+      "toastSendFailed": "브로드캐스트 실패"
     },
     "wizard": {
       "next": "다음",
@@ -1018,7 +1035,11 @@
         "errorLoadTags": "태그를 불러오지 못했습니다",
         "errorLoadFields": "커스텀 필드를 불러오지 못했습니다",
         "errorCsvParse": "CSV 파일을 파싱할 수 없습니다.",
-        "errorCsvMissingPhone": "CSV에 'phone' 열이 있어야 합니다."
+        "errorCsvMissingPhone": "CSV에 'phone' 열이 있어야 합니다.",
+        "summary": "대상 요약",
+        "calculating": "계산 중…",
+        "estimatedRecipients": "예상 수신자",
+        "pickTypeForEstimate": "예상치를 보려면 대상 유형을 선택하세요."
       },
       "personalize": {
         "title": "변수 개인화",
@@ -1045,7 +1066,13 @@
           "name": "이름",
           "phone": "전화번호",
           "email": "이메일"
-        }
+        },
+        "headerPreviewAlt": "헤더 미리보기",
+        "mediaUrlRequired": "이 템플릿을 보내려면 미디어 URL이 필요합니다.",
+        "mediaUrlInvalid": "유효한 http(s) URL을 입력하세요.",
+        "valuePlaceholder": "값을 입력하세요…",
+        "noCustomFields": "사용자 정의 필드 없음",
+        "unmappedWarning": "계속하기 전에 모든 변수를 지정하세요. 누락: <code>{keys}</code>. 그렇지 않으면 해당 변수는 빈 값으로 Meta에 전송됩니다."
       },
       "scheduleSend": {
         "title": "검토 및 전송",
@@ -1066,7 +1093,11 @@
         "sending": "전송 중...",
         "preparing": "준비 중...",
         "progressDesc": "수신자 {total}명 중 {current}명 처리 중...",
-        "toastFailedPreview": "미리보기 데이터를 불러오지 못했습니다"
+        "toastFailedPreview": "미리보기 데이터를 불러오지 못했습니다",
+        "estimatedReach": "예상 도달",
+        "language": "언어",
+        "confirmTitle": "브로드캐스트 확인",
+        "confirmDesc": "<bold>{template}</bold> 템플릿으로 <bold>{count}</bold>명의 연락처에 이 브로드캐스트를 보냅니다. 되돌릴 수 없습니다."
       }
     }
   },
@@ -2162,6 +2193,8 @@
     "retry": "다시 시도",
     "back": "뒤로",
     "edit": "편집",
-    "inbox": "인박스"
+    "inbox": "인박스",
+    "pickDate": "날짜 선택",
+    "clearDate": "날짜 없음"
   }
 }

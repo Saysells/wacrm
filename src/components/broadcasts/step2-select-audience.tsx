@@ -15,6 +15,14 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -279,16 +287,16 @@ export function Step2SelectAudience({
                     option.type === 'csv' ? audience.csvContacts : undefined,
                 })
               }
-              className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
+              className={`flex items-start gap-3 rounded-[14px] border p-4 text-left transition-colors ${
                 isSelected
-                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                  : 'border-border bg-card/50 hover:border-border'
+                  ? 'border-primary bg-selected'
+                  : 'border-border bg-card hover:bg-hover'
               }`}
             >
               <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                className={`grid size-9 shrink-0 place-items-center rounded-lg ${
                   isSelected
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-selected-strong text-primary'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -306,7 +314,7 @@ export function Step2SelectAudience({
       </div>
 
       {audience.type === 'tags' && (
-        <div className="rounded-xl border border-border bg-card/50 p-4">
+        <div className="rounded-[14px] border border-border bg-card p-4">
           <p className="mb-3 text-sm font-medium text-foreground">{t('selectAudience.selectTags')}</p>
           {loadingTags ? (
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -322,10 +330,10 @@ export function Step2SelectAudience({
                   <button
                     key={tag.id}
                     onClick={() => toggleTag(tag.id)}
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                    className={`inline-flex h-7 items-center rounded-[5px] border px-2.5 text-xs font-medium transition-colors ${
                       isSelected
-                        ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-border bg-muted text-muted-foreground hover:border-border'
+                        ? 'border-transparent bg-selected-strong text-primary'
+                        : 'border-border bg-card text-muted-foreground hover:bg-hover'
                     }`}
                   >
                     <span
@@ -342,7 +350,7 @@ export function Step2SelectAudience({
       )}
 
       {audience.type === 'custom_field' && (
-        <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
+        <div className="space-y-3 rounded-[14px] border border-border bg-card p-4">
           <p className="text-sm font-medium text-foreground">{t('selectAudience.method.customField')}</p>
           {loadingFields ? (
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -352,39 +360,45 @@ export function Step2SelectAudience({
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)]">
-              <select
-                value={audience.customField?.fieldId ?? ''}
-                onChange={(e) => updateCustomField({ fieldId: e.target.value })}
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              <Select
+                value={audience.customField?.fieldId || null}
+                onValueChange={(v) => updateCustomField({ fieldId: v ?? '' })}
               >
-                <option value="">{t('selectAudience.selectField')}</option>
-                {customFields.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.field_name}
-                  </option>
-                ))}
-              </select>
-              <select
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('selectAudience.selectField')}>
+                    {customFields.find((f) => f.id === audience.customField?.fieldId)?.field_name ?? null}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {customFields.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.field_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
                 value={audience.customField?.operator ?? 'is'}
-                onChange={(e) =>
-                  updateCustomField({
-                    operator: e.target.value as CustomFieldOperator,
-                  })
-                }
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                onValueChange={(v) => v && updateCustomField({ operator: v as CustomFieldOperator })}
               >
-                {OPERATOR_OPTIONS.map((op: { value: CustomFieldOperator; label: string }) => (
-                  <option key={op.value} value={op.value}>
-                    {op.label}
-                  </option>
-                ))}
-              </select>
-              <input
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {OPERATOR_OPTIONS.find((op) => op.value === (audience.customField?.operator ?? 'is'))?.label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {OPERATOR_OPTIONS.map((op: { value: CustomFieldOperator; label: string }) => (
+                    <SelectItem key={op.value} value={op.value}>
+                      {op.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
                 type="text"
                 value={audience.customField?.value ?? ''}
                 onChange={(e) => updateCustomField({ value: e.target.value })}
                 placeholder={t('selectAudience.valuePlaceholder')}
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
           )}
@@ -392,9 +406,9 @@ export function Step2SelectAudience({
       )}
 
       {/* Exclude list — applies regardless of audience type */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
+      <div className="rounded-[14px] border border-border bg-card p-4">
         <div className="mb-3 flex items-center gap-2">
-          <X className="h-4 w-4 text-red-400" />
+          <X className="h-4 w-4 text-danger" />
           <p className="text-sm font-medium text-foreground">
             {t('selectAudience.excludeTags')}
           </p>
@@ -409,10 +423,10 @@ export function Step2SelectAudience({
                 <button
                   key={tag.id}
                   onClick={() => toggleExcludeTag(tag.id)}
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                  className={`inline-flex h-7 items-center rounded-[5px] border px-2.5 text-xs font-medium transition-colors ${
                     isExcluded
-                      ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                      : 'border-border bg-muted text-muted-foreground hover:border-border'
+                      ? 'border-transparent bg-danger-soft text-danger'
+                      : 'border-border bg-card text-muted-foreground hover:bg-hover'
                   }`}
                 >
                   <span
@@ -428,12 +442,12 @@ export function Step2SelectAudience({
       </div>
 
       {/* Audience Summary */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
-        <p className="mb-2 text-sm font-medium text-foreground">Audience Summary</p>
+      <div className="rounded-[14px] border border-border bg-card p-4">
+        <p className="mb-2 text-sm font-medium text-foreground">{t('selectAudience.summary')}</p>
         {loadingCount ? (
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-xs text-muted-foreground">Calculating…</span>
+            <span className="text-xs text-muted-foreground">{t('selectAudience.calculating')}</span>
           </div>
         ) : estimatedCount !== null ? (
           <div className="flex items-center gap-2">
@@ -441,29 +455,21 @@ export function Step2SelectAudience({
             <span className="text-sm text-foreground">
               {estimatedCount.toLocaleString()}
             </span>
-            <span className="text-xs text-muted-foreground">estimated recipients</span>
+            <span className="text-xs text-muted-foreground">{t('selectAudience.estimatedRecipients')}</span>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Select an audience type to see the estimate.
+            {t('selectAudience.pickTypeForEstimate')}
           </p>
         )}
       </div>
 
       <div className="flex items-center justify-between border-t border-border pt-4">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className="border-border text-muted-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft />
           {t('back')}
         </Button>
-        <Button
-          onClick={onNext}
-          disabled={!isValid}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
+        <Button onClick={onNext} disabled={!isValid}>
           {t('next')}
           <ArrowRight className="h-4 w-4" />
         </Button>

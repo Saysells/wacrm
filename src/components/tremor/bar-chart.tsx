@@ -786,7 +786,7 @@ const BarChart = React.forwardRef<HTMLDivElement, BarChartProps>(
               wrapperStyle={{ outline: "none" }}
               isAnimationActive={true}
               animationDuration={100}
-              cursor={{ fill: "#d1d5db", opacity: "0.15" }}
+              cursor={{ fill: "var(--hover)", opacity: "0.6" }}
               offset={20}
               position={{
                 y: layout === "horizontal" ? 0 : undefined,

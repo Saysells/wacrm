@@ -5,17 +5,19 @@
  * /broadcasts/page.tsx and /broadcasts/[id]/page.tsx with slight
  * drift risk. One source of truth now.
  *
- * Badge shape: bg-*-500/10 + text-*-400 + border-*-500/20. The
- * translucent fills sit fine on both light and dark surfaces; neutral
- * statuses use text-muted-foreground so the label stays legible in
- * light mode (a solid slate-400 would be too faint on white).
+ * Rediseño (sesión F2): cada estado mapea a una variante del `Badge`
+ * del sistema (rectángulo de 5 px), no a clases sueltas. El naranja
+ * (`pending`) queda para lo que espera respuesta; "enviando" va en
+ * ámbar (`warning`) porque está en curso, no esperando a nadie.
  */
 
 import type { BroadcastStatus, RecipientStatus } from "@/types";
 
+export type StatusVariant = "secondary" | "info" | "warning" | "success" | "danger" | "selected";
+
 export interface StatusDisplay {
   label: string;
-  classes: string;
+  variant: StatusVariant;
   /**
    * Set true for statuses that should pulse in the UI to convey
    * "live / in-flight" — currently only `sending`.
@@ -24,54 +26,20 @@ export interface StatusDisplay {
 }
 
 export const broadcastStatusConfig: Record<BroadcastStatus, StatusDisplay> = {
-  draft: {
-    label: "draft",
-    classes: "bg-slate-500/10 text-muted-foreground border-slate-500/20",
-  },
-  scheduled: {
-    label: "scheduled",
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  },
-  sending: {
-    label: "sending",
-    classes: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-    pulse: true,
-  },
-  sent: {
-    label: "sent",
-    classes: "bg-primary/10 text-primary border-primary/20",
-  },
-  failed: {
-    label: "failed",
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
-  },
+  draft: { label: "draft", variant: "secondary" },
+  scheduled: { label: "scheduled", variant: "info" },
+  sending: { label: "sending", variant: "warning", pulse: true },
+  sent: { label: "sent", variant: "success" },
+  failed: { label: "failed", variant: "danger" },
 };
 
 export const recipientStatusConfig: Record<RecipientStatus, StatusDisplay> = {
-  pending: {
-    label: "pending",
-    classes: "bg-slate-500/10 text-muted-foreground border-slate-500/20",
-  },
-  sent: {
-    label: "sent",
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  },
-  delivered: {
-    label: "delivered",
-    classes: "bg-primary/10 text-primary border-primary/20",
-  },
-  read: {
-    label: "read",
-    classes: "bg-primary/10 text-primary border-primary/20",
-  },
-  replied: {
-    label: "replied",
-    classes: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  },
-  failed: {
-    label: "failed",
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
-  },
+  pending: { label: "pending", variant: "secondary" },
+  sent: { label: "sent", variant: "info" },
+  delivered: { label: "delivered", variant: "success" },
+  read: { label: "read", variant: "success" },
+  replied: { label: "replied", variant: "selected" },
+  failed: { label: "failed", variant: "danger" },
 };
 
 /**

@@ -150,7 +150,20 @@
       "thisWeek": "This week:",
       "lastWeek": "Last week:",
       "noReplies": "No replies recorded yet",
-      "noRepliesHint": "This chart fills in as you reply to customer messages."
+      "noRepliesHint": "This chart fills in as you reply to customer messages.",
+      "avgMinutes": "Average minutes",
+      "unitSeconds": "{value}s",
+      "unitMinutes": "{value}m",
+      "unitHours": "{value}h",
+      "dow": {
+        "Mon": "Mon",
+        "Tue": "Tue",
+        "Wed": "Wed",
+        "Thu": "Thu",
+        "Fri": "Fri",
+        "Sat": "Sat",
+        "Sun": "Sun"
+      }
     },
     "emptyState": {
       "title": "Not enough data yet"
@@ -787,7 +800,8 @@
       "toastFailedMoveDeal": "Failed to move deal",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
-      "toastNotLinkedToAccount": "Your profile is not linked to an account."
+      "toastNotLinkedToAccount": "Your profile is not linked to an account.",
+      "title": "Pipelines"
     },
     "board": {
       "dropDealHere": "Drop a deal here",
@@ -897,7 +911,8 @@
         "date": "Date"
       },
       "errorLoad": "Failed to load broadcasts",
-      "retry": "Retry"
+      "retry": "Retry",
+      "inProgress": "Broadcast in progress"
     },
     "status": {
       "draft": "Draft",
@@ -957,7 +972,8 @@
       "retryFailed": "Retry failed ({count})",
       "toastResumeStarted": "Sending {count} recipients in the background.",
       "toastResumeStartedCapped": "Sending {count} recipients in the background. {remaining} more will need another run.",
-      "toastResumeFailed": "Could not resume: {error}"
+      "toastResumeFailed": "Could not resume: {error}",
+      "unknownContact": "Unknown"
     },
     "new": {
       "title": "New Broadcast",
@@ -972,7 +988,8 @@
       "toastNotSignedIn": "Not signed in.",
       "toastNotLinked": "Your profile is not linked to an account.",
       "toastFailedDraft": "Failed to save draft: {error}",
-      "toastDraftSaved": "Draft saved"
+      "toastDraftSaved": "Draft saved",
+      "toastSendFailed": "Broadcast failed"
     },
     "wizard": {
       "next": "Next",
@@ -1018,7 +1035,11 @@
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvParse": "Could not parse CSV file.",
-        "errorCsvMissingPhone": "CSV must have a 'phone' column."
+        "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "summary": "Audience summary",
+        "calculating": "Calculating…",
+        "estimatedRecipients": "estimated recipients",
+        "pickTypeForEstimate": "Select an audience type to see the estimate."
       },
       "personalize": {
         "title": "Personalize Variables",
@@ -1045,7 +1066,13 @@
           "name": "Name",
           "phone": "Phone",
           "email": "Email"
-        }
+        },
+        "headerPreviewAlt": "Header preview",
+        "mediaUrlRequired": "A media URL is required to send this template.",
+        "mediaUrlInvalid": "Enter a valid http(s) URL.",
+        "valuePlaceholder": "Enter value…",
+        "noCustomFields": "No custom fields",
+        "unmappedWarning": "Map every placeholder before continuing. Still missing: <code>{keys}</code>. Otherwise those placeholders ship to Meta as empty strings."
       },
       "scheduleSend": {
         "title": "Review & Send",
@@ -1066,7 +1093,11 @@
         "sending": "Sending...",
         "preparing": "Preparing...",
         "progressDesc": "Processing {current} of {total} recipients...",
-        "toastFailedPreview": "Failed to load preview data"
+        "toastFailedPreview": "Failed to load preview data",
+        "estimatedReach": "Estimated reach",
+        "language": "Language",
+        "confirmTitle": "Confirm broadcast",
+        "confirmDesc": "You are about to send this broadcast to <bold>{count}</bold> contacts using the <bold>{template}</bold> template. This can't be undone."
       }
     }
   },
@@ -2162,6 +2193,8 @@
     "retry": "Retry",
     "back": "Back",
     "edit": "Edit",
-    "inbox": "the Inbox"
+    "inbox": "the Inbox",
+    "pickDate": "Pick a date",
+    "clearDate": "No date"
   }
 }

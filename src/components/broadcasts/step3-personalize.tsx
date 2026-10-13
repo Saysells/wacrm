@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Badge } from '@/components/ui/badge';
 
 type VariableType = 'static' | 'field' | 'custom_field';
 
@@ -55,14 +56,15 @@ const contactFields = [
   { value: 'email', labelKey: 'email' },
 ];
 
+// Datos ficticios de la vista previa (sesión F2: en español).
 const SAMPLE_CONTACT: Contact = {
   id: 'sample',
   user_id: '',
   account_id: '',
-  name: 'John Doe',
-  phone: '+1234567890',
-  email: 'john@example.com',
-  company: 'Acme Corp',
+  name: 'Juan Pérez',
+  phone: '+54 9 11 5555-0199',
+  email: 'juan@ejemplo.com',
+  company: 'Tienda Ejemplo',
   fecha_llamada: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -78,6 +80,7 @@ export function Step3Personalize({
   onBack,
 }: Step3Props) {
   const t = useTranslations('Broadcasts.wizard');
+  const tCommon = useTranslations('Common');
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [loadingFields, setLoadingFields] = useState(true);
   const [firstContact, setFirstContact] = useState<Contact | null>(null);
@@ -244,13 +247,11 @@ export function Step3Personalize({
       </div>
 
       {mediaHeaderType && (
-        <div className="rounded-xl border border-border bg-card/50 p-4">
+        <div className="rounded-[14px] border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <ImageIcon className="h-4 w-4 text-primary" />
             <p className="text-sm font-medium text-foreground">{t('personalize.headerImage')}</p>
-            <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium uppercase text-primary">
-              {mediaHeaderType}
-            </span>
+            <Badge variant="selected" className="uppercase">{mediaHeaderType}</Badge>
           </div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {t('personalize.imageUrl')}
@@ -260,7 +261,6 @@ export function Step3Personalize({
             value={headerMediaUrl}
             onChange={(e) => onHeaderMediaUrlChange(e.target.value)}
             placeholder={t('personalize.imageUrlPlaceholder')}
-            className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
             {t('personalize.headerImageDesc')}
@@ -271,22 +271,22 @@ export function Step3Personalize({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={headerMediaUrl.trim()}
-                alt="Header preview"
+                alt={t('personalize.headerPreviewAlt')}
                 className="mt-3 max-h-40 rounded-lg border border-border object-contain"
               />
             )}
           {headerMediaError && (
-            <p className="mt-1.5 text-xs text-amber-300">
+            <p className="mt-1.5 text-xs text-warning">
               {headerMediaError === 'missing'
-                ? 'A media URL is required to send this template.'
-                : 'Enter a valid http(s) URL.'}
+                ? t('personalize.mediaUrlRequired')
+                : t('personalize.mediaUrlInvalid')}
             </p>
           )}
         </div>
       )}
 
       {placeholders.length === 0 && !mediaHeaderType ? (
-        <div className="rounded-xl border border-border bg-card/50 p-6 text-center">
+        <div className="rounded-[14px] border border-border bg-card p-6 text-center">
           <p className="text-sm text-muted-foreground">
             {t('personalize.noPreview')}
           </p>
@@ -300,7 +300,7 @@ export function Step3Personalize({
             return (
               <div
                 key={placeholder}
-                className="rounded-xl border border-border bg-card/50 p-4"
+                className="rounded-[14px] border border-border bg-card p-4"
               >
                 <div className="mb-3 flex items-center gap-2">
                   <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-mono font-medium text-primary">
@@ -345,8 +345,7 @@ export function Step3Personalize({
                         onChange={(e) =>
                           updateVariable(key, { value: e.target.value })
                         }
-                        placeholder="Enter value..."
-                        className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                        placeholder={t('personalize.valuePlaceholder')}
                       />
                     ) : mapping.type === 'field' ? (
                       <Select
@@ -355,7 +354,7 @@ export function Step3Personalize({
                           updateVariable(key, { value: val || '' })
                         }
                       >
-                        <SelectTrigger className="w-full border-border bg-muted text-foreground">
+                        <SelectTrigger className="w-full">
                           <SelectValue placeholder={t('personalize.selectContactField')} />
                         </SelectTrigger>
                         <SelectContent className="border-border bg-popover">
@@ -373,14 +372,14 @@ export function Step3Personalize({
                           updateVariable(key, { value: val || '' })
                         }
                       >
-                        <SelectTrigger className="w-full border-border bg-muted text-foreground">
+                        <SelectTrigger className="w-full">
                           <SelectValue
                             placeholder={
                               loadingFields
-                                ? 'Loading…'
+                                ? tCommon('loading')
                                 : customFields.length === 0
-                                  ? 'No custom fields'
-                                  : 'Select custom field…'
+                                  ? t('personalize.noCustomFields')
+                                  : t('personalize.selectCustomField')
                             }
                           />
                         </SelectTrigger>
@@ -403,7 +402,7 @@ export function Step3Personalize({
 
       {/* Live Preview — rendered as a WhatsApp-style bubble so the user
           sees approximately what the recipient will see. */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
+      <div className="rounded-[14px] border border-border bg-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <Eye className="h-4 w-4 text-primary" />
           <p className="text-sm font-medium text-foreground">{t('personalize.preview')}</p>
@@ -412,39 +411,29 @@ export function Step3Personalize({
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           )}
         </div>
-        <div className="rounded-lg bg-[#0e1a12] p-3">
-          <div className="ml-auto max-w-[85%] rounded-lg bg-primary/30 px-3 py-2 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm text-primary">
-              {previewText}
-            </p>
+        {/* Burbuja saliente del sistema (`.bb`): navy sobre el fondo del hilo. */}
+        <div className="rounded-lg bg-muted p-3">
+          <div className="ml-auto max-w-[85%] rounded-[20px] rounded-br-md bg-primary px-3.5 py-2 text-primary-foreground">
+            <p className="whitespace-pre-wrap text-[14.5px] leading-[1.42]">{previewText}</p>
           </div>
         </div>
       </div>
 
       {unmappedKeys.length > 0 && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          Map every placeholder before continuing — still missing{' '}
-          <span className="font-mono font-semibold">
-            {unmappedKeys.join(', ')}
-          </span>
-          . Otherwise those placeholders will ship to Meta as empty strings.
+        <div className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
+          {t.rich('personalize.unmappedWarning', {
+            keys: unmappedKeys.join(', '),
+            code: (chunks) => <span className="font-mono font-semibold">{chunks}</span>,
+          })}
         </div>
       )}
 
       <div className="flex items-center justify-between border-t border-border pt-4">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className="border-border text-muted-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft />
           {t('back')}
         </Button>
-        <Button
-          onClick={onNext}
-          disabled={unmappedKeys.length > 0 || headerMediaError !== null}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
+        <Button onClick={onNext} disabled={unmappedKeys.length > 0 || headerMediaError !== null}>
           {t('next')}
           <ArrowRight className="h-4 w-4" />
         </Button>

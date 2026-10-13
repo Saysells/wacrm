@@ -14,6 +14,19 @@
 export type ColorUtility = "bg" | "stroke" | "fill" | "text"
 
 export const chartColors = {
+  // Colores del sistema (rediseño, sesión F2): navy y celeste.
+  navy: {
+    bg: "bg-primary",
+    stroke: "stroke-primary",
+    fill: "fill-primary",
+    text: "text-primary",
+  },
+  celeste: {
+    bg: "bg-[#8EB1D1]",
+    stroke: "stroke-[#8EB1D1]",
+    fill: "fill-[#8EB1D1]",
+    text: "text-[#8EB1D1]",
+  },
   blue: {
     bg: "bg-blue-500",
     stroke: "stroke-blue-500",

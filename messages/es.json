@@ -150,7 +150,20 @@
       "thisWeek": "Esta semana:",
       "lastWeek": "La semana pasada:",
       "noReplies": "Todavía no hay respuestas registradas",
-      "noRepliesHint": "Este gráfico se completa a medida que respondés mensajes de clientes."
+      "noRepliesHint": "Este gráfico se completa a medida que respondés mensajes de clientes.",
+      "avgMinutes": "Minutos promedio",
+      "unitSeconds": "{value} s",
+      "unitMinutes": "{value} min",
+      "unitHours": "{value} h",
+      "dow": {
+        "Mon": "Lun",
+        "Tue": "Mar",
+        "Wed": "Mié",
+        "Thu": "Jue",
+        "Fri": "Vie",
+        "Sat": "Sáb",
+        "Sun": "Dom"
+      }
     },
     "emptyState": {
       "title": "Todavía no hay datos suficientes"
@@ -787,7 +800,8 @@
       "toastFailedMoveDeal": "No se pudo mover la oportunidad",
       "toastFailedCreatePipeline": "No se pudo crear el embudo",
       "toastPipelineCreated": "Embudo creado",
-      "toastNotLinkedToAccount": "Tu perfil no está vinculado a ninguna cuenta."
+      "toastNotLinkedToAccount": "Tu perfil no está vinculado a ninguna cuenta.",
+      "title": "Embudos"
     },
     "board": {
       "dropDealHere": "Soltá una oportunidad acá",
@@ -897,7 +911,8 @@
         "date": "Fecha"
       },
       "errorLoad": "No se pudieron cargar las difusiones",
-      "retry": "Reintentar"
+      "retry": "Reintentar",
+      "inProgress": "Difusión en curso"
     },
     "status": {
       "draft": "Borrador",
@@ -957,7 +972,8 @@
       "retryFailed": "Reintentar fallidos ({count})",
       "toastResumeStarted": "Enviando a {count} destinatarios en segundo plano.",
       "toastResumeStartedCapped": "Enviando a {count} destinatarios en segundo plano. {remaining} más van a necesitar otra corrida.",
-      "toastResumeFailed": "No se pudo reanudar: {error}"
+      "toastResumeFailed": "No se pudo reanudar: {error}",
+      "unknownContact": "Sin nombre"
     },
     "new": {
       "title": "Nueva difusión",
@@ -972,7 +988,8 @@
       "toastNotSignedIn": "No hay sesión iniciada.",
       "toastNotLinked": "Tu perfil no está vinculado a ninguna cuenta.",
       "toastFailedDraft": "No se pudo guardar el borrador: {error}",
-      "toastDraftSaved": "Borrador guardado"
+      "toastDraftSaved": "Borrador guardado",
+      "toastSendFailed": "La difusión falló"
     },
     "wizard": {
       "next": "Siguiente",
@@ -1018,7 +1035,11 @@
         "errorLoadTags": "No se pudieron cargar las etiquetas",
         "errorLoadFields": "No se pudieron cargar los campos personalizados",
         "errorCsvParse": "No se pudo leer el archivo CSV.",
-        "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'."
+        "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'.",
+        "summary": "Resumen de la audiencia",
+        "calculating": "Calculando…",
+        "estimatedRecipients": "destinatarios estimados",
+        "pickTypeForEstimate": "Elegí un tipo de audiencia para ver la estimación."
       },
       "personalize": {
         "title": "Personalizá las variables",
@@ -1045,7 +1066,13 @@
           "name": "Nombre",
           "phone": "Teléfono",
           "email": "Email"
-        }
+        },
+        "headerPreviewAlt": "Vista previa del encabezado",
+        "mediaUrlRequired": "Hace falta la URL del archivo para enviar esta plantilla.",
+        "mediaUrlInvalid": "Ingresá una URL http(s) válida.",
+        "valuePlaceholder": "Escribí el valor…",
+        "noCustomFields": "Sin campos personalizados",
+        "unmappedWarning": "Asigná todas las variables antes de seguir. Faltan: <code>{keys}</code>. Si no, esas variables llegan a Meta vacías."
       },
       "scheduleSend": {
         "title": "Revisar y enviar",
@@ -1066,7 +1093,11 @@
         "sending": "Enviando...",
         "preparing": "Preparando...",
         "progressDesc": "Procesando {current} de {total} destinatarios...",
-        "toastFailedPreview": "No se pudieron cargar los datos de la vista previa"
+        "toastFailedPreview": "No se pudieron cargar los datos de la vista previa",
+        "estimatedReach": "Alcance estimado",
+        "language": "Idioma",
+        "confirmTitle": "Confirmar difusión",
+        "confirmDesc": "Vas a mandar esta difusión a <bold>{count}</bold> contactos con la plantilla <bold>{template}</bold>. No se puede deshacer."
       }
     }
   },
@@ -2162,6 +2193,8 @@
     "retry": "Reintentar",
     "back": "Volver",
     "edit": "Editar",
-    "inbox": "la Bandeja"
+    "inbox": "la Bandeja",
+    "pickDate": "Elegí una fecha",
+    "clearDate": "Sin fecha"
   }
 }

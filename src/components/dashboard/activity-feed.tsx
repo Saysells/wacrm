@@ -31,17 +31,19 @@ interface KindTheme {
 }
 
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-blue-500/10 text-blue-400' },
-  contact: { icon: UserPlus, badge: 'bg-primary/10 text-primary' },
-  deal: { icon: Briefcase, badge: 'bg-primary/10 text-primary' },
-  broadcast: { icon: Radio, badge: 'bg-amber-500/10 text-amber-400' },
-  automation: { icon: Zap, badge: 'bg-rose-500/10 text-rose-400' },
+  // Tonos semánticos del sistema (rediseño, sesión F2).
+  message: { icon: MessageSquare, badge: 'bg-selected text-primary' },
+  contact: { icon: UserPlus, badge: 'bg-success-soft text-success' },
+  deal: { icon: Briefcase, badge: 'bg-info-soft text-info' },
+  broadcast: { icon: Radio, badge: 'bg-warning-soft text-warning' },
+  automation: { icon: Zap, badge: 'bg-neutral-soft text-neutral' },
 }
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   const t = useTranslations('Dashboard.activityFeed')
+  const locale = useLocale()
   // Start at 5 — a quick scan of the most recent events without
   // dominating vertical real estate. User expands explicitly via the
   // footer control when they want deeper history.
@@ -57,7 +59,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="rounded-[18px] border border-border bg-card">
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
         <Link
@@ -96,7 +98,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                 <div className="flex items-center gap-3 px-5 py-2.5">
                   <span
                     className={cn(
-                      'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full',
+                      'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg',
                       theme.badge,
                     )}
                   >
@@ -106,7 +108,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     {it.text}
                   </span>
                   <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {relativeTime(it.at, t)}
+                    {relativeTime(it.at, t, locale)}
                   </span>
                 </div>
               )
@@ -140,7 +142,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     className={cn(
                       'rounded-md px-2 py-1 font-medium tabular-nums transition-colors',
                       pageSize === size
-                        ? 'bg-secondary text-secondary-foreground'
+                        ? 'bg-selected-strong text-primary'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
                     )}
@@ -157,7 +159,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   )
 }
 
-function relativeTime(iso: string, t: ReturnType<typeof useTranslations>): string {
+function relativeTime(iso: string, t: ReturnType<typeof useTranslations>, locale: string): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''
   const diffSec = Math.round((Date.now() - then) / 1000)
@@ -165,5 +167,5 @@ function relativeTime(iso: string, t: ReturnType<typeof useTranslations>): strin
   if (diffSec < 3600) return t('timeM', { min: Math.floor(diffSec / 60) })
   if (diffSec < 86400) return t('timeH', { hr: Math.floor(diffSec / 3600) })
   if (diffSec < 2_592_000) return t('timeD', { day: Math.floor(diffSec / 86400) })
-  return new Date(iso).toLocaleDateString()
+  return new Date(iso).toLocaleDateString(locale)
 }

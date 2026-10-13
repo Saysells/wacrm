@@ -4,6 +4,7 @@ import { Clock } from 'lucide-react'
 import { DOW_SHORT_MON_FIRST } from '@/lib/dashboard/date-utils'
 import type { ResponseTimeSummary } from '@/lib/dashboard/types'
 import { BarChart } from '@/components/tremor/bar-chart'
+import { Badge } from '@/components/ui/badge'
 import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
 
@@ -24,8 +25,8 @@ import { useTranslations } from 'next-intl'
 // Single category, single colour — the data is "average minutes
 // per weekday". Tremor expects categories as the second tuple in
 // the row object, so we shape the buckets into
-// `{ day: 'Mon', 'Avg minutes': 4.2 }` rows below.
-const CATEGORY = 'Avg minutes'
+// `{ day: 'Lun', '<Promedio>': 4.2 }` rows below. El nombre de la
+// categoría y los días salen del catálogo (sesión F2).
 
 export function ResponseTimeChart({
   data,
@@ -33,6 +34,7 @@ export function ResponseTimeChart({
   thresholdMinutes = 5,
 }: ResponseTimeChartProps) {
   const t = useTranslations('Dashboard.responseTimeChart')
+  const category = t('avgMinutes')
   const hasData = data?.buckets.some((b) => b.avgMinutes != null) ?? false
 
   // Map buckets → Tremor rows. Null `avgMinutes` (no samples)
@@ -41,13 +43,13 @@ export function ResponseTimeChart({
   // surface "no samples" copy without losing the data shape.
   const chartData =
     data?.buckets.map((b, i) => ({
-      day: DOW_SHORT_MON_FIRST[i],
-      [CATEGORY]: b.avgMinutes ?? 0,
+      day: t(`dow.${DOW_SHORT_MON_FIRST[i]}`),
+      [category]: b.avgMinutes ?? 0,
       samples: b.samples,
     })) ?? []
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="rounded-[18px] border border-border bg-card">
       <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
@@ -59,21 +61,21 @@ export function ResponseTimeChart({
         </div>
         <div className="flex items-center gap-3 text-right text-xs">
           {thresholdMinutes > 0 && (
-            <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 font-medium text-rose-300 tabular-nums">
+            <Badge variant="info" className="tabular-nums">
               {t('target', { minutes: thresholdMinutes })}
-            </span>
+            </Badge>
           )}
           {data && (data.thisWeekAvg != null || data.lastWeekAvg != null) && (
             <div>
               <div className="text-muted-foreground">
                 {t('thisWeek')}{' '}
                 <span className="font-medium text-foreground tabular-nums">
-                  {fmt(data.thisWeekAvg)}
+                  {fmt(data.thisWeekAvg, t)}
                 </span>
               </div>
               <div className="text-muted-foreground">
                 {t('lastWeek')}{' '}
-                <span className="tabular-nums">{fmt(data.lastWeekAvg)}</span>
+                <span className="tabular-nums">{fmt(data.lastWeekAvg, t)}</span>
               </div>
             </div>
           )}
@@ -93,11 +95,10 @@ export function ResponseTimeChart({
           <BarChart
             data={chartData}
             index="day"
-            categories={[CATEGORY]}
-            // 'violet' maps to Tailwind's `fill-violet-500` — matches
-            // the brand accent the hand-rolled bars used (#7c3aed).
-            colors={['violet']}
-            valueFormatter={(value) => `${value.toFixed(1)}m`}
+            categories={[category]}
+            // Navy del sistema (`chart-colors.ts`).
+            colors={['navy']}
+            valueFormatter={(value) => t('unitMinutes', { value: value.toFixed(1) })}
             showLegend={false}
             yAxisWidth={48}
             // Compact height so the chart sits well inside the card
@@ -110,9 +111,9 @@ export function ResponseTimeChart({
   )
 }
 
-function fmt(mins: number | null): string {
+function fmt(mins: number | null, t: ReturnType<typeof useTranslations>): string {
   if (mins == null) return '—'
-  if (mins < 1) return `${Math.max(1, Math.round(mins * 60))}s`
-  if (mins < 60) return `${mins.toFixed(1)}m`
-  return `${(mins / 60).toFixed(1)}h`
+  if (mins < 1) return t('unitSeconds', { value: Math.max(1, Math.round(mins * 60)) })
+  if (mins < 60) return t('unitMinutes', { value: mins.toFixed(1) })
+  return t('unitHours', { value: (mins / 60).toFixed(1) })
 }

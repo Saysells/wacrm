@@ -7,6 +7,11 @@ import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
 import { cn } from '@/lib/utils'
 
+// Colores del sistema (rediseño, sesión F2): navy para lo que mandamos,
+// celeste para lo que entra. El naranja queda para lo que espera respuesta.
+const OUTGOING = 'var(--primary)'
+const INCOMING = '#8EB1D1'
+
 type RangeDays = 7 | 30 | 90
 
 interface ConversationsChartProps {
@@ -27,7 +32,7 @@ const VB_W = 760
 const VB_H = 240
 const PADDING = { top: 16, right: 16, bottom: 28, left: 40 }
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 export function ConversationsChart({ series, loading, range, onRangeChange }: ConversationsChartProps) {
   const t = useTranslations('Dashboard.conversationsChart')
@@ -49,7 +54,7 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
   }, [data])
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border bg-card">
+    <section className="flex h-full flex-col rounded-[18px] border border-border bg-card">
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
@@ -64,7 +69,7 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                 range === r
-                  ? 'bg-secondary text-secondary-foreground'
+                  ? 'bg-selected-strong text-primary'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
@@ -89,8 +94,8 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
       </div>
 
       <footer className="flex items-center gap-4 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-        <LegendDot color="#3b82f6" label={t('incoming')} />
-        <LegendDot color="#7c3aed" label={t('outgoing')} />
+        <LegendDot color={INCOMING} label={t('incoming')} />
+        <LegendDot color={OUTGOING} label={t('outgoing')} />
       </footer>
     </section>
   )
@@ -111,6 +116,7 @@ function LineSvg({
   ticks: number[]
   t: ReturnType<typeof useTranslations>
 }) {
+  const locale = useLocale()
   // Hover state: both the snapped index AND the tooltip's pixel
   // offset inside the wrapper div. They're stored together so the
   // tooltip positions against the chart's actual rendered pixels,
@@ -238,25 +244,25 @@ function LineSvg({
               textAnchor="middle"
               className="fill-muted-foreground text-[10px]"
             >
-              {shortDayLabel(p.day)}
+              {shortDayLabel(p.day, locale)}
             </text>
           ) : null,
         )}
 
-        {/* Outgoing polyline (violet) */}
+        {/* Saliente: navy */}
         <path
           d={outgoingPath}
           fill="none"
-          stroke="#7c3aed"
+          stroke={OUTGOING}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Incoming polyline (blue) */}
+        {/* Entrante: celeste */}
         <path
           d={incomingPath}
           fill="none"
-          stroke="#3b82f6"
+          stroke={INCOMING}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -273,8 +279,8 @@ function LineSvg({
               stroke="var(--muted-foreground)"
               strokeDasharray="3 3"
             />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].incoming)} r={3.5} fill="#3b82f6" />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].outgoing)} r={3.5} fill="#7c3aed" />
+            <circle cx={hoverX} cy={yFor(data[hover.idx].incoming)} r={3.5} fill={INCOMING} />
+            <circle cx={hoverX} cy={yFor(data[hover.idx].outgoing)} r={3.5} fill={OUTGOING} />
           </g>
         )}
       </svg>
@@ -288,14 +294,14 @@ function LineSvg({
           className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] shadow-lg"
           style={{ left: `${hover.tooltipLeftPx}px` }}
         >
-          <div className="font-medium text-popover-foreground">{longDayLabel(hovered.day)}</div>
+          <div className="font-medium text-popover-foreground">{longDayLabel(hovered.day, locale)}</div>
           <div className="mt-1 flex flex-col gap-0.5">
-            <span className="flex items-center gap-1.5 text-blue-300">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+            <span className="flex items-center gap-1.5 text-foreground">
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: INCOMING }} />
               {t('tooltipIncoming', { count: hovered.incoming })}
             </span>
-            <span className="flex items-center gap-1.5 text-primary">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="flex items-center gap-1.5 text-foreground">
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: OUTGOING }} />
               {t('tooltipOutgoing', { count: hovered.outgoing })}
             </span>
           </div>
@@ -314,18 +320,18 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   )
 }
 
-function shortDayLabel(key: string): string {
+function shortDayLabel(key: string, locale: string): string {
   // key is YYYY-MM-DD; return "Apr 17"-style. Using Date with an
   // appended time avoids timezone-shift surprises across midnight.
   const [y, m, d] = key.split('-').map(Number)
   const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
 }
 
-function longDayLabel(key: string): string {
+function longDayLabel(key: string, locale: string): string {
   const [y, m, d] = key.split('-').map(Number)
   const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  return date.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 /**

@@ -95,7 +95,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
 
   return (
     <TooltipProvider>
-      <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card/60 p-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 rounded-[14px] border border-border bg-card p-4 sm:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
           label={t("totalDeals")}
@@ -111,28 +111,28 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           t={t}
         />
         <Metric
-          icon={<Target className="h-4 w-4 text-blue-400" />}
+          icon={<Target className="h-4 w-4 text-primary" />}
           label={t("avgDealSize")}
           value={formatCurrency(stats.avgValue, defaultCurrency)}
           tooltip={t("avgDealSizeTooltip")}
           t={t}
         />
         <Metric
-          icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
+          icon={<TrendingUp className="h-4 w-4 text-primary" />}
           label={t("weightedValue")}
           value={formatCurrency(stats.weightedValue, defaultCurrency)}
           tooltip={t("weightedValueTooltip")}
           t={t}
         />
         <Metric
-          icon={<Trophy className="h-4 w-4 text-primary" />}
+          icon={<Trophy className="h-4 w-4 text-success" />}
           label={t("wonThisMonth")}
           value={String(stats.wonThisMonth)}
           tooltip={t("wonThisMonthTooltip")}
           t={t}
         />
         <Metric
-          icon={<XCircle className="h-4 w-4 text-red-400" />}
+          icon={<XCircle className="h-4 w-4 text-danger" />}
           label={t("lostThisMonth")}
           value={String(stats.lostThisMonth)}
           tooltip={t("lostThisMonthTooltip")}

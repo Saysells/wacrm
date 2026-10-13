@@ -13,6 +13,7 @@ import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { PageHeader } from '@/components/ui/page-header';
 
 const steps = [
   { label: 'template', key: 'template' },
@@ -67,7 +68,7 @@ export default function NewBroadcastPage() {
     } catch (err) {
       // Previously swallowed with console.error — the wizard would
       // just no-op, leaving the user confused. Surface the reason.
-      const message = err instanceof Error ? err.message : 'Broadcast failed';
+      const message = err instanceof Error ? err.message : t('toastSendFailed');
       console.error('Broadcast failed:', err);
       toast.error(message);
     }
@@ -131,13 +132,8 @@ export default function NewBroadcastPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('subtitle')}
-        </p>
-      </div>
+      {/* Encabezado común (rediseño, sesión F2). */}
+      <PageHeader title={t('title')} note={t('subtitle')} />
 
       {/* Step Indicator */}
       <div className="flex items-center justify-between">
@@ -148,13 +144,15 @@ export default function NewBroadcastPage() {
           return (
             <div key={step.key} className="flex flex-1 items-center">
               <div className="flex items-center gap-2">
+                {/* Paso: cuadrado de 32 px (sesión F2), hecho en navy,
+                    activo en celeste, pendiente gris. */}
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-all ${
+                  className={`grid h-8 w-8 place-items-center rounded-lg text-xs font-semibold tabular-nums transition-colors ${
                     isCompleted
                       ? 'bg-primary text-primary-foreground'
                       : isActive
-                        ? 'border-2 border-primary bg-primary/10 text-primary'
-                        : 'border border-border bg-muted text-muted-foreground'
+                        ? 'bg-selected-strong text-primary'
+                        : 'border border-border bg-card text-muted-foreground'
                   }`}
                 >
                   {isCompleted ? <Check className="h-4 w-4" /> : index + 1}
@@ -170,7 +168,7 @@ export default function NewBroadcastPage() {
               {index < steps.length - 1 && (
                 <div
                   className={`mx-3 h-px flex-1 ${
-                    index < currentStep ? 'bg-primary' : 'bg-muted'
+                    index < currentStep ? 'bg-primary' : 'bg-border'
                   }`}
                 />
               )}

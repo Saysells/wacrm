@@ -14,10 +14,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Radio, Plus, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -60,6 +63,7 @@ function RateCell({
 export default function BroadcastsPage() {
   const router = useRouter();
   const t = useTranslations('Broadcasts.page');
+  const locale = useLocale();
   const tStatus = useTranslations('Broadcasts.status');
   const canCreate = useCan('send-messages');
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
@@ -142,7 +146,7 @@ export default function BroadcastsPage() {
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-danger">{error}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
           {t('retry')}
         </Button>
@@ -157,7 +161,7 @@ export default function BroadcastsPage() {
       {anySending && (
         <div
           role="progressbar"
-          aria-label="Broadcast in progress"
+          aria-label={t('inProgress')}
           className="broadcast-indeterminate fixed inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-muted"
         >
           <div className="broadcast-indeterminate-bar h-0.5 bg-primary" />
@@ -180,55 +184,54 @@ export default function BroadcastsPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('subtitle')}
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create broadcasts"
-          onClick={() => router.push('/broadcasts/new')}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t('newBroadcast')}
-        </GatedButton>
-      </div>
-
-      {broadcasts.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border bg-card">
-          <Radio className="mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">{t('noBroadcastsYet')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('createFirst')}
-          </p>
+      {/* Encabezado común (rediseño, sesión F2). */}
+      <PageHeader
+        title={t('title')}
+        meta={broadcasts.length > 0 ? broadcasts.length : undefined}
+        note={t('subtitle')}
+        actions={
           <GatedButton
             canAct={canCreate}
             gateReason="create broadcasts"
             onClick={() => router.push('/broadcasts/new')}
-            className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
           >
-            <Plus className="h-4 w-4" />
+            <Plus />
             {t('newBroadcast')}
           </GatedButton>
-        </div>
+        }
+      />
+
+      {broadcasts.length === 0 ? (
+        <EmptyState
+          icon={Radio}
+          title={t('noBroadcastsYet')}
+          description={t('createFirst')}
+          action={
+            <GatedButton
+              variant="outline"
+              canAct={canCreate}
+              gateReason="create broadcasts"
+              onClick={() => router.push('/broadcasts/new')}
+            >
+              <Plus />
+              {t('newBroadcast')}
+            </GatedButton>
+          }
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-[14px] border border-border bg-card">
           <Table>
             <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">{t('table.name')}</TableHead>
-                <TableHead className="hidden text-muted-foreground md:table-cell">{t('table.template')}</TableHead>
-                <TableHead className="hidden text-right text-muted-foreground sm:table-cell">
+              <TableRow className="hover:[&>td]:bg-transparent">
+                <TableHead>{t('table.name')}</TableHead>
+                <TableHead className="hidden md:table-cell">{t('table.template')}</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">
                   {t('table.recipients')}
                 </TableHead>
-                <TableHead className="hidden text-muted-foreground lg:table-cell">{t('table.delivery')}</TableHead>
-                <TableHead className="hidden text-muted-foreground lg:table-cell">{t('table.read')}</TableHead>
-                <TableHead className="text-muted-foreground">{t('table.status')}</TableHead>
-                <TableHead className="hidden text-muted-foreground sm:table-cell">{t('table.date')}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t('table.delivery')}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t('table.read')}</TableHead>
+                <TableHead>{t('table.status')}</TableHead>
+                <TableHead className="hidden sm:table-cell">{t('table.date')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -237,10 +240,10 @@ export default function BroadcastsPage() {
                 return (
                   <TableRow
                     key={broadcast.id}
-                    className="cursor-pointer border-border hover:bg-muted/50"
+                    className="cursor-pointer"
                     onClick={() => router.push(`/broadcasts/${broadcast.id}`)}
                   >
-                    <TableCell className="font-medium text-foreground">
+                    <TableCell className="font-semibold text-foreground">
                       {broadcast.name}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">
@@ -260,24 +263,22 @@ export default function BroadcastsPage() {
                       <RateCell
                         value={broadcast.read_count}
                         total={broadcast.total_recipients}
-                        color="bg-blue-500"
+                        color="bg-[#8EB1D1]"
                       />
                     </TableCell>
                     <TableCell>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${status.classes}`}
-                      >
+                      <Badge variant={status.variant}>
                         {status.pulse && (
                           <span className="relative flex h-1.5 w-1.5">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75" />
-                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400" />
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-warning" />
                           </span>
                         )}
                         {tStatus(status.label)}
-                      </span>
+                      </Badge>
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground sm:table-cell">
-                      {new Date(broadcast.created_at).toLocaleDateString()}
+                      {new Date(broadcast.created_at).toLocaleDateString(locale)}
                     </TableCell>
                   </TableRow>
                 );
