@@ -1,8 +1,9 @@
 // ============================================================
 // Grupos de etiquetas (`tags.grupo`, migracion 046).
 //
-// Las 13 etiquetas de grupo 'estado' son el embudo del setter: marca
-// en que punto esta cada conversacion. La regla de "una sola por
+// Las etiquetas de grupo 'estado' son el embudo del setter: marca en
+// que punto esta cada conversacion (13 en la migracion 046, mas las que
+// cada cuenta sumo despues). La regla de "una sola por
 // contacto" vive en la base (trigger trg_single_etapa_tag); aca solo
 // esta lo que hace falta para MOSTRARLA bien: reconocerla y ordenarla
 // como embudo en vez de alfabeticamente.
@@ -14,15 +15,21 @@ export const TAG_GRUPOS: readonly TagGrupo[] = ['estado', 'origen', 'senal'];
 
 /**
  * Orden del embudo, tal como lo recorre un lead. Son los nombres que
- * la migracion 046 deja en cada cuenta; una etiqueta de estado con un
- * nombre que no este aca (renombrada a mano) va al final, alfabetica.
+ * la migracion 046 deja en cada cuenta, mas "Gestión WhatsApp Mati"
+ * (Kosmo, 16/10/2026) y los closers de Saysells ARG (Ezequiel y Manuel,
+ * cuenta 902). SOLO ORDENA, NO FILTRA: una etiqueta de estado con un
+ * nombre que no este aca (renombrada a mano, o de otra cuenta) se
+ * muestra igual, al final y alfabetica.
  */
 export const ESTADO_FUNNEL: readonly string[] = [
   'Nuevo',
   'En gestión',
+  'Gestión WhatsApp Mati',
   'No responde',
   'Agendado a Paola',
   'Agendado a Gustavo',
+  'Agendado a Ezequiel',
+  'Agendado a Manuel',
   'Agendada',
   'No se presentó',
   'Reagendado',

@@ -517,7 +517,41 @@ hasta el merge final. Referencia: `docs/rediseno/prototipo-v1.html`
 (ver "Qué no se toca"). Sesiones A (base y barra), B (navegación y lista),
 C (conversación), D (ficha y agendar), E (closer y teclado), F1
 (Contactos, Notificaciones, diferencias) y F2 (el resto de las pantallas,
-13/10/2026) hechas: queda el merge a `main`.
+13/10/2026) hechas y mergeadas en `main`.
+
+## Después del merge
+
+Pedido de Matías (setter de Kosmo), aprobado por Emi el 16/10/2026. Sin
+base de datos: la etiqueta de estado "Gestión WhatsApp Mati" (Kosmo) y su
+fila en `bridge_etapas` del CRM ya estaban cargadas.
+
+- **Agendar sin fecha**: en el modal, día y horario son opcionales
+  (`canSaveDraft`; volver a tocar el día elegido lo destilda,
+  `toggleDay`). Con fecha, lo de siempre. Sin fecha, `applySchedule`
+  hace solo `attachTag` y **no toca `fecha_llamada`** (tampoco reaplica:
+  no hay fecha nueva que avisar). El botón dice "Agendar"; Reagendar (una
+  llamada que ya tiene fecha) sigue pidiendo día y horario. Verificado
+  por Emi: ningún trigger exige la fecha y `bridge_set_estado` acepta
+  `ll1_agendada` sin fecha.
+- **`ScheduledCall.at` es `number | null`** (`isDatedCall`,
+  `compareCallTime`). Una etiqueta de agenda sin fecha ES una llamada:
+  entra en Agendadas y en Mis llamadas (grupo "Sin fecha" al final,
+  `groupByDay` con `day: null`; `callStatus` devuelve `undated`), en el
+  riel Llamadas y en la tarjeta de la ficha ("Sin horario todavía"); en
+  la lista va solo el chip de estado, sin el de la llamada. No ocupa
+  horarios ni cuenta en "N llamadas en los próximos 7 días". **Ponerle
+  fecha a una llamada sin fecha es agendar, no reagendar**
+  (`scheduleModeFor` mira `at`): no pasa a "Reagendado".
+- **Casilla "Preparar mensaje de confirmación"**, desmarcada por
+  defecto (reemplaza a "Dejarlo listo en el composer", que estaba marcada
+  y escribía el mensaje sola). Marcada, muestra el texto y lo deja en el
+  cuadro al guardar; deshabilitada sin ventana para escribir o sin fecha.
+- **Orden del embudo** (`ESTADO_FUNNEL`): "Gestión WhatsApp Mati" justo
+  después de "En gestión"; "Agendado a Ezequiel" y "Agendado a Manuel"
+  después de Paola y Gustavo, antes de "Agendada". Solo ordena, no
+  filtra: una etiqueta que no está en la lista sigue al final (hay test).
+  Consecuencia: en ARG `schedulingTags` lista a los closers antes de
+  "Agendada".
 
 ## Base y tokens
 
@@ -744,8 +778,9 @@ misma consulta el último mensaje (`last_msg`) y el último del cliente
   contacto ya tiene la etiqueta, se saca y se vuelve a poner
   (`needsReattach`) para que el aviso al CRM salga del INSERT. Ocupados:
   misma hora, mismo closer, mismo día sobre el store (`busySlots`,
-  `daysWithCalls`, `callsNextWeek`). Casilla "Dejarlo listo en el
-  composer" (`prefillReplyDraft`) solo con ventana abierta o por vencer.
+  `daysWithCalls`, `callsNextWeek`). Casilla "Preparar mensaje de
+  confirmación" (`prefillReplyDraft`), desmarcada, solo con ventana
+  abierta o por vencer y con fecha (ver "Después del merge").
   USA y Star Energy no tienen etiquetas con fecha: ahí no hay Agendar, ni
   fila Llamada, ni pestaña Llamadas.
 

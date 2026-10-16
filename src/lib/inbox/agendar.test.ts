@@ -101,11 +101,11 @@ describe("closers y etiquetas con fecha", () => {
     expect(closersOf(SIN_CLOSERS)).toEqual([]);
   });
 
-  it("schedulingTags trae todas las de estado con fecha; sin ninguna no se agenda", () => {
+  it("schedulingTags trae todas las de estado con fecha, en orden de embudo (los closers de ARG antes de Agendada desde el 16/10/2026); sin ninguna no se agenda", () => {
     expect(schedulingTags(SAYSELLS).map((t) => t.name)).toEqual([
-      "Agendada",
       "Agendado a Ezequiel",
       "Agendado a Manuel",
+      "Agendada",
       "Reagendado",
     ]);
     expect(schedulingTags(STAR_ENERGY)).toEqual([]);
