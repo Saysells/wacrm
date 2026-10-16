@@ -107,8 +107,9 @@ describe("closerCalls y la vista Mis llamadas", () => {
   const closed = conv("cerrada", { tags: [AG_MANUEL], fecha: NOW + H, status: "closed" });
   const all = [other, noCloser, mine, closed, re, noDate];
 
-  it("lista las mías y las sin closer, nunca las de otro closer ni las cerradas, por hora", () => {
-    expect(closerCalls(all, "manuel").map((c) => c.conversation.id)).toEqual(["re", "mia", "agendada"]);
+  it("lista las mías y las sin closer, nunca las de otro closer ni las cerradas, por hora; las sin fecha al final", () => {
+    expect(closerCalls(all, "manuel").map((c) => c.conversation.id)).toEqual(["re", "mia", "agendada", "sinfecha"]);
+    expect(closerCalls(all, "manuel").at(-1)?.call).toEqual({ closer: "Manuel", at: null });
   });
 
   it("inVista y countVistas usan el closer del contexto", () => {
@@ -118,7 +119,8 @@ describe("closerCalls y la vista Mis llamadas", () => {
     expect(inVista(other, "mis-llamadas", ctx)).toBe(false);
     expect(inVista(closed, "mis-llamadas", ctx)).toBe(false);
     expect(inVista(mine, "mis-llamadas", { userId: null, now: NOW })).toBe(false);
-    expect(countVistas(all, ctx)["mis-llamadas"]).toBe(3);
+    expect(inVista(noDate, "mis-llamadas", ctx)).toBe(true);
+    expect(countVistas(all, ctx)["mis-llamadas"]).toBe(4);
     expect(countVistas(all, { userId: null, now: NOW })["mis-llamadas"]).toBe(0);
   });
 
@@ -128,6 +130,7 @@ describe("closerCalls y la vista Mis llamadas", () => {
       "re",
       "mia",
       "agendada",
+      "sinfecha",
     ]);
   });
 
@@ -140,7 +143,8 @@ describe("closerCalls y la vista Mis llamadas", () => {
 });
 
 describe("callStatus, días y encabezados", () => {
-  it("ya pasó, en X con menos de 3 h, agendada si no", () => {
+  it("ya pasó, en X con menos de 3 h, agendada si no; sin fecha es su propio estado", () => {
+    expect(callStatus(null, NOW)).toEqual({ kind: "undated" });
     expect(callStatus(NOW - 1, NOW)).toEqual({ kind: "past" });
     expect(callStatus(NOW + 2 * H, NOW)).toEqual({ kind: "soon", inMs: 2 * H });
     expect(callStatus(NOW + 3 * H, NOW)).toEqual({ kind: "scheduled" });
@@ -157,6 +161,19 @@ describe("callStatus, días y encabezados", () => {
     expect(groups[0].day).toBe(new Date(2026, 9, 15).getTime());
   });
 
+  it("las sin fecha van juntas en un grupo 'Sin fecha' (day null) al final, aunque vengan primero", () => {
+    const items: { id: string; at: number | null }[] = [
+      { id: "s1", at: null },
+      { id: "c", at: new Date(2026, 9, 16, 9, 0).getTime() },
+      { id: "s2", at: null },
+      { id: "a", at: new Date(2026, 9, 15, 10, 0).getTime() },
+    ];
+    const groups = groupByDay(items, (i) => i.at);
+    expect(groups.map((g) => g.items.map((i) => i.id))).toEqual([["a"], ["c"], ["s1", "s2"]]);
+    expect(groups.at(-1)?.day).toBeNull();
+    expect(groupByDay([{ at: 1 }], (i) => i.at).some((g) => g.day === null)).toBe(false);
+  });
+
   it("el encabezado dice hoy, mañana o ayer y siempre trae la fecha", () => {
     expect(callDayHeading(NOW, NOW)).toEqual({ relative: "today", weekday: 4, day: 15, month: 9 });
     expect(callDayHeading(new Date(2026, 9, 16, 9).getTime(), NOW)).toMatchObject({ relative: "tomorrow", day: 16 });
@@ -169,6 +186,11 @@ describe("tarjeta de la llamada y resultados", () => {
   const call = { closer: "Manuel", at: NOW + H };
   const callNoCloser = { closer: null, at: NOW + H };
   const callOther = { closer: "Ezequiel", at: NOW + H };
+
+  it("la tarjeta también sale para una llamada sin fecha del closer", () => {
+    expect(showsCallCard("Manuel", { closer: "Manuel", at: null })).toBe(true);
+    expect(showsCallCard("Manuel", { closer: "Ezequiel", at: null })).toBe(false);
+  });
 
   it("la tarjeta es del closer con llamada suya o sin closer", () => {
     expect(showsCallCard("Manuel", call)).toBe(true);

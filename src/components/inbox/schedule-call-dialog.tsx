@@ -11,6 +11,7 @@ import {
   applySchedule,
   busySlots,
   callsNextWeek,
+  canSaveDraft,
   chosenTime,
   closersOf,
   daysWithCalls,
@@ -21,6 +22,7 @@ import {
   resolveScheduleTag,
   shiftMonth,
   startOfDay,
+  toggleDay,
   type ScheduleRequest,
 } from "@/lib/inbox/agendar";
 import { prefillReplyDraft } from "@/lib/inbox/composer-drafts";
@@ -37,13 +39,17 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 // ============================================================
 // Modal "Agendar llamada" (rediseño, sesión D), prototipo
 // `drawSchedule()` / `saveSchedule()`: 780 px, a la izquierda los
-// closers ("N llamadas en los próximos 7 días"), el mensaje para el
-// cliente y la casilla "Dejarlo listo en el composer"; a la derecha el
-// calendario propio (mes, flechas, días pasados apagados, hoy marcado,
-// punto en los días con llamadas del closer) y los horarios de 09:00 a
-// 12:30 y 14:00 a 18:30 cada 30 min, con los ocupados y los pasados
-// deshabilitados; abajo el resumen, Cancelar y "Agendar llamada" (o
-// "Reagendar"). Nunca el datepicker nativo.
+// closers ("N llamadas en los próximos 7 días") y la casilla "Preparar
+// mensaje de confirmación" (desmarcada; marcada muestra el mensaje y lo
+// deja escrito en el cuadro al guardar); a la derecha el calendario
+// propio (mes, flechas, días pasados apagados, hoy marcado, punto en los
+// días con llamadas del closer) y los horarios de 09:00 a 12:30 y 14:00
+// a 18:30 cada 30 min, con los ocupados y los pasados deshabilitados;
+// abajo el resumen, Cancelar y "Agendar" (o "Reagendar"). Nunca el
+// datepicker nativo.
+//
+// Día y horario son OPCIONALES al agendar (16/10/2026): sin ellos se
+// aplica solo la etiqueta. Volver a tocar el día elegido lo destilda.
 //
 // La lógica (qué etiqueta se aplica, ocupados, calendario) es la de
 // `agendar.ts`, pura y con pruebas; acá solo se pinta y se llama a
@@ -53,7 +59,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 export interface ScheduledResult {
   conversationId: string;
   contactId: string;
-  fechaLlamada: string;
+  /** Null si se agendó sin fecha: `fecha_llamada` no se tocó. */
+  fechaLlamada: string | null;
   attached: Tag[];
 }
 
@@ -160,13 +167,15 @@ function ScheduleForm({
     // Reagendar sin closer actual ("Agendada"): nadie marcado.
     return request.mode === "re" ? null : closers[0].name;
   });
-  const [confirm, setConfirm] = useState(true);
+  // "Preparar mensaje de confirmación": desmarcada por defecto (16/10/2026).
+  const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // La casilla del composer solo tiene sentido con la ventana abierta o
-  // por vencer: cerrada, lo único que sale es una plantilla.
+  // La casilla del mensaje solo tiene sentido con la ventana abierta o
+  // por vencer (cerrada, lo único que sale es una plantilla) y con un
+  // día y horario elegidos (sin fecha no hay mensaje que armar).
   const win = windowState(conversation.last_customer_message_at, now);
-  const canPrefill = win.kind === "open" || win.kind === "expiring";
+  const windowAllows = win.kind === "open" || win.kind === "expiring";
 
   const grid = monthGrid(draft.year, draft.month);
   const today = startOfDay(now);
@@ -180,6 +189,8 @@ function ScheduleForm({
   );
   const when = chosenTime(draft);
   const whenDate = when === null ? null : new Date(when);
+  const canPrefill = windowAllows && when !== null;
+  const canSave = canSaveDraft(draft, request.mode);
 
   const firstName = firstNameOf(contact.name, contact.phone);
   const displayName = contact.name || contact.phone;
@@ -199,7 +210,7 @@ function ScheduleForm({
   })();
 
   const handleSave = async () => {
-    if (when === null || !draft.slot || saving) return;
+    if (!canSave || saving) return;
     const tag = resolveScheduleTag({
       mode: request.mode,
       accountTags,
@@ -218,7 +229,7 @@ function ScheduleForm({
         db: createClient(),
         contactId: contact.id,
         tag,
-        fecha: new Date(when),
+        fecha: when === null ? null : new Date(when),
         attached: contact.tags ?? [],
       });
       if (confirm && canPrefill && messageText) {
@@ -226,18 +237,24 @@ function ScheduleForm({
         // el cuadro pasa a esa pestaña y pone el foco al final.
         prefillReplyDraft(conversation.id, messageText);
       }
-      const d = new Date(when);
-      const args = {
-        closer: closer ?? "",
-        weekday: weekdays[d.getDay()] ?? "",
-        day: d.getDate(),
-        time: draft.slot,
-      };
-      toast.success(
-        closer
-          ? t(isRe ? "toastRescheduled" : "toastScheduled", args)
-          : t(isRe ? "toastRescheduledNoCloser" : "toastScheduledNoCloser", args),
-      );
+      if (when === null) {
+        toast.success(
+          closer ? t("toastScheduledNoDate", { closer }) : t("toastScheduledNoDateNoCloser"),
+        );
+      } else {
+        const d = new Date(when);
+        const args = {
+          closer: closer ?? "",
+          weekday: weekdays[d.getDay()] ?? "",
+          day: d.getDate(),
+          time: draft.slot ?? "",
+        };
+        toast.success(
+          closer
+            ? t(isRe ? "toastRescheduled" : "toastScheduled", args)
+            : t(isRe ? "toastRescheduledNoCloser" : "toastScheduledNoCloser", args),
+        );
+      }
       onScheduled({
         conversationId: conversation.id,
         contactId: contact.id,
@@ -268,7 +285,7 @@ function ScheduleForm({
         key={d}
         type="button"
         disabled={past || saving}
-        onClick={() => setDraft((prev) => ({ ...prev, day: dayStart, slot: null }))}
+        onClick={() => setDraft((prev) => toggleDay(prev, dayStart))}
         aria-pressed={selected}
         aria-label={`${d}${isToday ? ` · ${t("today")}` : ""}${has ? ` · ${t("hasCalls")}` : ""}`}
         className={cn(
@@ -354,18 +371,24 @@ function ScheduleForm({
             </>
           )}
 
-          <div className={cn(LABEL, "mb-2", showClosers && "mt-[18px]")}>
-            {firstName ? t("messageFor", { name: firstName }) : t("messageForContact")}
-          </div>
-          <div className="rounded-xl bg-muted px-3 py-2.5 text-[13px] leading-[1.45] text-secondary-foreground">
-            {messageText ? `“${messageText}”` : t("pickDayFirst")}
-          </div>
+          {/* Mensaje de confirmación: casilla desmarcada; marcada, se
+              muestra el texto y al guardar queda en el cuadro. Deshabilitada
+              sin ventana para escribir o sin día y horario. */}
           <label
             className={cn(
-              "mt-3 flex items-start gap-2 text-[13px] text-secondary-foreground",
+              "flex items-start gap-2 text-[13px] text-secondary-foreground",
+              showClosers && "mt-[18px]",
               !canPrefill && "opacity-60",
             )}
-            title={canPrefill ? undefined : win.kind === "none" ? t("composerNone") : t("composerBlocked")}
+            title={
+              canPrefill
+                ? undefined
+                : !windowAllows
+                  ? win.kind === "none"
+                    ? t("composerNone")
+                    : t("composerBlocked")
+                  : t("prepareMessageNoDate")
+            }
           >
             <Checkbox
               checked={confirm && canPrefill}
@@ -374,14 +397,28 @@ function ScheduleForm({
               className="mt-0.5 size-[18px] rounded-[5px]"
             />
             <span>
-              {t("leaveInComposer")}
+              {t("prepareMessage")}
               {!canPrefill && (
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {win.kind === "none" ? t("composerNone") : t("composerBlocked")}
+                  {!windowAllows
+                    ? win.kind === "none"
+                      ? t("composerNone")
+                      : t("composerBlocked")
+                    : t("prepareMessageNoDate")}
                 </span>
               )}
             </span>
           </label>
+          {confirm && canPrefill && messageText && (
+            <>
+              <div className={cn(LABEL, "mt-3 mb-2")}>
+                {firstName ? t("messageFor", { name: firstName }) : t("messageForContact")}
+              </div>
+              <div className="rounded-xl bg-muted px-3 py-2.5 text-[13px] leading-[1.45] text-secondary-foreground">
+                {`“${messageText}”`}
+              </div>
+            </>
+          )}
         </div>
 
         <div>
@@ -486,11 +523,21 @@ function ScheduleForm({
                   </small>
                 )}
               </>
+            ) : draft.day !== null ? (
+              <>
+                <b className="block font-semibold text-foreground">{t("summaryIncomplete")}</b>
+                <small className="block text-[12.5px] text-muted-foreground">
+                  {isRe ? t("summaryNoDateRe") : t("summaryIncompleteHint")}
+                </small>
+              </>
             ) : (
               <>
-                <b className="block font-semibold text-foreground">{t("summaryEmpty")}</b>
+                <b className="block font-semibold text-foreground">
+                  {t("summaryEmpty")}
+                  {closer && !isRe ? ` · ${t("summaryWith", { closer })}` : ""}
+                </b>
                 <small className="block text-[12.5px] text-muted-foreground">
-                  {showClosers ? t("summaryHintClosers") : t("summaryHint")}
+                  {isRe ? t("summaryNoDateRe") : t("summaryNoDate")}
                 </small>
               </>
             )}
@@ -500,7 +547,7 @@ function ScheduleForm({
           <Button variant="outline" onClick={onClose} disabled={saving}>
             {t("cancel")}
           </Button>
-          <Button onClick={() => void handleSave()} disabled={when === null || saving}>
+          <Button onClick={() => void handleSave()} disabled={!canSave || saving}>
             {isRe ? t("confirmRe") : t("confirmNew")}
           </Button>
         </div>

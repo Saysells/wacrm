@@ -18,12 +18,15 @@ import {
   isPastSlot,
   monthGrid,
   needsReattach,
+  canSaveDraft,
   requestFromAction,
   requestFromEstado,
   resolveScheduleTag,
+  scheduleModeFor,
   schedulingTags,
   shiftMonth,
   slotTime,
+  toggleDay,
 } from "./agendar";
 
 let seq = 0;
@@ -242,6 +245,7 @@ describe("ocupados y puntos del calendario", () => {
     conv("e", [AG_MANUEL], localIso(2026, 9, 15, 11, 0), { status: "closed" }), // cerrada
     conv("f", [AGENDADA], localIso(2026, 9, 15, 12, 0)), // sin closer
     conv("g", [NUEVO], localIso(2026, 9, 15, 14, 0)), // sin estado con fecha
+    conv("h", [AG_MANUEL], null), // agendada sin fecha: no ocupa nada
   ];
 
   it("ocupado = mismo closer, mismo día, misma hora y minuto; la propia conversación no cuenta", () => {
@@ -252,6 +256,13 @@ describe("ocupados y puntos del calendario", () => {
 
   it("sin closer (Agendada / Reagendado) cuentan solo las que no nombran a nadie", () => {
     expect([...busySlots(convs, null, day15, null)]).toEqual(["12:00"]);
+  });
+
+  it("una llamada sin fecha no ocupa horarios, ni marca días, ni cuenta en la semana", () => {
+    const only = [conv("h", [AG_MANUEL], null)];
+    expect(busySlots(only, "Manuel", day15, null).size).toBe(0);
+    expect(daysWithCalls(only, "Manuel", 2026, 9, null).size).toBe(0);
+    expect(callsNextWeek(only, "Manuel", NOW)).toBe(0);
   });
 
   it("los puntos marcan los días del mes con llamadas del closer", () => {
@@ -286,6 +297,47 @@ describe("calendario", () => {
       day: null,
       slot: null,
     });
+  });
+
+  it("una llamada sin fecha abre como Agendar: sin día ni horario, en el mes de pasado mañana", () => {
+    const draft = initialScheduleDraft({ closer: "Manuel", at: null }, NOW);
+    expect(draft).toEqual({ year: 2026, month: 9, day: null, slot: null });
+    expect(scheduleModeFor({ closer: "Manuel", at: null })).toBe("new");
+    expect(scheduleModeFor({ closer: "Manuel", at: NOW })).toBe("re");
+    expect(scheduleModeFor(null)).toBe("new");
+  });
+
+  it("ponerle fecha a una llamada sin fecha es agendar, no reagendar: no pasa a Reagendado", () => {
+    const req = requestFromAction({ closer: "Manuel", at: null });
+    expect(req).toEqual({ mode: "new", presetCloser: "Manuel", fixedTag: null });
+    const tag = resolveScheduleTag({
+      mode: req.mode,
+      accountTags: SAYSELLS,
+      currentEstado: AG_MANUEL,
+      currentCloser: "Manuel",
+      chosenCloser: "Manuel",
+      fixedTag: null,
+    });
+    expect(tag?.id).toBe(AG_MANUEL.id);
+    // Y desde Estado, elegir la etiqueta actual sin fecha también abre Agendar.
+    expect(requestFromEstado(AG_MANUEL, AG_MANUEL, { closer: "Manuel", at: null }).mode).toBe("new");
+  });
+
+  it("toggleDay destilda el día ya elegido (para agendar sin fecha) y canSaveDraft decide el botón", () => {
+    const day = new Date(2026, 9, 15).getTime();
+    const empty = { year: 2026, month: 9, day: null, slot: null };
+    const withDay = toggleDay(empty, day);
+    expect(withDay).toEqual({ ...empty, day, slot: null });
+    expect(toggleDay({ ...withDay, slot: "10:00" }, day)).toEqual(empty);
+    expect(toggleDay(withDay, day + 24 * 60 * 60 * 1000).day).toBe(day + 24 * 60 * 60 * 1000);
+    // Agendar: sin fecha sí; día sin horario no; día y horario sí.
+    expect(canSaveDraft(empty, "new")).toBe(true);
+    expect(canSaveDraft(withDay, "new")).toBe(false);
+    expect(canSaveDraft({ ...withDay, slot: "10:00" }, "new")).toBe(true);
+    // Reagendar: siempre con día y horario.
+    expect(canSaveDraft(empty, "re")).toBe(false);
+    expect(canSaveDraft(withDay, "re")).toBe(false);
+    expect(canSaveDraft({ ...withDay, slot: "10:00" }, "re")).toBe(true);
   });
 
   it("con llamada vigente abre con su día y horario marcados", () => {
@@ -383,6 +435,20 @@ describe("applySchedule (orden fecha → etiqueta)", () => {
       `POST:${JSON.stringify({ tag_id: AG_MANUEL.id })}`,
     ]);
     expect(result.attached.map((t) => t.id)).toEqual([VIP.id, AG_MANUEL.id]);
+  });
+
+  it("sin fecha aplica solo la etiqueta: no toca contacts.fecha_llamada ni la reaplica", async () => {
+    const result = await applySchedule({
+      db: makeDb(),
+      contactId: "c1",
+      tag: AG_MANUEL,
+      fecha: null,
+      attached: [AG_MANUEL, VIP],
+    });
+    expect(calls).toEqual([`POST:${JSON.stringify({ tag_id: AG_MANUEL.id })}`]);
+    expect(result.fechaLlamada).toBeNull();
+    // Ya la tenía: queda donde estaba (no se saca ni se vuelve a poner).
+    expect(result.attached.map((t) => t.id)).toEqual([AG_MANUEL.id, VIP.id]);
   });
 
   it("si guardar la fecha falla, no toca ninguna etiqueta", async () => {

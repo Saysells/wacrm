@@ -113,9 +113,11 @@ describe("upcomingCalls", () => {
     const nuevo = conv("nuevo", {}, { tags: [NUEVO], fecha_llamada: "2026-10-12T10:00:00.000Z" });
 
     const out = upcomingCalls([later, noDate, noEstado, closed, sooner, nuevo]);
-    expect(out.map((u) => u.conversation.id)).toEqual(["sooner", "later"]);
+    // La sin fecha (16/10/2026) también es una llamada: va al final.
+    expect(out.map((u) => u.conversation.id)).toEqual(["sooner", "later", "nodate"]);
     expect(out[0].call.closer).toBeNull();
     expect(out[1].call.closer).toBe("Paola");
+    expect(out[2].call).toEqual({ closer: "Paola", at: null });
   });
 
   it("sin llamadas devuelve vacío", () => {

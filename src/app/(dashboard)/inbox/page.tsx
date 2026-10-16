@@ -370,7 +370,13 @@ function InboxPageInner() {
   const { patchContact, hydrate: hydrateRow } = store;
   const handleScheduled = useCallback(
     (result: ScheduledResult) => {
-      patchContact(result.contactId, { fecha_llamada: result.fechaLlamada, tags: result.attached });
+      // Sin fecha, `fecha_llamada` no se tocó: solo las etiquetas.
+      patchContact(
+        result.contactId,
+        result.fechaLlamada === null
+          ? { tags: result.attached }
+          : { fecha_llamada: result.fechaLlamada, tags: result.attached },
+      );
       void hydrateRow(result.conversationId);
     },
     [patchContact, hydrateRow],

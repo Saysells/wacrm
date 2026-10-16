@@ -32,6 +32,13 @@
 //      inserta nada, así que sin eso el CRM no recibiría la fecha nueva.
 //
 // Y siempre: PRIMERO la fecha, DESPUÉS la etiqueta (ver fecha-llamada.ts).
+//
+// SIN FECHA (pedido de Matías, aprobado por Emi el 16/10/2026): día y
+// horario son opcionales. Sin ellos se aplica solo la etiqueta y no se
+// toca contacts.fecha_llamada. Una llamada sin fecha no es "vigente":
+// ponerle fecha después es agendar, no reagendar (no pasa a
+// "Reagendado"). Ningún trigger de la base exige la fecha y
+// bridge_set_estado del CRM acepta ll1_agendada sin fecha.
 // ============================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -46,7 +53,9 @@ import {
   DAY_MS,
   groupRank,
   isClosed,
+  isDatedCall,
   scheduledCall,
+  type DatedCall,
   type ScheduledCall,
 } from "./vistas";
 
@@ -112,9 +121,9 @@ export interface ScheduleRequest {
   fixedTag: Tag | null;
 }
 
-/** Con llamada vigente se reagenda; sin ella se agenda. */
+/** Con llamada vigente (con fecha) se reagenda; sin ella, o sin fecha, se agenda. */
 export function scheduleModeFor(currentCall: ScheduledCall | null): ScheduleMode {
-  return currentCall ? "re" : "new";
+  return currentCall !== null && isDatedCall(currentCall) ? "re" : "new";
 }
 
 /** Agendar o Cambiar desde la ficha, el encabezado o la tecla: el closer actual queda marcado. */
@@ -128,8 +137,8 @@ export function requestFromAction(currentCall: ScheduledCall | null): ScheduleRe
 
 /**
  * Elegir en Estado una etiqueta con fecha (regla 3). El estado actual
- * abre Reagendar; "Agendado a X" marca a X; "Agendada" / "Reagendado"
- * fijan la etiqueta.
+ * abre Reagendar (o Agendar, si la llamada no tiene fecha); "Agendado a
+ * X" marca a X; "Agendada" / "Reagendado" fijan la etiqueta.
  */
 export function requestFromEstado(
   picked: Tag,
@@ -225,16 +234,17 @@ function sameCloser(a: string | null, b: string | null): boolean {
  * a nadie, "Agendada" / "Reagendado") en conversaciones no cerradas,
  * sin la conversación que se está agendando.
  */
-export function callsOfCloser(
+export /** Las llamadas CON fecha del closer: una sin fecha no ocupa ningún horario. */
+function callsOfCloser(
   convs: readonly InboxConversation[],
   closer: string | null,
   excludeConversationId: string | null,
-): ScheduledCall[] {
-  const out: ScheduledCall[] = [];
+): DatedCall[] {
+  const out: DatedCall[] = [];
   for (const conv of convs) {
     if (conv.id === excludeConversationId || isClosed(conv)) continue;
     const call = scheduledCall(conv);
-    if (call && sameCloser(call.closer, closer)) out.push(call);
+    if (call && isDatedCall(call) && sameCloser(call.closer, closer)) out.push(call);
   }
   return out;
 }
@@ -307,10 +317,11 @@ export interface ScheduleDraft {
 
 /**
  * Con qué se abre el modal: la llamada vigente marcada (Reagendar), o el
- * mes de pasado mañana sin día ni horario (Agendar), como el prototipo.
+ * mes de pasado mañana sin día ni horario (Agendar, también para una
+ * llamada sin fecha), como el prototipo.
  */
 export function initialScheduleDraft(currentCall: ScheduledCall | null, now: number): ScheduleDraft {
-  if (currentCall) {
+  if (currentCall && isDatedCall(currentCall)) {
     const d = new Date(currentCall.at);
     return {
       year: d.getFullYear(),
@@ -343,6 +354,22 @@ export function chosenTime(draft: ScheduleDraft): number | null {
   return slotTime(draft.day, draft.slot);
 }
 
+/** Elegir un día; el día ya elegido se destilda (para agendar sin fecha). */
+export function toggleDay(draft: ScheduleDraft, day: number): ScheduleDraft {
+  if (draft.day === day) return { ...draft, day: null, slot: null };
+  return { ...draft, day, slot: null };
+}
+
+/**
+ * ¿Se puede guardar? Agendar: sin día (sin fecha) o con día y horario;
+ * un día sin horario está a medias. Reagendar: siempre con día y horario
+ * (sin fecha no hay nada que reagendar).
+ */
+export function canSaveDraft(draft: ScheduleDraft, mode: ScheduleMode): boolean {
+  if (draft.day === null) return mode === "new";
+  return draft.slot !== null;
+}
+
 // ------------------------------------------------------------
 // Parte con red.
 // ------------------------------------------------------------
@@ -351,13 +378,15 @@ export interface ApplyScheduleInput {
   db: SupabaseClient;
   contactId: string;
   tag: Tag;
-  fecha: Date;
+  /** Null: agendar sin fecha (solo la etiqueta; fecha_llamada no se toca). */
+  fecha: Date | null;
   /** Etiquetas actuales del contacto. */
   attached: Tag[];
 }
 
 export interface ApplyScheduleResult {
-  fechaLlamada: string;
+  /** ISO guardado, o null si se agendó sin fecha. */
+  fechaLlamada: string | null;
   attached: Tag[];
 }
 
@@ -366,8 +395,15 @@ export interface ApplyScheduleResult {
  * saca y se vuelve a poner para que el INSERT (y el aviso al CRM)
  * ocurra con la fecha nueva. Si guardar la fecha falla, no se toca
  * ninguna etiqueta.
+ *
+ * Sin fecha: solo `attachTag` (si ya la tiene, el endpoint lo trata como
+ * no-op). No hay fecha nueva que avisar, así que tampoco se reaplica.
  */
 export async function applySchedule(input: ApplyScheduleInput): Promise<ApplyScheduleResult> {
+  if (input.fecha === null) {
+    const attached = await attachTag(input.contactId, input.tag, input.attached);
+    return { fechaLlamada: null, attached };
+  }
   const fechaLlamada = await saveFechaLlamada(input.db, input.contactId, input.fecha);
   let attached = input.attached;
   if (needsReattach(attached, input.tag)) {

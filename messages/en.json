@@ -261,7 +261,8 @@
       "callScheduled": "Scheduled",
       "callNoCloser": "No closer",
       "emptyCallsTitle": "You have no scheduled calls",
-      "emptyCallsBody": "When a setter schedules a call for you, it shows up here."
+      "emptyCallsBody": "When a setter schedules a call for you, it shows up here.",
+      "callUndated": "No date"
     },
     "messageThread": {
       "backToConversations": "Back to conversations",
@@ -512,7 +513,8 @@
       "afterCall": "After the call",
       "outcomeReschedule": "Reschedule",
       "outcomeFailed": "Could not register the outcome",
-      "outcomeRegistered": "Call registered as {outcome}."
+      "outcomeRegistered": "Call registered as {outcome}.",
+      "callCardUndated": "No time yet"
     },
     "schedule": {
       "titleNew": "Schedule call",
@@ -521,8 +523,8 @@
       "closerCalls": "{count} {count, plural, =1 {call} other {calls}} in the next 7 days",
       "messageFor": "Message for {name}",
       "messageForContact": "Message for the customer",
-      "pickDayFirst": "Pick a day and time to build the message.",
-      "leaveInComposer": "Leave it ready in the composer",
+      "prepareMessage": "Prepare confirmation message",
+      "prepareMessageNoDate": "Pick a day and time to build the message.",
       "composerBlocked": "The 24-hour window is closed: only an approved template can be sent.",
       "composerNone": "The customer hasn't written yet: only an approved template can be sent.",
       "prevMonth": "Previous month",
@@ -539,11 +541,13 @@
       "today": "Today",
       "summaryWhen": "{weekday}, {month} {day}, {time}",
       "summaryWith": "with {closer}",
-      "summaryEmpty": "No date yet",
-      "summaryHintClosers": "Closer, day and time",
-      "summaryHint": "Day and time",
+      "summaryEmpty": "No date",
+      "summaryNoDate": "Only the status is applied, with no date.",
+      "summaryNoDateRe": "To reschedule, pick a day and time.",
+      "summaryIncomplete": "Time missing",
+      "summaryIncompleteHint": "Pick a time, or unselect the day to schedule without a date.",
       "cancel": "Cancel",
-      "confirmNew": "Schedule call",
+      "confirmNew": "Schedule",
       "confirmRe": "Reschedule",
       "msgWithCloser": "Done {name}! I booked you with {closer} on {weekday} {day} at {time}. They will call this number.",
       "msgWithCloserNoName": "Done! I booked you with {closer} on {weekday} {day} at {time}. They will call this number.",
@@ -553,6 +557,8 @@
       "toastRescheduled": "Call rescheduled with {closer} for {weekday} {day} at {time}.",
       "toastScheduledNoCloser": "Call scheduled for {weekday} {day} at {time}.",
       "toastRescheduledNoCloser": "Call rescheduled for {weekday} {day} at {time}.",
+      "toastScheduledNoDate": "Scheduled with {closer}, no date.",
+      "toastScheduledNoDateNoCloser": "Scheduled with no date.",
       "failed": "Couldn't schedule the call",
       "noSchedulingTags": "This inbox has no dated status tags: calls are not scheduled from here."
     },

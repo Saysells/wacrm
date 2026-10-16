@@ -13,7 +13,8 @@
 //   estado        la etiqueta del contacto con grupo = 'estado'
 //   grupo         toda etiqueta de estado con requiere_fecha va a
 //                 "Agendada"; las demás son su propio grupo
-//   llamada       estado con requiere_fecha + contacts.fecha_llamada
+//   llamada       estado con requiere_fecha; contacts.fecha_llamada si
+//                 la tiene (puede ser null: "Sin fecha")
 //   ventana       24 h desde el último mensaje del cliente
 // ============================================================
 
@@ -174,19 +175,38 @@ export function isCloserCall(call: Pick<ScheduledCall, "closer">, closer: string
 export interface ScheduledCall {
   /** Nombre del closer, o null si la etiqueta no nombra a nadie. */
   closer: string | null;
-  /** `contacts.fecha_llamada` en ms. */
-  at: number;
+  /**
+   * `contacts.fecha_llamada` en ms, o null: desde el 16/10/2026 se puede
+   * agendar sin fecha (pedido de Matías), así que una etiqueta de agenda
+   * sin fecha sigue siendo una llamada, "Sin fecha".
+   */
+  at: number | null;
 }
 
-/** Llamada agendada: estado con requiere_fecha + fecha en el contacto. */
+/** Una llamada que sí tiene fecha (ocupados, puntos del calendario). */
+export type DatedCall = ScheduledCall & { at: number };
+
+export function isDatedCall(call: ScheduledCall): call is DatedCall {
+  return call.at !== null;
+}
+
+/**
+ * Llamada agendada: estado con requiere_fecha; la fecha del contacto si
+ * la tiene (y es válida), si no `at: null`.
+ */
 export function scheduledCall(conv: InboxConversation): ScheduledCall | null {
   const estado = conversationEstado(conv);
   if (!estado || !estado.requiere_fecha) return null;
+  const closer = closerFromTag(estado.name);
   const raw = conv.contact?.fecha_llamada;
-  if (!raw) return null;
+  if (!raw) return { closer, at: null };
   const at = new Date(raw).getTime();
-  if (Number.isNaN(at)) return null;
-  return { closer: closerFromTag(estado.name), at };
+  return { closer, at: Number.isNaN(at) ? null : at };
+}
+
+/** Orden por hora de la llamada: las sin fecha al final. */
+export function compareCallTime(a: Pick<ScheduledCall, "at">, b: Pick<ScheduledCall, "at">): number {
+  return (a.at ?? Number.MAX_SAFE_INTEGER) - (b.at ?? Number.MAX_SAFE_INTEGER);
 }
 
 // ------------------------------------------------------------
@@ -370,7 +390,7 @@ export function sortByActivity(convs: readonly InboxConversation[]): InboxConver
   return [...convs].sort((a, b) => activityOf(b) - activityOf(a));
 }
 
-/** Mis llamadas: por hora de la llamada, la más próxima primero. No muta la entrada. */
+/** Mis llamadas: por hora de la llamada, la más próxima primero y las sin fecha al final. No muta la entrada. */
 export function sortByCallTime(convs: readonly InboxConversation[]): InboxConversation[] {
   const at = (c: InboxConversation) => scheduledCall(c)?.at ?? Number.MAX_SAFE_INTEGER;
   return [...convs].sort((a, b) => at(a) - at(b) || activityOf(b) - activityOf(a));

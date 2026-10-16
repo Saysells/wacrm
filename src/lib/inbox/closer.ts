@@ -16,6 +16,8 @@
 //   llamada mía  estado con fecha a mi nombre, o uno que no nombra a
 //                nadie ("Agendada" / "Reagendado"): la Bandeja no sabe
 //                de quién es, así que se muestra con "Sin closer".
+//                Puede no tener fecha (agendar sin fecha, 16/10/2026):
+//                va al final, en el grupo "Sin fecha".
 //   resultado    la etiqueta de estado con ese nombre (Realizada, No se
 //                presentó, Propuesta); la base saca la de fecha
 //                (trg_single_etapa_tag) y el puente avisa al CRM.
@@ -28,6 +30,7 @@ import { closersOf } from "./agendar";
 import type { InboxConversation } from "./inbox-conversation";
 import { dayLabel } from "./thread";
 import {
+  compareCallTime,
   HOUR_MS,
   isCloserCall,
   isClosed,
@@ -89,19 +92,21 @@ export function closerCalls(convs: readonly InboxConversation[], closer: string)
     const call = scheduledCall(conversation);
     if (call && isCloserCall(call, closer)) out.push({ conversation, call });
   }
-  return out.sort((a, b) => a.call.at - b.call.at);
+  return out.sort((a, b) => compareCallTime(a.call, b.call));
 }
 
 /** Con menos de esto por delante, la fila dice "En X" (prototipo: 3 h). */
 export const SOON_MS = 3 * HOUR_MS;
 
-/** Estado de la fila de Mis llamadas (`callRow`): ya pasó, es pronto, o agendada. */
+/** Estado de la fila de Mis llamadas (`callRow`): sin fecha, ya pasó, es pronto, o agendada. */
 export type CallStatus =
+  | { kind: "undated" }
   | { kind: "past" }
   | { kind: "soon"; inMs: number }
   | { kind: "scheduled" };
 
-export function callStatus(at: number, now: number): CallStatus {
+export function callStatus(at: number | null, now: number): CallStatus {
+  if (at === null) return { kind: "undated" };
   if (at < now) return { kind: "past" };
   if (at - now < SOON_MS) return { kind: "soon", inMs: at - now };
   return { kind: "scheduled" };
@@ -114,23 +119,37 @@ function startOfDay(t: number): number {
 }
 
 export interface CallDayGroup<T> {
-  /** Inicio del día en ms (hora local). */
-  day: number;
+  /** Inicio del día en ms (hora local), o null para el grupo "Sin fecha". */
+  day: number | null;
   items: T[];
 }
 
-/** Agrupa por día calendario, en orden, conservando el orden de entrada dentro del día. */
-export function groupByDay<T>(items: readonly T[], timeOf: (item: T) => number): CallDayGroup<T>[] {
+/**
+ * Agrupa por día calendario, en orden, conservando el orden de entrada
+ * dentro del día. Lo que no tiene fecha va en un único grupo al final.
+ */
+export function groupByDay<T>(
+  items: readonly T[],
+  timeOf: (item: T) => number | null,
+): CallDayGroup<T>[] {
   const groups = new Map<number, T[]>();
+  const undated: T[] = [];
   for (const item of items) {
-    const day = startOfDay(timeOf(item));
+    const t = timeOf(item);
+    if (t === null) {
+      undated.push(item);
+      continue;
+    }
+    const day = startOfDay(t);
     const list = groups.get(day);
     if (list) list.push(item);
     else groups.set(day, [item]);
   }
-  return [...groups.entries()]
+  const out: CallDayGroup<T>[] = [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([day, list]) => ({ day, items: list }));
+  if (undated.length > 0) out.push({ day: null, items: undated });
+  return out;
 }
 
 /** Encabezado de un día de Mis llamadas (prototipo `dayLabel`): "Hoy · jueves 15 de octubre". */

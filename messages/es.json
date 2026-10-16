@@ -261,7 +261,8 @@
       "callScheduled": "Agendada",
       "callNoCloser": "Sin closer",
       "emptyCallsTitle": "No tenés llamadas agendadas",
-      "emptyCallsBody": "Cuando un setter te agende una llamada, aparece acá."
+      "emptyCallsBody": "Cuando un setter te agende una llamada, aparece acá.",
+      "callUndated": "Sin fecha"
     },
     "messageThread": {
       "backToConversations": "Volver a las conversaciones",
@@ -512,7 +513,8 @@
       "afterCall": "Después de la llamada",
       "outcomeReschedule": "Reagendar",
       "outcomeFailed": "No se pudo registrar el resultado",
-      "outcomeRegistered": "Llamada registrada como {outcome}."
+      "outcomeRegistered": "Llamada registrada como {outcome}.",
+      "callCardUndated": "Sin horario todavía"
     },
     "schedule": {
       "titleNew": "Agendar llamada",
@@ -521,8 +523,8 @@
       "closerCalls": "{count} {count, plural, =1 {llamada} other {llamadas}} en los próximos 7 días",
       "messageFor": "Mensaje para {name}",
       "messageForContact": "Mensaje para el cliente",
-      "pickDayFirst": "Elegí día y horario para armar el mensaje.",
-      "leaveInComposer": "Dejarlo listo en el composer",
+      "prepareMessage": "Preparar mensaje de confirmación",
+      "prepareMessageNoDate": "Elegí día y horario para armar el mensaje.",
       "composerBlocked": "La ventana de 24 h está cerrada: solo se le puede escribir con una plantilla aprobada.",
       "composerNone": "El cliente todavía no escribió: solo se le puede mandar una plantilla aprobada.",
       "prevMonth": "Mes anterior",
@@ -539,11 +541,13 @@
       "today": "Hoy",
       "summaryWhen": "{weekday} {day} de {month}, {time}",
       "summaryWith": "con {closer}",
-      "summaryEmpty": "Sin fecha todavía",
-      "summaryHintClosers": "Closer, día y horario",
-      "summaryHint": "Día y horario",
+      "summaryEmpty": "Sin fecha",
+      "summaryNoDate": "Se aplica solo el estado, sin fecha.",
+      "summaryNoDateRe": "Para reagendar, elegí día y horario.",
+      "summaryIncomplete": "Falta el horario",
+      "summaryIncompleteHint": "Elegí un horario, o destildá el día para agendar sin fecha.",
       "cancel": "Cancelar",
-      "confirmNew": "Agendar llamada",
+      "confirmNew": "Agendar",
       "confirmRe": "Reagendar",
       "msgWithCloser": "¡Listo {name}! Te agendé con {closer} el {weekday} {day} a las {time}. Te llama a este número.",
       "msgWithCloserNoName": "¡Listo! Te agendé con {closer} el {weekday} {day} a las {time}. Te llama a este número.",
@@ -553,6 +557,8 @@
       "toastRescheduled": "Llamada reagendada con {closer} para el {weekday} {day} a las {time}.",
       "toastScheduledNoCloser": "Llamada agendada para el {weekday} {day} a las {time}.",
       "toastRescheduledNoCloser": "Llamada reagendada para el {weekday} {day} a las {time}.",
+      "toastScheduledNoDate": "Agendado con {closer}, sin fecha.",
+      "toastScheduledNoDateNoCloser": "Agendado sin fecha.",
       "failed": "No se pudo agendar la llamada",
       "noSchedulingTags": "Esta bandeja no tiene etiquetas con fecha: no se agendan llamadas desde acá."
     },

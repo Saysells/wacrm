@@ -11,14 +11,15 @@
 // Del prototipo a los datos reales:
 //   origen        etiquetas con grupo 'origen': `origen_ads` es el
 //                 anuncio, `origen_form` el formulario de Tally
-//   llamadas      estado con requiere_fecha + contacts.fecha_llamada
-//                 (`scheduledCall`), de conversaciones no cerradas
+//   llamadas      estado con requiere_fecha (+ contacts.fecha_llamada si
+//                 la tiene; sin fecha va al final), de conversaciones
+//                 no cerradas (`scheduledCall`)
 // ============================================================
 
 import { isEstadoTag } from "@/lib/contacts/tag-groups";
 import type { Tag } from "@/types";
 import type { InboxConversation } from "./inbox-conversation";
-import { isClosed, scheduledCall, type ScheduledCall } from "./vistas";
+import { compareCallTime, isClosed, scheduledCall, type ScheduledCall } from "./vistas";
 
 function nameKey(name: string): string {
   return name.trim().toLocaleLowerCase();
@@ -70,9 +71,9 @@ export interface UpcomingCall {
 
 /**
  * Pestaña Llamadas: toda llamada agendada de una conversación no
- * cerrada, por hora (la más próxima primero). Incluye las que ya
- * pasaron y nadie resolvió: siguen agendadas hasta que alguien les
- * cambie el estado, igual que en la vista Agendadas.
+ * cerrada, por hora (la más próxima primero; las sin fecha al final).
+ * Incluye las que ya pasaron y nadie resolvió: siguen agendadas hasta
+ * que alguien les cambie el estado, igual que en la vista Agendadas.
  */
 export function upcomingCalls(convs: readonly InboxConversation[]): UpcomingCall[] {
   const out: UpcomingCall[] = [];
@@ -81,7 +82,7 @@ export function upcomingCalls(convs: readonly InboxConversation[]): UpcomingCall
     const call = scheduledCall(conversation);
     if (call) out.push({ conversation, call });
   }
-  return out.sort((a, b) => a.call.at - b.call.at);
+  return out.sort((a, b) => compareCallTime(a.call, b.call));
 }
 
 /** El botón Email de la ficha se habilita solo con un email con contenido. */

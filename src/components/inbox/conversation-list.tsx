@@ -380,8 +380,11 @@ export function ConversationList({
         ) : callGroups ? (
           <div className="flex flex-col pb-3">
             {callGroups.map((group) => (
-              <div key={group.day}>
-                <SectionHeader label={formatCallDay(group.day)} count={group.items.length} />
+              <div key={group.day ?? "undated"}>
+                <SectionHeader
+                  label={group.day === null ? t("callUndated") : formatCallDay(group.day)}
+                  count={group.items.length}
+                />
                 {group.items.map(({ conversation, call }) => (
                   <CallRow
                     key={conversation.id}
@@ -656,7 +659,8 @@ function ConversationRow({
               {group}
             </span>
           )}
-          {call && (
+          {/* Sin fecha, solo el estado: el chip de la llamada no va. */}
+          {call && call.at !== null && (
             <span className={cn(CHIP, "bg-selected-strong text-primary")}>
               <CalendarClock />
               {call.closer
@@ -732,7 +736,8 @@ function ConversationRow({
 
 // ------------------------------------------------------------
 // Fila de Mis llamadas (prototipo `callRow()`): hora, avatar, nombre,
-// "empresa o teléfono · setter <nombre>" y el estado de la llamada.
+// "empresa o teléfono · setter <nombre>" y el estado de la llamada. Sin
+// fecha: ícono en lugar de la hora y el chip "Sin fecha".
 // ------------------------------------------------------------
 
 interface CallRowProps {
@@ -768,7 +773,11 @@ function CallRow({ conversation: conv, call, isActive, onSelect, now, setterName
       )}
     >
       <span className="w-[50px] shrink-0 text-base font-semibold tabular-nums text-foreground">
-        {hhmm(call.at)}
+        {call.at === null ? (
+          <CalendarClock aria-hidden="true" className="size-5 text-muted-foreground" />
+        ) : (
+          hhmm(call.at)
+        )}
       </span>
       <span
         aria-hidden="true"
@@ -790,7 +799,12 @@ function CallRow({ conversation: conv, call, isActive, onSelect, now, setterName
             : t("callRowSetter", { where, setter: setterName || t("unknown") })}
         </span>
         <div className="mt-[7px] flex flex-wrap items-center gap-1.5">
-          {status.kind === "past" ? (
+          {status.kind === "undated" ? (
+            <span className={cn(CHIP, "bg-neutral-soft text-neutral")}>
+              <CalendarClock />
+              {t("callUndated")}
+            </span>
+          ) : status.kind === "past" ? (
             <span className={cn(CHIP, "bg-warning-soft text-warning")}>
               <CircleAlert />
               {t("callNoResult")}

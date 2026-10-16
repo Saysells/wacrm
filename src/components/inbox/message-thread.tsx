@@ -152,8 +152,9 @@ interface MessageThreadProps {
   memberNames: ReadonlyMap<string, string>;
   /**
    * Llamada agendada del contacto (estado con fecha + fecha_llamada),
-   * leída de la fila viva del store. Con ella la acción principal es
-   * "<closer> · <cuándo>" y abre Reagendar; sin ella, "Agendar llamada".
+   * leída de la fila viva del store. Con fecha la acción principal es
+   * "<closer> · <cuándo>" y abre Reagendar; sin ella (o sin fecha),
+   * "Agendar llamada".
    */
   call: ScheduledCall | null;
   /** La cuenta tiene etiquetas con fecha y la persona puede agendar (agent+). */
@@ -935,7 +936,7 @@ export function MessageThread({
               {t("createProposal")}
               <ArrowUpRight />
             </Button>
-          ) : canSchedule && call ? (
+          ) : canSchedule && call && call.at !== null ? (
             <Button
               variant="outline"
               onClick={onSchedule}

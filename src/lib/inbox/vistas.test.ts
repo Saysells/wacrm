@@ -28,6 +28,7 @@ import {
   pastWhen,
   relativeTime,
   scheduledCall,
+  sortByCallTime,
   shortWhen,
   showsClosedWindow,
   showsTakeNext,
@@ -158,8 +159,22 @@ describe("embudo", () => {
     const c = conv({ tags: [AG_EZE], fecha: new Date(NOW + H).toISOString() });
     expect(scheduledCall(c)).toEqual({ closer: "Ezequiel", at: NOW + H });
     expect(scheduledCall(conv({ tags: [REAG], fecha: new Date(NOW + H).toISOString() }))?.closer).toBeNull();
-    expect(scheduledCall(conv({ tags: [AG_EZE], fecha: null }))).toBeNull();
     expect(scheduledCall(conv({ tags: [NUEVO], fecha: new Date(NOW + H).toISOString() }))).toBeNull();
+  });
+
+  it("una etiqueta de agenda sin fecha es una llamada sin fecha (at null), no ninguna", () => {
+    expect(scheduledCall(conv({ tags: [AG_EZE], fecha: null }))).toEqual({ closer: "Ezequiel", at: null });
+    expect(scheduledCall(conv({ tags: [REAG], fecha: "no es fecha" }))).toEqual({ closer: null, at: null });
+    const ctx = { userId: "me", now: NOW };
+    expect(inVista(conv({ tags: [AG_EZE], fecha: null }), "agendadas", ctx)).toBe(true);
+    expect(inVista(conv({ tags: [AG_EZE], fecha: null }), "mis-llamadas", { ...ctx, closer: "Ezequiel" })).toBe(true);
+    expect(conversationGroup(conv({ tags: [AG_EZE], fecha: null }))).toBe(AGENDADA_GROUP);
+  });
+
+  it("sortByCallTime deja las sin fecha al final", () => {
+    const dated = conv({ tags: [AG_EZE], fecha: new Date(NOW + 5 * H).toISOString() });
+    const undated = conv({ tags: [AG_EZE], fecha: null, last_message_at: new Date(NOW).toISOString() });
+    expect(sortByCallTime([undated, dated]).map((c) => c.id)).toEqual([dated.id, undated.id]);
   });
 });
 

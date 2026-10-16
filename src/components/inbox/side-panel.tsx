@@ -605,30 +605,36 @@ function Ficha({
   const cardCall = outcome?.call ?? call;
   const callCardNode = (() => {
     if (!callCard || !cardCall) return null;
-    const heading = callDayHeading(cardCall.at, now);
+    // Sin fecha (16/10/2026): "Sin fecha" arriba y "Sin horario todavía"
+    // (o el resultado) en lugar de la hora.
     const weekdays = tThread("weekdaysLong").split(",");
     const months = tThread("months").split(",");
-    const date = tThread("dayDate", {
-      weekday: weekdays[heading.weekday] ?? "",
-      day: heading.day,
-      month: months[heading.month] ?? "",
-    });
-    const dayText =
-      heading.relative === "today"
+    const dayText = (() => {
+      if (cardCall.at === null) return tList("callUndated");
+      const heading = callDayHeading(cardCall.at, now);
+      const date = tThread("dayDate", {
+        weekday: weekdays[heading.weekday] ?? "",
+        day: heading.day,
+        month: months[heading.month] ?? "",
+      });
+      return heading.relative === "today"
         ? tList("callDayToday", { date })
         : heading.relative === "tomorrow"
           ? tList("callDayTomorrow", { date })
           : heading.relative === "yesterday"
             ? tList("callDayYesterday", { date })
             : date.charAt(0).toUpperCase() + date.slice(1);
+    })();
     const status = callStatus(cardCall.at, now);
-    const suffix = outcome
-      ? outcome.tag.name
-      : status.kind === "past"
-        ? t("callCardPast")
-        : t("callCardIn", {
-            duration: formatDuration(durationParts(cardCall.at - now), tList),
-          });
+    const mainText = (() => {
+      if (outcome) return cardCall.at === null ? outcome.tag.name : `${hhmm(cardCall.at)} · ${outcome.tag.name}`;
+      if (cardCall.at === null) return t("callCardUndated");
+      const suffix =
+        status.kind === "past"
+          ? t("callCardPast")
+          : t("callCardIn", { duration: formatDuration(durationParts(cardCall.at - now), tList) });
+      return `${hhmm(cardCall.at)} · ${suffix}`;
+    })();
     const outcomes = CALL_OUTCOMES.map((kind) => ({ kind, tag: outcomeTag(accountTags, kind) }));
     return (
       <>
@@ -642,9 +648,7 @@ function Ficha({
             <CalendarClock className="size-3.5 shrink-0" />
             {dayText}
           </div>
-          <b className="mt-1 block text-xl font-semibold tabular-nums">
-            {hhmm(cardCall.at)} · {suffix}
-          </b>
+          <b className="mt-1 block text-xl font-semibold tabular-nums">{mainText}</b>
           <div className={cn("mt-0.5 text-[13px]", outcome ? "text-secondary-foreground" : "opacity-85")}>
             {contact.company ? `${displayName} · ${contact.company}` : displayName}
           </div>
@@ -664,7 +668,7 @@ function Ficha({
                 />
               )}
               <OutcomeButton
-                label={t("outcomeReschedule")}
+                label={call && call.at === null ? t("schedule") : t("outcomeReschedule")}
                 icon={<CalendarClock className="text-warning" />}
                 disabled={busy}
                 onClick={() => onSchedule(requestFromAction(call))}
@@ -884,7 +888,7 @@ function Ficha({
                 <span className="min-w-0">
                   {call.closer && <span className="block truncate">{call.closer}</span>}
                   <span className={cn("block text-xs text-muted-foreground", !call.closer && "text-[13.5px] text-foreground")}>
-                    {formatShortWhen(shortWhen(call.at, now), tList)}
+                    {call.at === null ? tList("callUndated") : formatShortWhen(shortWhen(call.at, now), tList)}
                   </span>
                 </span>
               </span>
@@ -898,7 +902,7 @@ function Ficha({
                 onClick={() => onSchedule(requestFromAction(call))}
                 className="ml-auto shrink-0 font-semibold text-primary outline-none hover:underline focus-visible:underline disabled:opacity-50"
               >
-                {call ? t("reschedule") : t("schedule")}
+                {call && call.at !== null ? t("reschedule") : t("schedule")}
               </button>
             )}
           </div>
@@ -1228,7 +1232,7 @@ function CallsTab({ conversations, activeId, onOpen, now, t, tList }: CallsTabPr
         ) : (
           calls.map(({ conversation, call }) => {
             const name = conversation.contact?.name || conversation.contact?.phone || "";
-            const when = formatShortWhen(shortWhen(call.at, now), tList);
+            const when = call.at === null ? tList("callUndated") : formatShortWhen(shortWhen(call.at, now), tList);
             const active = conversation.id === activeId;
             return (
               <button
@@ -1241,7 +1245,13 @@ function CallsTab({ conversations, activeId, onOpen, now, t, tList }: CallsTabPr
                   active && "bg-selected hover:bg-selected",
                 )}
               >
-                <span className="w-12 shrink-0 font-semibold tabular-nums">{hhmm(call.at)}</span>
+                <span className="w-12 shrink-0 font-semibold tabular-nums">
+                  {call.at === null ? (
+                    <CalendarClock aria-hidden="true" className="size-4 text-muted-foreground" />
+                  ) : (
+                    hhmm(call.at)
+                  )}
+                </span>
                 <span className="min-w-0">
                   <b className="block truncate font-semibold">{name}</b>
                   <small className="block text-xs text-muted-foreground">
